@@ -188,6 +188,36 @@ function setFontValues(patch) {
   scheduleFontSet();
 }
 
+/** 预设应用的字体落位槽：**固定 id**（宿主 PUT 对未知 id 即创建，见 fontsets.js 的
+ *  PUT 分支；id 白名单 `[A-Za-z0-9_-]{1,64}` 放行）。独立于用户的任何字体集 ——
+ *  每次应用整体覆盖同一个槽 ⇒ 反复应用不增殖、不串味。 */
+const PRESET_FONTSET_ID = "preset-font";
+
+/**
+ * 预设应用的字体落位（ADR-0011 D4 的宿主半边对偶）：写进**预设专用字体集**
+ * （`PRESET_FONTSET_ID`），再激活采用（activateFontSet 会把槽里的值读回 selection）。
+ * **绝不写用户当前的活动字体集**：那是用户自己的设计 —— 实测教训：黑客绿的字体段
+ * 经 setFontValues 落进活动集后把它整个染绿，之后任何预设下手动开自定义都见绿。
+ * @returns 是否成功（失败已写 selection.fontSetError）
+ */
+async function landPresetFontSet(values, name) {
+  try {
+    const res = await fsFetch(fontSetUrl(PRESET_FONTSET_ID), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: typeof name === "string" && name.trim() ? name.trim() : weT("预设字体"),
+        values,
+      }),
+    });
+    if (!res.ok) { selection.fontSetError = fontSetFailureReason(res); return false; }
+  } catch {
+    selection.fontSetError = weT("宿主不可达（请求未完成）");
+    return false;
+  }
+  return activateFontSet(PRESET_FONTSET_ID); // 读回采用（值 + 快照 + 清单 + 「使用中」标记）
+}
+
 /** 单独安排一次落盘（"恢复默认"那种直接改 selection 后调用）。 */
 function persistFontSet() {
   fontSetWrites++;
@@ -502,6 +532,7 @@ function cancelPendingFontSet() {
 export {
   fontValueDefaults, readCachedFontSetValues, loadFontSet, setFontValues, persistFontSet,
   flushFontSet, onPageHideFlushFontSet, onVisibilityResyncFontSet, cancelPendingFontSet,
+  landPresetFontSet,
   refreshFontSets, activateFontSet, createFontSet, renameFontSet, deleteFontSet,
   exportFontSetUrl, importFontSet, flushFontSetNow, fontSetDrifted,
 };

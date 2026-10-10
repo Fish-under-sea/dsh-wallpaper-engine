@@ -1112,8 +1112,10 @@ section('④ 客户端形态棘轮：新编排链（合并→落盘→reapplyAll
     && applyBody.indexOf('selection[key] = before[key]') < applyBody.indexOf('persistSelection()'));
   check('正文带资产段才调 install-assets（缺席 = 一个键都不碰，不是回落默认）',
     /rawAssets && typeof rawAssets === "object"[\s\S]{0,200}\/install-assets/.test(applyBody));
-  check('字体值走字体集通道 setFontValues（不塞进 settings blob —— 塞了会"屏上变了重启回滚"）',
-    /setFontValues\(sanitizeFontset\(font\.values\)\);/.test(storeCode));
+  check('字体值走字体集通道，落进**预设专用槽** landPresetFontSet（不写用户活动集 —— 写活动集会把用户自己的设计整个染绿，实测教训）',
+    /landPresetFontSet\(sanitizeFontset\(font\.values\), font\.name\)/.test(storeCode));
+  check('negative control: 旧的 setFontValues 直写形态必须从 preset-store 消失（落到专用槽是唯一路径）',
+    !/setFontValues\(sanitizeFontset/.test(storeCode));
   check('预设通道不直接写 localStorage（缓存归 settings 通道管）',
     !/localStorage/.test(storeCode));
   // ★ 写请求集合按**语义**判，不按字面顺序判（旧判据把 `join(',')` 的字符串当等式钉死 ⇒
