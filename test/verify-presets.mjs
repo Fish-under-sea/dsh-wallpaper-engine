@@ -432,6 +432,10 @@ const OLD_TAG = 'dsh-we/glass-preset@1';
     builtinRows.map((r) => r.id).join(','));
 
   // 出厂预设正文本身必须是新契约的产物（t1 交付物的独立复核，不看自述）。
+  // 资产段（2026-10-11 维护者口径）：出厂预设**允许携带**（「黑客绿(Fish)」带字体主题与
+  // 吉祥物立绘）—— 但必须是 `sanitizePresetAssets` 的**规范形**（round-trip 逐字节相等），
+  // 随包文件里不许有消毒会改写/丢弃的形状；`data` 由应用路径的 `installAssets` 落盘，
+  // 清单端点只回 {id,name,origin} 不会把它漏出去。
   {
     const files = readdirSync(BUILTIN).filter((f) => f.endsWith('.json')).sort();
     const bad = [];
@@ -439,9 +443,10 @@ const OLD_TAG = 'dsh-we/glass-preset@1';
       const d = JSON.parse(readFileSync(join(BUILTIN, f), 'utf8'));
       if (d.$schema !== schema.PROFILE_PRESET_SCHEMA_TAG) bad.push(f + ':tag');
       else if (Object.keys(d.values || {}).length !== schema.PROFILE_PRESET_KEYS.length) bad.push(f + ':values=' + Object.keys(d.values || {}).length);
-      else if ('assets' in d) bad.push(f + ':带assets');
+      else if ('assets' in d
+        && JSON.stringify(schema.sanitizePresetAssets(d.assets)) !== JSON.stringify(d.assets)) bad.push(f + ':assets非规范形');
     }
-    check('七套出厂正文都是新 tag + 完整 settings 段 + 不带资产段',
+    check('七套出厂正文都是新 tag + 完整 settings 段（资产段允许，须为消毒后规范形）',
       files.length === 7 && bad.length === 0, files.length + ' 套' + (bad.length ? ' 不合格:' + bad.join(',') : ''));
     const author = JSON.parse(readFileSync(join(BUILTIN, 'factory-default.json'), 'utf8'));
     check('「黑客绿(Fish)」按本机现配置抄写（glassColor 摊成一对且两侧同值，非默认白釉）',
@@ -450,6 +455,11 @@ const OLD_TAG = 'dsh-we/glass-preset@1';
       && author.values.glassColor.light === author.values.glassColor.dark
       && author.values.glassColor.light.toLowerCase() !== '#ffffff',
       JSON.stringify(author.values.glassColor));
+    check('「黑客绿(Fish)」携带 font + mascot 资产段（mascot 带内嵌字节与显示盒 —— 应用时经 installAssets 落盘）',
+      author.assets && 'font' in author.assets && 'mascot' in author.assets
+      && typeof author.assets.mascot.data === 'string' && author.assets.mascot.data.length > 0
+      && typeof author.assets.mascot.box === 'string' && /^\d+x\d+$/.test(author.assets.mascot.box),
+      JSON.stringify(author.assets ? Object.keys(author.assets) : null));
   }
 
   // 创建用户预设：settings 段补齐成完整快照（100 键）
