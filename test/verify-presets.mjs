@@ -432,10 +432,10 @@ const OLD_TAG = 'dsh-we/glass-preset@1';
     builtinRows.map((r) => r.id).join(','));
 
   // 出厂预设正文本身必须是新契约的产物（t1 交付物的独立复核，不看自述）。
-  // 资产段（2026-10-11 维护者口径）：出厂预设**允许携带**（「黑客绿(Fish)」带字体主题与
-  // 吉祥物立绘）—— 但必须是 `sanitizePresetAssets` 的**规范形**（round-trip 逐字节相等），
-  // 随包文件里不许有消毒会改写/丢弃的形状；`data` 由应用路径的 `installAssets` 落盘，
-  // 清单端点只回 {id,name,origin} 不会把它漏出去。
+  // 资产段（2026-10-12 四态口径）：出厂预设**允许携带**、也允许**指向内置**或**声明无** ——
+  // 但必须是 `sanitizePresetAssets` 的**规范形**（round-trip 逐字节相等），随包文件里不许有
+  // 消毒会改写/丢弃的形状；`data` 由应用路径的 `installAssets` 落盘，清单端点只回
+  // {id,name,origin} 不会把它漏出去。
   {
     const files = readdirSync(BUILTIN).filter((f) => f.endsWith('.json')).sort();
     const bad = [];
@@ -455,25 +455,44 @@ const OLD_TAG = 'dsh-we/glass-preset@1';
       && author.values.glassColor.light === author.values.glassColor.dark
       && author.values.glassColor.light.toLowerCase() !== '#ffffff',
       JSON.stringify(author.values.glassColor));
-    check('「黑客绿(Fish)」携带 font + mascot 资产段（mascot 带内嵌字节与显示盒 —— 应用时经 installAssets 落盘）',
-      author.assets && 'font' in author.assets && 'mascot' in author.assets
-      && typeof author.assets.mascot.data === 'string' && author.assets.mascot.data.length > 0
-      && typeof author.assets.mascot.box === 'string' && /^\d+x\d+$/.test(author.assets.mascot.box),
-      JSON.stringify(author.assets ? Object.keys(author.assets) : null));
-    // ★ 三态回归钉子（2026-10-12）：七套出厂预设**每套都必须显式声明吉祥物族**（携带对象或
-    //   `null`，不留缺席）—— 缺席就是本次缺陷的载体：A（不携带立绘）→ B（携带立绘）→ A 之后，
-    //   屏上留着 B 的图（A 的 110 键 settings 快照里根本没有 mascotImage 这两个键）。
-    //   四套不带立绘的必须是 `null`（声明「无」），三套带的必须是对象；头像族一律不声明。
+    // 「同一个字段两种指向」（ADR-0011 D4 第三/四态）：`assets.mascot` 可以是**字符串** =
+    //   指向出厂自带形态（零字节，应用时宿主只清本机立绘族并把 ropeForm 钉成它），也可以是
+    //   对象 = 携带自定义图（`data` 经 installAssets 落盘）。
+    check('「黑客绿(Fish)」的 mascot 指向内置「小女仆」（字符串态 = 零字节，不再内嵌立绘副本）',
+      author.assets && 'font' in author.assets && author.assets.mascot === 'maid',
+      JSON.stringify(author.assets ? author.assets.mascot : null));
+    // ★ 四态回归钉子（2026-10-12）：七套出厂预设**每套都必须显式声明吉祥物指向**（不留缺席）
+    //   —— 缺席就是本次缺陷的载体：A（不携带立绘）→ B（携带立绘）→ A 之后，屏上留着 B 的图
+    //   （A 的 110 键 settings 快照里根本没有 mascotImage 这两个键）。指向按维护者口径分配：
+    //   「作者自用」→ 内置菲比啾比；「紫色心情」→ 携带自定义图片；其余五套 → 内置小女仆。
+    //   头像族一律不声明（出厂预设都不携带头像，声明 `null` 只会删掉用户自己上传的头像文件）。
     const undeclared = [];
-    let nullMascot = 0;
+    const ptr = {};
+    const form = {};
     for (const f of files) {
       const d = JSON.parse(readFileSync(join(BUILTIN, f), 'utf8'));
+      const key = f.replace(/^factory-|\.json$/g, '');
+      form[key] = d.values.ropeForm;
       if (!d.assets || !('mascot' in d.assets)) undeclared.push(f);
-      else if (d.assets.mascot === null) nullMascot += 1;
+      else ptr[key] = typeof d.assets.mascot === 'string' ? d.assets.mascot
+        : d.assets.mascot === null ? null : 'object';
     }
-    check('★ 七套出厂预设每套都显式声明吉祥物族（null×4 声明无 + 对象×3 携带；缺席即缺陷）',
-      files.length === 7 && undeclared.length === 0 && nullMascot === 4,
-      undeclared.length ? '缺席:' + undeclared.join(',') : 'null×' + nullMascot + ' + 携带×' + (7 - nullMascot));
+    const wantPtr = {
+      author: 'phoebe', default: 'maid', frosted: 'maid', night: 'maid',
+      readable: 'maid', vivid: 'maid', 'purple-mood': 'object',
+    };
+    check('★ 七套出厂预设每套都显式声明吉祥物指向（6 套字符串指向内置 + 「紫色心情」携带对象；缺席即缺陷）',
+      files.length === 7 && undeclared.length === 0
+      && JSON.stringify(ptr) === JSON.stringify(wantPtr),
+      undeclared.length ? '缺席:' + undeclared.join(',') : JSON.stringify(ptr));
+    // 「两处值保持一致」：资产段的字符串指向与 settings 段的 ropeForm 不许打架 —— 应用时
+    //   installAssets 在 settings 合并**之后**跑，资产段会覆盖 ropeForm；两处不一致 =
+    //   用户看到的那只与「预设自称的那只」不同。
+    check('★ 指向与 settings 段的 ropeForm 一致（字符串指向 = ropeForm；携带自定义图的用 phoebe）',
+      ptr.author === form.author && ptr.default === form.default && ptr.frosted === form.frosted
+      && ptr.night === form.night && ptr.readable === form.readable && ptr.vivid === form.vivid
+      && form['purple-mood'] === 'phoebe',
+      JSON.stringify(form));
   }
 
   // 创建用户预设：settings 段补齐成完整快照（100 键）
@@ -823,6 +842,19 @@ section('③d 资产段：install-assets 落盘与 applied 语义、export→imp
     && JSON.stringify(schema.sanitizePresetAssets({ mascot: false })) === '{}',
     JSON.stringify(schema.sanitizePresetAssets({ mascot: null })) + ' / false⇒'
     + JSON.stringify(schema.sanitizePresetAssets({ mascot: false })));
+  // ★ 第四态（2026-10-12「同一个字段两种指向」）：mascot 也可以是**字符串** = 指向出厂自带形态，
+  //   值域就是 ROPE_FORM_VALUES（可内联的三只）。认不清的字符串**整段丢掉** ⇒ 语义回到"缺席 =
+  //   不动"—— 不猜 'builtin:maid'、也不把垃圾折成 'maid'（折了就等于替用户删立绘）。
+  check('★ sanitizePresetAssets 认「指向内置形态」（字符串原样保留；值域外 / 其它类型不猜）',
+    JSON.stringify(schema.sanitizePresetAssets({ mascot: 'phoebe' })) === '{"mascot":"phoebe"}'
+    && JSON.stringify(schema.sanitizePresetAssets({ mascot: 'maid' })) === '{"mascot":"maid"}'
+    && JSON.stringify(schema.sanitizePresetAssets({ mascot: 'dragon' })) === '{}'
+    && JSON.stringify(schema.sanitizePresetAssets({ mascot: 'MAID' })) === '{}'
+    && JSON.stringify(schema.sanitizePresetAssets({ mascot: 42 })) === '{}'
+    && JSON.stringify(schema.sanitizePresetAssets({ avatar: 'phoebe' })) === '{}',
+    JSON.stringify(schema.sanitizePresetAssets({ mascot: 'phoebe' })) + ' / dragon⇒'
+    + JSON.stringify(schema.sanitizePresetAssets({ mascot: 'dragon' }))
+    + ' / avatar:phoebe⇒' + JSON.stringify(schema.sanitizePresetAssets({ avatar: 'phoebe' })));
   {
     // 造"勾了而本机没有"的真实来路：先把本机立绘文件挪走，再走 create 的 embed 名单。
     const beforeM = readdirSync(MASCOT_DIR).filter((f) => f.startsWith('mascot-'));
@@ -907,6 +939,40 @@ section('③d 资产段：install-assets 落盘与 applied 语义、export→imp
   const impGarbage = await importPreset('[1,2,3]');
   check('import 非对象正文 ⇒ 400（不猜、不静默降级）', impGarbage.__state.status === 400,
     'status=' + impGarbage.__state.status);
+
+  // ★ 第四态走**真实来路**（import）：别人分享一份「指向内置形态」的预设 ⇒ 宿主只清本机立绘族、
+  //   把形态回给客户端，**一个字节都不落**；导出时也必须**照抄**那个字符串 —— 若这里回落成
+  //   `currentSegment`（本机那张图），"指向内置"就退化成"把导出者自己的自定义图内嵌给别人"。
+  {
+    // 数量上限 8：先把不再需要的用户预设删掉腾位（`preset-embed-1` 要留着 —— 末尾复位与
+    //   "带字节"的判据还用它），否则这次 import 只会撞 409 而测不到第四态。
+    for (const r of (await getList()).presets || []) {
+      if (r.origin === 'user' && r.id !== 'preset-embed-1') await del(r.id);
+    }
+    const ptrDoc = JSON.parse(JSON.stringify(expDoc));
+    ptrDoc.name = '指向内置菲比';
+    delete ptrDoc.id;
+    ptrDoc.assets = { mascot: 'phoebe' };
+    const impPtr = await importPreset(ptrDoc);
+    const ptrId = (bodyJson(impPtr) || {}).id;
+    const ptrBack = (bodyJson(await get1(ptrId)) || {}).assets || {};
+    check('前置：import 收下 mascot 字符串态（读回仍是 "phoebe"，没被折成 null / 空对象）',
+      impPtr.__state.status === 200 && typeof ptrId === 'string' && ptrBack.mascot === 'phoebe',
+      JSON.stringify({ status: impPtr.__state.status, err: String((bodyJson(impPtr) || {}).error || '').slice(0, 80), id: ptrId, mascot: ptrBack.mascot }));
+    const iaPtr = bodyJson(await installAssetsCall(ptrId)) || {};
+    check('★ 指向内置形态 install-assets ⇒ `applied.mascot = {form:"phoebe"}` 且立绘族被清（零字节落盘）',
+      iaPtr.ok === true && iaPtr.applied && iaPtr.applied.mascot
+      && iaPtr.applied.mascot.form === 'phoebe'
+      && readdirSync(MASCOT_DIR).filter((f) => f.startsWith('mascot-')).length === 0,
+      JSON.stringify(iaPtr.applied));
+    const expPtrDoc = JSON.parse((await exportPreset(ptrId, 'mascot')).__state.body.toString('utf8'));
+    check('★ export 照抄字符串指向（不回落本机资产）',
+      expPtrDoc.assets && expPtrDoc.assets.mascot === 'phoebe',
+      JSON.stringify(expPtrDoc.assets));
+    await del(ptrId);
+    // 复位（同 ① 段末尾）：把带内嵌字节的那份重新应用，让后面按 PNG1 字节计数的判据仍有图可数。
+    await installAssetsCall('preset-embed-1');
+  }
 
   // ── 字节闸 ──
   // ★ 单份资产闸（**解码后** 8MB）。测法说明（为什么这样造才不空转）：
@@ -1186,6 +1252,16 @@ section('④ 客户端形态棘轮：新编排链（合并→落盘→reapplyAll
       && /setSetting\("mascotImage", ""\)/.test(assetsBody) && /setSetting\("mascotImageBox", ""\)/.test(assetsBody)
       && /setSetting\("avatarUserImage", ""\)/.test(assetsBody) && /setSetting\("avatarAiImage", ""\)/.test(assetsBody),
       assetsBody ? 'applyPresetAssets 体已定位' : '未找到 applyPresetAssets');
+    // ★ 第四态的落地半边：宿主回 `{form:'phoebe'}` ⇒ 客户端**两件事一起做**（钉 ropeForm + 清两个
+    //   自定义键）。少了前者就退化成"声明无"（形态交回 settings 段的 ropeForm）；少了后者，图已被
+    //   宿主删掉而键还指着那个文件名 ⇒ 渲染仍走自定义分支、屏上那只直接消失。
+    check('★ 客户端认 `{form}` 把 ropeForm 钉成内置形态并清两个自定义键（指向内置的落地半边）',
+      /mascot\.form === "string"/.test(assetsBody)
+      && /setSetting\("ropeForm", mascot\.form\)/.test(assetsBody)
+      && assetsBody.indexOf('setSetting("ropeForm"') < assetsBody.indexOf('setSetting("mascotImage", "")'),
+      assetsBody ? 'applyPresetAssets 体已定位' : '未找到 applyPresetAssets');
+    check('negative control: `form` 判据不是恒真 —— `{cleared:true}` 那条路仍不写 ropeForm',
+      /if \(typeof mascot\.form === "string" && mascot\.form\) \{[\s\S]{0,400}?\} else if \(mascot\.cleared === true\) \{/.test(assetsBody));
     check('negative control: `cleared` 不是恒真判据 —— 没带 cleared 的段仍走"写文件名"那条路',
       /mascot\.file/.test(assetsBody) && /avatar\.user/.test(assetsBody));
     const saveBody = (() => {

@@ -56,11 +56,13 @@
  *     selection；且 settings 段是**一次** `Object.assign`，资产应用失败时按合并前的
  *     快照原样滚回（此刻还没有任何落盘）—— 失败保留现状并给出可判定原因，绝不"改了一半"。
  *   · **两段的"缺席"语义相反，别写反**（ADR-0011 D4）：settings 段是完整快照（缺键补默认，
- *     由 sanitizePresetValues 保证）；资产段是**三态** —— ① 段不出现 = **一个键都不碰**
+ *     由 sanitizePresetValues 保证）；资产段是**四态** —— ① 段不出现 = **一个键都不碰**
  *     （不是回落默认）：正文没有 assets、或宿主 `applied` 里没有那一段，对应的现值原样保留；
  *     ② 段是 `null` = **显式声明无**：那一族回内置默认（宿主删掉本机文件并回
- *     `{ cleared: true }`，这里把键置空）；③ 段是对象 = 携带。少了 ②，一份"范围小"的预设
- *     就撤销不了前一份预设装上的资产（实测 7 套出厂预设两两 A→B→A：42 个有序对里 30 个不收敛）。
+ *     `{ cleared: true }`，这里把键置空）；③ 段是**字符串** = **指向出厂自带形态**（只 mascot 有：
+ *     宿主同样删掉本机立绘族、回 `{ form }`，这里额外把 `ropeForm` 钉成它）；
+ *     ④ 段是对象 = 携带。少了 ②，一份"范围小"的预设就撤销不了前一份预设装上的资产
+ *     （实测 7 套出厂预设两两 A→B→A：42 个有序对里 30 个不收敛）。
  *   · **字体键不住 settings blob**：字体值经 `setFontValues` 写进 selection 并落盘到
  *     `fontsets/<活动 id>.json`；直接 Object.assign 进 selection 会"屏上变了、重启被回滚"。
  *   · **应用走设置通道**：合并之后只调 `persistSelection()`（debounce PUT + 本地缓存）。
@@ -155,7 +157,9 @@ async function refreshGlassPresets() { return loadGlassPresets(); }
  * ⚠️ 判据是"`applied` **里有没有**这一段"：宿主没回的段**一个键都不碰** —— 那正是
  * "缺席 = 保持现值"的语义；正文没有 assets 时调用方根本不会进来（见 applyPreset）。
  * ⚠️ 段里的 `{ cleared: true }` = **显式声明无**（D4 第三态）：宿主已删掉本机文件，这里把
- * 那一族的键清空（吉祥物两个键 / 头像两侧一起）；它与"没回这一段"必须区别对待。
+ * 那一族的键清空（吉祥物两个键 / 头像两侧一起）；`{ form: 'phoebe' }` = **指向出厂自带形态**
+ * （D4 第四态）：同一件清空之外，还要把 `ropeForm` 钉成 `form`。两者与"没回这一段"必须区别
+ * 对待。
  * 返回 "" = 全部落位；非空 = 可判定的失败原因（形状不对 = 宿主契约被破坏，要说出来）。
  */
 async function applyPresetAssets(applied) {
@@ -175,7 +179,15 @@ async function applyPresetAssets(applied) {
   }
   const mascot = applied.mascot;
   if (mascot && typeof mascot === "object" && !Array.isArray(mascot)) {
-    if (mascot.cleared === true) {
+    if (typeof mascot.form === "string" && mascot.form) {
+      // 「指向出厂自带形态」（D4 第四态）：宿主已清掉本机立绘族，这里**两件事一起做** ——
+      // ① 把 `ropeForm` 钉成内置的那只（少了它，这一态就退化成"声明无"：形态交回 settings 段）；
+      // ② 两个自定义键置空（图已被删掉，键还指着那个不存在的文件名 ⇒ 渲染仍走自定义分支、
+      //    屏上那只直接消失）。
+      setSetting("ropeForm", mascot.form);
+      setSetting("mascotImage", "");
+      setSetting("mascotImageBox", "");
+    } else if (mascot.cleared === true) {
       // 「显式声明无」：宿主已把本机立绘文件删掉，这里把那两个键也清空 —— 与"宿主没回
       // 这一段"**必须**区别开：没回 = 一个键都不碰，回了 cleared = 明确要求回到内置立绘。
       setSetting("mascotImage", "");
