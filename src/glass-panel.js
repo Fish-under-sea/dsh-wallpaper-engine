@@ -15,9 +15,11 @@
  * 见 wip §10.12）。
  */
 /**
- * 「玻璃 UI」节 —— 全局四件套 + 每个子面的「独立配置」开关（高级配置）。
+ * 「主题预设」节 + 「玻璃 UI」节 —— 预设升为整机快照（ADR-0011）后自成一节，玻璃节只留玻璃。
  *
  * 结构：
+ *   主题预设（独立节，仅设置页）
+ *   └─ 预设方案：卡片网格 + 保存 / 导出 / 导入
  *   玻璃 UI
  *   ├─ 全局：玻璃颜色 · 玻璃透明度 · 雾化 · 玻璃保真度
  *   └─ 子 UI 独立配置（不进简化配置）
@@ -30,7 +32,7 @@
  *    语义不同 —— 它是乙类，独立成项留在「细节」，本节的 `panelOff` 过滤就是为它。
  */
 /**
- * 「预设方案」块（玻璃节顶部的第一行，先于全局四件套）。
+ * 「预设方案」块（「主题预设」独立节的正文，先于「玻璃 UI」节）。
  *
  * 为什么放在最顶上：这一节的调节粒度太细（全局四件套 + 每面独立配置 + 侧栏族），
  * 预设是"不想逐项调"的用户的主路 —— 进门第一眼就该是它。它与下面的旋钮**读写同一批键**：
@@ -652,7 +654,26 @@ function renderAppearanceGlassSection(ctx) {
     //    自己那套参数覆盖全局）。⚠️ 这里**没有**「要不要玻璃」的开关：所有子面恒吃玻璃。
     advRows.push(...childRows);
   }
+  // ── 主题预设：**独立节**（ADR-0011 后预设是整机快照，不再是玻璃子集 ⇒ 不住「玻璃 UI」
+  //    分栏，升为自己的栏目且排在玻璃节之前）。只在设置页画（!sidebarSurface 门不变）；
+  //    侧栏档连节头都不画 —— 空节头是噪音。
+  // ctx 成员由 client.js 的 glassPresetCtx 提供（清单/错误是宿主投影；应用走 settings 通道）。
+  // ⚠️ 这道门是**显式**的，三处对齐：① 门在这里；② `glassPresets` 已进 quick-panel 的
+  //    setting-only 占位器（误补 ⇒ 当场炸）；③ verify-scene-live 两档都钉住预设块
+  //    （节序列 + 标签序列 + 整树文本锚：侧栏档不许有、设置档必须有）。
+  //    分类理由：它不是"总开关"也不是"逐面覆盖"，而是**跨面批量覆盖**（一份预设 = 整机配置
+  //    完整快照，应用即 Object.assign 整套覆盖、**无确认无撤销**），且出厂预设**删除即永久** ——
+  //    这类动作按 D4 的取向属高阶；侧栏是窄面板 + 随手调的场合。
+  const presetSection = (!sidebarSurface && ctx.glassPresets)
+    ? React.createElement("div", { className: "we-picker__section", key: "gp-section" },
+        React.createElement("div", { className: "we-picker__section-head" },
+          React.createElement("span", { className: "we-picker__section-label" }, weT("主题预设")),
+        ),
+        renderGlassPresetsBlock(ctx.glassPresets),
+      )
+    : null;
   return React.createElement(React.Fragment, null,
+  presetSection,
   React.createElement("div", { className: "we-picker__section" },
     sectionHead(weT("玻璃 UI"), open, onToggleGlassUiSection),
     // ── 折叠门（2026-10-11 用户口径「这三个在侧边栏改成默认收敛」）：**只在侧边栏**生效 ——
@@ -660,15 +681,6 @@ function renderAppearanceGlassSection(ctx) {
     //    ⚠️ 包一层 Fragment 是刻意的：本节约有 80 个并列 children，逐个挂门既啰嗦又容易漏；
     //    而 React 的 Fragment 不产生 DOM 节点 ⇒ 观感与无障碍树都没有多出来的层级。
     open && React.createElement(React.Fragment, null,
-      // ── 预设方案（本节第一行，先于一切旋钮；**高级配置：只在设置页画**，ADR-0008 D4）──
-      // ctx 成员由 client.js 的 glassPresetCtx 提供（清单/错误是宿主投影；应用走 settings 通道）。
-      // ⚠️ 这道门是**显式**的，三处对齐：① 门在这里；② `glassPresets` 已进 quick-panel 的
-      //    setting-only 占位器（误补 ⇒ 当场炸）；③ verify-scene-live 两档都钉住预设块
-      //    （标签序列 + 整树文本锚：侧栏档不许有、设置档必须有）。
-      //    分类理由：它不是"总开关"也不是"逐面覆盖"，而是**跨面批量覆盖**（一份预设 = 玻璃子系统
-      //    完整快照，应用即 Object.assign 整套覆盖、**无确认无撤销**），且出厂预设**删除即永久** ——
-      //    这类动作按 D4 的取向属高阶；侧栏是窄面板 + 随手调的场合。
-      !sidebarSurface && renderGlassPresetsBlock(ctx.glassPresets),
       // ── 全局四件套 ──
       // 玻璃颜色: the settings-window glass BASE tint. Defaults keep the stock
       // look (white light / deep navy dark); picking any preset or a custom

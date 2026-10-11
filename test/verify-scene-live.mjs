@@ -5339,7 +5339,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
     onDraftName: noop, onRenameCommit: noop, onCancelEdit: noop, onCreate: noop,
   };
   const MORE_CASES = [
-    { fn: 'renderAppearanceTab', label: '（设置页：六节 —— 简化玻璃 + 预设 + 字体节头（收起），玻璃高级行已迁侧栏）', surface: 'settings',
+    { fn: 'renderAppearanceTab', label: '（设置页：七节 —— 简化玻璃 + 主题预设 + 字体节头（收起），玻璃高级行已迁侧栏）', surface: 'settings',
       // 玻璃四件套 + 雾化已归入新节「玻璃 UI」；「左侧栏液态玻璃」与它的子项也都在本节
       //（§10.25 起）。⚠️ 本档是**设置页**：只画**简化配置 + 预设方案 + 字体节头（收起）** ——
       //    **玻璃**高级行（独立配置层 / 胶囊细调）仍只住侧栏折叠块（边界判据翻转后双向钉住：
@@ -5355,8 +5355,9 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       //    "这一档要展开哪几节"（`ctxFrom` 会把没给的字段填成 `noop` ⇒ `noop === true` 为假
       //    ⇒ 被当成"收起"）。本用例 = 设置页的**默认形态**：细节 / 玻璃 UI / 侧边栏圆角都展开；
       //    字体与配色那两节在本台按"收起"跑（它们各自有专门用例）。
+      //    「主题预设」并入本序列（main 480830b）：独立节、普通节头不折叠，只此一节无旗标。
       ctxOver: { glassPresets: { presets: [] }, detailOpen: true, glassUiOpen: true, cornersOpen: true },
-      want: ['主题', '细节', '玻璃 UI', '侧边栏圆角', '全局 UI 配色', '全局字体'],
+      want: ['主题', '细节', '主题预设', '玻璃 UI', '侧边栏圆角', '全局 UI 配色', '全局字体'],
       // ⚠️ 本档打开 `thinkingGlass`（上游 #134 的「思考块液态玻璃」，默认关）：原属本档的
       //    「胶囊雾化」与「思考触发条玻璃·独立配置」都迁进侧栏折叠块了（本档不再画它们 ——
       //    这正是"真迁移"的字面含义；侧栏展开档在下面钉它们）。
@@ -5417,7 +5418,7 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       selOver: { fontCustom: true, sidebarPresent: true, sidebarGlass: true },
       // ⚠️ 前三个门同样要显式给（二次修订后两档都可折叠；不给会被当成收起）。
       ctxOver: { fontOpen: true, glassPresets: { presets: [] }, detailOpen: true, glassUiOpen: true, cornersOpen: true },
-      want: ['主题', '细节', '玻璃 UI', '侧边栏圆角', '全局 UI 配色', '全局字体'],
+      want: ['主题', '细节', '主题预设', '玻璃 UI', '侧边栏圆角', '全局 UI 配色', '全局字体'],
       // ⚠️ 这条序列 = 上面设置档（收起）那 17 项玻璃标签 + 侧栏字体展开那 14 项字体标签，
       //    **按序拼接** —— 两个来源各自都被别的用例钉住了，这里是它们的交叉验证：拼接后
       //    逐字相等 ⇒ 设置页的字体节渲染的就是侧栏那一份同一渲染器的产物（无 surface 分支残留）。
