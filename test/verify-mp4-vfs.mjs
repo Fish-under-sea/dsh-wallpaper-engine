@@ -397,12 +397,14 @@ const mediaUrl = (token) => '/wallpaper-engine/media/' + token;
 }
 
 // ── D. 旧副本一次性回收 ────────────────────────────────────────────────────
-section('D. 旧版 `fs_*.mp4` 副本：升级即回收，且只碰认识的命名');
+section('D. 旧版 `fs_*.mp4` 副本：升级即回收（当前根 + 旧版写死的根），且只碰认识的命名');
 {
   // 用**真**套件（不是重实现）：清扫是 lib/faststart.js 的导出之一，测副本等于没测。
+  const LEGACY_ROOT = join(DATA_DIR, 'cache');   // ≤ v1.3.1 写死的那个根（不认 DSH_WE_CACHE_DIR）
   const fastFix = createFaststartKit({
     layoutFor: () => ({ kind: 'none' }),
     cacheBaseDir: () => SWEEP_DIR,
+    legacyCacheBaseDir: () => LEGACY_ROOT,
     readConfig: () => ({}),
     mediaMap: new Map(),
   });
@@ -420,6 +422,30 @@ section('D. 旧版 `fs_*.mp4` 副本：升级即回收，且只碰认识的命�
     JSON.stringify(out));
   check('D2 只碰 `fs_*.mp4` 命名：别的文件一个都不动',
     left.join(',') === 'notes.txt,preview.mp4', left.join(','));
+  // 旧版写死在**数据目录**下的 `cache/faststart`（那条 `faststartCacheDir()` 既不看
+  // `DSH_WE_CACHE_DIR` 也不看设置里的「缓存位置」）⇒ 搬过缓存根的用户副本只在那里。
+  mkdirSync(join(LEGACY_ROOT, 'faststart'), { recursive: true });
+  writeFileSync(join(LEGACY_ROOT, 'faststart', 'fs_ffffffffffffffff.mp4'), Buffer.alloc(2048));
+  const out2 = fastFix.sweepLegacyFaststartVariants();  // 当前根此刻只剩不认识的命名 ⇒ 只可能是第二支在干活
+  check('D3 旧版写死的根（数据目录 `cache/faststart`）也在清扫面上，否则那几 GB 永远搁浅',
+    out2.files === 1 && out2.bytes === 2048 && out2.capped === false, JSON.stringify(out2));
+  check('D4 两个根都清干净，且只删认识的命名（旧目录本身不删 —— 插件不替用户删目录）',
+    readdirSync(dir).join(',') === 'notes.txt,preview.mp4'
+      && readdirSync(join(LEGACY_ROOT, 'faststart')).length === 0
+      && existsSync(join(LEGACY_ROOT, 'faststart')));
+  // 负对照：不传旧根（= 只扫当前根）⇒ 旧根里的副本原地不动，证明 D3 不是恒真。
+  const onlyCurrent = createFaststartKit({
+    layoutFor: () => ({ kind: 'none' }),
+    cacheBaseDir: () => SWEEP_DIR,
+    readConfig: () => ({}),
+    mediaMap: new Map(),
+  });
+  const orphan = join(LEGACY_ROOT, 'faststart', 'fs_eeeeeeeeeeeeeeee.mp4');
+  writeFileSync(orphan, Buffer.alloc(1024));
+  const out3 = onlyCurrent.sweepLegacyFaststartVariants();
+  check('D5 negative control: 只扫当前根 ⇒ 旧根里的副本一个都不动（D3 有牙）',
+    out3.files === 0 && out3.capped === false && existsSync(orphan), JSON.stringify(out3));
+  rmSync(orphan, { force: true });
 }
 
 // ── E. 「有缓存转码就直接播转码」：/media-info 的只读缓存回答 ────────────────
