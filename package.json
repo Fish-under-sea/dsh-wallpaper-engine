@@ -9,7 +9,7 @@
   },
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
-  "icon": "./icon.jpg",
+  "icon": "./icon.png",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/elysia395/dsh-wallpaper-engine.git"
@@ -39,7 +39,7 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "icon.jpg",
+    "icon.png",
     "lib/index.js",
     "lib/log.js",
     "lib/notice.js",
