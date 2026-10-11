@@ -459,13 +459,15 @@ const OLD_TAG = 'dsh-we/glass-preset@1';
     // 「同一个字段两种指向」（ADR-0011 D4 第三/四态）：`assets.mascot` 可以是**字符串** =
     //   指向出厂自带形态（零字节，应用时宿主只清本机立绘族并把 ropeForm 钉成它），也可以是
     //   对象 = 携带自定义图（`data` 经 installAssets 落盘）。
-    check('「黑客绿(Fish)」的 mascot 指向内置「小女仆」（字符串态 = 零字节，不再内嵌立绘副本）',
-      author.assets && 'font' in author.assets && author.assets.mascot === 'maid',
+    check('「黑客绿(Fish)」的 mascot 指向内置 `glm`（字符串态 = 零字节，不再内嵌立绘副本）',
+      author.assets && 'font' in author.assets && author.assets.mascot === 'glm',
       JSON.stringify(author.assets ? author.assets.mascot : null));
     // ★ 四态回归钉子（2026-10-12）：七套出厂预设**每套都必须显式声明吉祥物指向**（不留缺席）
     //   —— 缺席就是本次缺陷的载体：A（不携带立绘）→ B（携带立绘）→ A 之后，屏上留着 B 的图
     //   （A 的 110 键 settings 快照里根本没有 mascotImage 这两个键）。指向按维护者口径分配：
-    //   「作者自用」→ 内置菲比啾比；「紫色心情」→ 携带自定义图片；其余五套 → 内置小女仆。
+    //   「作者自用」→ 内置菲比啾比；「紫色心情」→ 携带自定义图片；「黑客绿(Fish)」→ 内置 GLM
+    //   （`glm`，2026-10-13 并入 #180 时认出它内嵌的那张立绘就属 GLM，见 assets/mascot/README.md）；
+    //   其余四套 → 内置小女仆。
     //   头像族一律不声明（出厂预设都不携带头像，声明 `null` 只会删掉用户自己上传的头像文件）。
     const undeclared = [];
     const ptr = {};
@@ -481,7 +483,7 @@ const OLD_TAG = 'dsh-we/glass-preset@1';
         : d.assets.mascot === null ? null : 'object';
     }
     const wantPtr = {
-      author: 'phoebe', default: 'maid', frosted: 'maid', night: 'maid',
+      author: 'phoebe', default: 'glm', frosted: 'maid', night: 'maid',
       readable: 'maid', vivid: 'maid', 'purple-mood': 'object',
     };
     check('★ 七套出厂预设每套都显式声明吉祥物指向（6 套字符串指向内置 + 「紫色心情」携带对象；缺席即缺陷）',
@@ -1415,7 +1417,13 @@ section('④ 客户端形态棘轮：新编排链（合并→落盘→reapplyAll
       handlers.length + ' 个');
     const clientAll = stripComments(readFileSync(join(root, 'src', 'client.js'), 'utf8'));
     const qpAll = stripComments(readFileSync(join(root, 'src', 'quick-panel.js'), 'utf8'));
-    const SIDEBAR_ONLY = ['onToggleGlassDetail'];
+    // 侧栏专属处理器（设置页 ctx 里**故意**没有）：设置页那一档不需要它们，硬塞一个死处理器
+    // 反而会把"这一档根本不会调它"这件事藏起来。
+    //   · `onToggleGlassDetail` —— 「详细玻璃调节」子门（只有侧栏有折叠块）；
+    //   · `onToggleGlassUiSection` —— 「玻璃 UI」**整节**折叠门（2026-10-11：只在侧边栏收敛）；
+    //   · 同批的 `onToggleDetailSection` / `onToggleCornersSection` 是另外两节的整节门，
+    //     同样只在侧栏（那两节的渲染器在 panel-tabs.js，不在这段扫描范围里）。
+    const SIDEBAR_ONLY = ['onToggleGlassDetail', 'onToggleGlassUiSection'];
     const missingClient = handlers.filter((h) => !SIDEBAR_ONLY.includes(h)
       && !new RegExp('\\b' + h + '\\b').test(clientAll));
     const missingQp = handlers.filter((h) => !new RegExp('\\b' + h + '\\b').test(qpAll));
@@ -1463,17 +1471,26 @@ section('④b 行为判据：删除令牌链 + broken 行禁用与可删 + 勾�
     //   `ROPE_FORMS[k].label` 早就是同一形态的既有用法）。单独 eval 时这两个模块作用域符号必须由
     //   台架按**真实形状**补上，否则渲染第一步就 ReferenceError —— 判据根本跑不到（本仓最忌的
     //   "台架自己造字段"：这里只补作用域，不替代任何被判定为真的字段）。
-    ROPE_FORM_VALUES: ['maid', 'whale', 'phoebe'],
-    ROPE_FORMS: {
-      maid: { label: '小女仆' },
-      whale: { label: '鲸御姐' },
-      phoebe: { label: '菲比啾比' },
-    },
+    //   值域**从真源读**（本文件已在 `:71` 把 `lib/settings-schema.js` 取成 `schema`）—— 手抄一份必然
+    //   漂移：2026-10-13 并入 #180 时形态从 3 只涨到 12 只，于是"一组 4 键"那条判据自己先聋了。
+    //   显示名照 `src/client.js` 的 `ROPE_FORMS` 抄（那边是 `weT("小女仆")` 的取值路径，还挂着 img
+    //   的 data URL，无法内联）；下面紧跟着一条判据钉住"标签表的键集 == 真源值域"，两边不许打架。
+    ROPE_FORM_VALUES: schema.ROPE_FORM_VALUES,
+    ROPE_FORMS: Object.fromEntries(Object.entries({
+      maid: '小女仆', whale: '鲸御姐', phoebe: '菲比啾比',
+      claude: 'Claude', deepseek: 'DeepSeek', gemini: 'Gemini', gpt: 'GPT',
+      glm: 'GLM', grok: 'Grok', kimi: 'Kimi', qwen: 'Qwen',
+    }).map(([k, label]) => [k, { label }])),
   };
   const gpSrc = readFileSync(join(root, 'src', 'glass-panel.js'), 'utf8')
     .replace(/export\s*\{[^}]*\};?/g, '');
   const makeBlock = new Function(...Object.keys(gpStub), gpSrc + ';return { renderGlassPresetsBlock };');
   const { renderGlassPresetsBlock } = makeBlock(...Object.keys(gpStub).map((k) => gpStub[k]));
+  // 台架前提核对（不是对实现的判据）：标签表的键集必须恰好等于真源值域 —— 少一只 ⇒ 判据读不到那只键
+  //   （静默少测），多一只 ⇒ 造出不存在的形态。真源改了这里必须跟着改（就是这条判据在提醒）。
+  check('台架前提：立绘标签表的键集 == settings-schema 的 ROPE_FORM_VALUES（11 只，不许手抄漂移）',
+    Object.keys(gpStub.ROPE_FORMS).join(',') === schema.ROPE_FORM_VALUES.join(','),
+    Object.keys(gpStub.ROPE_FORMS).length + ' 只 vs 真源 ' + schema.ROPE_FORM_VALUES.length + ' 只');
   const PRESETS = [
     { id: 'factory-a', name: '甲', origin: 'builtin' },
     { id: 'user-1', name: '乙', origin: 'user' },
@@ -1623,8 +1640,7 @@ section('④b 行为判据：删除令牌链 + broken 行禁用与可删 + 勾�
 
   // ★ 第四态（2026-10-12 用户口径）：勾选对话框里多一行「吉祥物 · 指向」——把这一族存成**指向某只
   //   出厂自带**（正文里只留形态名、零字节），而不是只能"带我的图 / 声明无"两态。这一行的行为判据
-  //   读渲染树：一组四键（本机现状 + 三只出厂自带）+ **受控**选中态（aria-pressed 跟 ctx.mascotPoint
-  //   走）+ 点击回传**形态名**。三条缺一条就会出现"面板上能选、正文里存不进去/选不中"的静默空转
+  //   读渲染树：一组 1 + N 键（本机现状 + 真源 `ROPE_FORM_VALUES` 里的每一只内置形态，当前 N = 11）+ **受控**选中态（aria-pressed 跟 ctx.mascotPoint 走）+ 点击回传**形态名**。三条缺一条就会出现"面板上能选、正文里存不进去/选不中"的静默空转
   //   （本仓 2026-10-11 的实测教训：`has("mascot")` 与 `mascotPoint` 各自对，合起来却互斥）。
   {
     const calls = [];
@@ -1644,9 +1660,9 @@ section('④b 行为判据：删除令牌链 + broken 行禁用与可删 + 勾�
       .filter((b) => String(b.props['aria-pressed']) === 'true').map((b) => textOf(b));
 
     const treePoint = segTree('maid', true);
-    check('★ 勾选对话框里有「吉祥物 · 指向」一组键（本机现状 + 三只出厂自带）',
-      groupOf(treePoint).length === 1 && segBtns(treePoint).length === 4,
-      segBtns(treePoint).map((b) => textOf(b)).join(',') || '未找到分组');
+    check('★ 勾选对话框里有「吉祥物 · 指向」一组键（本机现状 + 真源里的每一只出厂自带，当前 11 只）',
+      groupOf(treePoint).length === 1 && segBtns(treePoint).length === 1 + schema.ROPE_FORM_VALUES.length,
+      segBtns(treePoint).length + ' 键：' + (segBtns(treePoint).map((b) => textOf(b)).join(',') || '未找到分组'));
     check('★ 指向的选中态是**受控**的：ctx.mascotPoint="maid" ⇒ 只有「小女仆」按下',
       pressedOf(treePoint).length === 1 && pressedOf(treePoint)[0] === '小女仆',
       pressedOf(treePoint).join(','));

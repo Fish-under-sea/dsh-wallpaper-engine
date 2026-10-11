@@ -107,8 +107,8 @@ function renderGlassPresetsBlock(gp) {
   const fontAvailable = checks.fontAvailable === true;
   const mascotAvailable = checks.mascotAvailable === true;
   const avatarAvailable = checks.avatarAvailable === true;
-  // 吉祥物族的**指向**（第四态，2026-10-12 用户口径）：`""` = 按本机现状（老行为），
-  // `'maid' | 'whale' | 'phoebe'` = 这一段只存"指向出厂自带的那一只"（字符串、零字节）。
+  // 吉祥物族的**指向**（第四态，2026-10-12 用户口径）：`""` = 按本机现状（老行为），任一形态
+  // id（`ROPE_FORM_VALUES`，2026-10-13 起 12 只）= 这一段只存"指向出厂自带的那一只"（零字节）。
   const mascotPoint = typeof checks.mascotPoint === "string" ? checks.mascotPoint : "";
   const assetRows = React.createElement(React.Fragment, null,
     switchRow(weT("字体"), has("font"), (e) => onAssetToggle("font", e.target.checked), {
@@ -137,7 +137,12 @@ function renderGlassPresetsBlock(gp) {
       ctlText(weT("吉祥物 · 指向"), mascotAvailable
         ? weT("「本机现状」= 把这台的自定义立绘带进预设；选一只出厂自带 = 只存「指向它」（不占体积），套用它的人换回那一只")
         : weT("本机没有自定义立绘 —— 「本机现状」会存成「无」；也可以直接选一只出厂自带，让套用它的人换回那一只")),
-      React.createElement("div", { className: "we-picker__seg", role: "group", "aria-label": weT("吉祥物 · 指向") },
+      React.createElement("div", { className: "we-picker__seg", role: "group", "aria-label": weT("吉祥物 · 指向"),
+        // 2026-10-13（并入 #180，形态 3 → 12）：这一行现在最多 1 + 12 = 13 个键，而 `.we-picker__seg`
+        // 是不换行的 flex 行、每个键 `flex: 1` ⇒ 不换行就会被压成同样窄的一格、标签互相截断。
+        // 用**行内** `flexWrap` 就地解决（不动 styles.js 的规则行数 —— 那份文件的注释行数被打红过
+        // `verify-token-contract`，它记的是 styles.js 的行锚点）。
+        style: { flexWrap: "wrap" } },
         React.createElement("button", {
           key: "own",
           type: "button",
@@ -397,7 +402,7 @@ function renderAppearanceGlassSection(ctx) {
     onLeftSidebarGlass, onTitlebarGlass, onSidebarAlpha, onSidebarBlur, onSidebarColor,
     onSidebarContentAlpha, onSidebarContentColor, onSidebarGlass,
     onSidebarFollowGlobal, onSidebarFullClear,
-    onThinkingMode, glassDetailOpen, onToggleGlassDetail,
+    onThinkingMode, glassDetailOpen, onToggleGlassDetail, glassUiOpen, onToggleGlassUiSection,
   } = ctx;
   // ── 简化配置 vs 高级配置（ADR-0008 **D4**，2026-10-09 用户口径修订）────────────
   //   · **简化配置**（侧栏档 + 设置页都画）：全局四件套（玻璃颜色 / 玻璃透明度 / 雾化 /
@@ -472,6 +477,12 @@ function renderAppearanceGlassSection(ctx) {
   //    设置页档不再画这些行（真迁移）；侧栏收起时连构建都不做（省一遍无用遍历）。
   //    处理器在侧栏 ctx 里是**真值接线**（已从 setting-only 占位器名单移出）。
   const detailOpen = sidebarSurface && glassDetailOpen === true;
+  // ── 整节折叠门（2026-10-11 **二次修订**：两档都支持隐藏）────────────────────────────
+  //    与「详细玻璃调节」子门**并存**：外层收起时这一节只剩节头；展开后子门照旧管高级行。
+  //    ⚠️ 差别只在**默认值**（由面板组件算好，当 `glassUiOpen` 传进来）：两档默认都展开。
+  //    ⚠️ 子门 `detailOpen` 那行的 `sidebarSurface &&` 保持不动 —— 那是"高级行只住侧栏"的
+  //       老口径（设置页不画那些行），与整节折叠是两件事。
+  const open = glassUiOpen === true;
   for (const c of detailOpen ? children : []) {
     const cn = CHILD_CN[c.id];
     // 登记表与词表必须一一对应：漏一个就整项无标签（比 ReferenceError 更隐蔽）。
@@ -643,132 +654,136 @@ function renderAppearanceGlassSection(ctx) {
   }
   return React.createElement(React.Fragment, null,
   React.createElement("div", { className: "we-picker__section" },
-    React.createElement("div", { className: "we-picker__section-head" },
-      React.createElement("span", { className: "we-picker__section-label" }, weT("玻璃 UI")),
-    ),
-    // ── 预设方案（本节第一行，先于一切旋钮；**高级配置：只在设置页画**，ADR-0008 D4）──
-    // ctx 成员由 client.js 的 glassPresetCtx 提供（清单/错误是宿主投影；应用走 settings 通道）。
-    // ⚠️ 这道门是**显式**的，三处对齐：① 门在这里；② `glassPresets` 已进 quick-panel 的
-    //    setting-only 占位器（误补 ⇒ 当场炸）；③ verify-scene-live 两档都钉住预设块
-    //    （标签序列 + 整树文本锚：侧栏档不许有、设置档必须有）。
-    //    分类理由：它不是"总开关"也不是"逐面覆盖"，而是**跨面批量覆盖**（一份预设 = 玻璃子系统
-    //    完整快照，应用即 Object.assign 整套覆盖、**无确认无撤销**），且出厂预设**删除即永久** ——
-    //    这类动作按 D4 的取向属高阶；侧栏是窄面板 + 随手调的场合。
-    !sidebarSurface && renderGlassPresetsBlock(ctx.glassPresets),
-    // ── 全局四件套 ──
-    // 玻璃颜色: the settings-window glass BASE tint. Defaults keep the stock
-    // look (white light / deep navy dark); picking any preset or a custom
-    // color tints the whole window glass in BOTH themes.
-    // #159② 分主题：色板行的"一个颜色"是**浅色那一侧**；开了「深色单独设置」再多一行专写深色。
-    // `sel.glassDarkSeparate` 只是面板开关，不改渲染 —— 取色在 effects.js / glass.js 按主题各取一半。
-    // 侧栏档（窄面板 + 随手调）**不给这个开关**（D4 同向：独立/分套属配置层）；它只有一个色板，
-    // 只写**浅色那一侧** —— 侧栏的玻璃色变量就只消费浅色半（`src/glass.js` / `src/effects.js`
-    // 的 sidebar 分支都取 `glassColorOf(sel,"light")`：侧栏没有 `data-ds-dark-theme` 孪生，
-    // 有意不分深浅）。**不要**改回"写当前配色那一侧"：深色主题下那等于让用户改一个他看不到的
-    // 值（§11 A2-F2）；面板也不许自己采样主题（`panelThemeIsDark` 已随之删除）。
-    !sidebarSurface && switchRow(weT("深色单独设置"), sel.glassDarkSeparate === true, (e) => onGlassDarkSeparate(e.target.checked), {
-      key: "glass-dark-separate",
-      tooltip: weT("关闭时一个颜色同时用于浅色与深色两套（内部仍存两套值）；开启后浅色/深色分别设置"),
-    }),
-    swatchRow(weT("玻璃颜色"), GLASS_COLOR_PRESETS,
-      glassPair.light,
-      (hex, live) => onGlassColor("light", hex, live), { key: "glass-color" }),
-    !sidebarSurface && sel.glassDarkSeparate === true && swatchRow(weT("玻璃颜色 · 深色"), GLASS_COLOR_PRESETS, glassPair.dark,
-      (hex, live) => onGlassColor("dark", hex, live), { key: "glass-color-dark" }),
-    SliderRow(weT("玻璃透明度"), 0, 100, 5, sel.glassAlpha, onGlassAlpha, sel.glassAlpha + "%"),
-    // 「雾化」控制的只有**模糊半径**（雾面深度），饱和度是解耦的常量材料属性（见 GLASS_SATURATE）。
-    // ⚠️ 覆盖面的实测口径（`.test-cache/blur-selectors.mjs` 复算，按规则头归面）：
-    //    它喂的 `--we-blur` 被这些面消费 —— 对话栏一族（输入卡片 / 气泡 / 工具弹卡）、
-    //    **左侧栏液态玻璃**（`data-we-left-sidebar` 那列的 `::before`）、**设置窗口**、
-    //    插件自身浮层（更新提示 / 仓库面板）。
-    //    而**侧栏**（dsh-better-sidebar 与右栏面板）走的是它**自己的** `--we-sidebar-blur`
-    //    （由「侧栏模糊」管）—— 那才是唯一不吃本项的面。
-    SliderRow(weT("雾化"), 0, 60, 1, sel.blur, onBlur, sel.blur + "px", "glass-frost", {
-      tooltip: weT("玻璃面板（对话栏卡片、左侧栏、设置窗口、插件浮层）的模糊半径 —— 越大越像磨砂玻璃；色彩饱和度不随本滑块变化。侧栏有自己的「侧栏模糊」，不受本项影响"),
-    }),
-    // 玻璃保真度（默认 100 = 完整可读性红线）：唯一的「颜色 vs 可读」权衡旋钮。
-    // 100 = 玻璃色经亮度钳制保正文 ≥4.5:1（深色压暗 / 浅色提亮的现状）；拉低 =
-    // 釉色向用户原色线性回退（单调，中间档不会更黑/更白）+ 地板层覆盖度同比例
-    // 减薄，正文在极端壁纸上可读性让位；0 = 原色直出不钳制。数学入口
-    // weClampSurfaceColor 第三参 + --we-glass-fidelity。
-    SliderRow(weT("玻璃保真度"), 0, 100, 5, sel.glassFidelity, onGlassFidelity, sel.glassFidelity + "%", "glass-fidelity", {
-      tooltip: weT("100 = 完整可读性红线（默认）：自定义玻璃色经亮度钳制，正文对比度始终 ≥4.5:1 —— 深色主题下颜色被压暗、浅色主题下被提亮。拉低后颜色更贴你选的原色，但正文在极端明暗的壁纸上可能看不清；看不清字时把本项拉回 100，或按「看不清字三步」调节。"),
-    }),
-    // ⚠️ 「对话栏的保真度」**只有**「对话框玻璃·独立配置」下的「对话框玻璃·玻璃保真度」一个入口
-    //    （两个旋钮控同一件事是要防的）；存储键复用 `chatGlassFidelity`（D2：不新建平行键），
-    //    老配置值不丢。
-    // 思考块液态玻璃 —— **三挡**（用户口径）：关（对话区半透明透壁纸）/ 液态玻璃（磨砂）/
-    // 原生（**只有正文内容** —— 气泡 / 代码块 / 思考区 —— 恢复 DSH 原生不透明实色；输入框与画布
-    // 保留玻璃）。存储是两个布尔（thinkingGlass + thinkingNative），**原生挡赢**的互斥在 effects.js
-    // 门控层保证，本分段只负责把两键写一致。总开关级 ⇒ 两侧都画（D4）。
-    // ⚠️ 原生挡下胶囊两行（门 = thinkingGlass）整组不画 —— 那族 CSS 挂在
-    //    data-we-thinking-glass 门下，原生挡不挂门 ⇒ 画了就是死旋钮。
-    React.createElement("div", { className: "we-picker__ctl we-picker__ctl--wrap", key: "thinking-mode" },
-      ctlText(weT("思考块液态玻璃"), weT("对话内容的三挡：关（半透明）/ 液态玻璃 / 原生（正文实色、输入框保持玻璃）")),
-      React.createElement("div", { className: "we-picker__seg" },
-        thinkGear("off", weT("关"), weT("对话区保持半透明：壁纸透过面板与代码块显出来（无磨砂）")),
-        thinkGear("glass", weT("液态玻璃"), weT("思考区与文件卡清底，文字胶囊与七类工具内容玻璃；代码块随玻璃透明度透出壁纸")),
-        thinkGear("native", weT("原生"), weT("消息正文（气泡、代码块、思考区）恢复 DSH 原生不透明实色；输入框与对话画布保留玻璃透壁纸；胶囊与思考条的玻璃细调在本挡停用")),
-      ),
-    ),
-    // ── 既有面的**显示开关**与它们的独立配置 ──
-    // ⚠️ 门槛分两层：宿主能力位（`sidebarPresent` / `sidebarGlass`：装没装 dsh-better-sidebar、
-    //    总开关开没开）**与**档位门 —— **总开关**两档都画；挂在它们下面的**独立配置层**
-    //    属高级配置：只在侧栏档「详细玻璃调节」展开时画（见函数头的 D4 表；设置页不再画）。
-    // 左侧栏液态玻璃（默认关）：宿主原生左栏在壁纸下只是「透明的洞」，打开后它走同一张配方表。
-    // ⚠️ 它**不是**"要不要玻璃"那一类：它的「关」是**恢复背景**（那一列回到壁纸原样）——
-    //    所以它是唯一保留的**显示开关**（乙类），与其余面"恒吃玻璃"不同。
-    switchRow(weT("左侧栏液态玻璃"), sel.leftSidebarGlass === true, onLeftSidebarGlass, {
-      key: "left-sidebar-glass",
-      hint: weT("左侧栏也跟随玻璃配方（配色 / 玻璃颜色 / 透明度 / 雾化 / 边框）"),
-      tooltip: weT("宿主原生左侧栏（会话列表 / 工作区那一列）默认直接透出壁纸、不吃玻璃参数。打开后它变成与其余界面同款的玻璃面板，跟随「配色 / 玻璃颜色 / 玻璃透明度 / 雾化 / 边框」；关闭即恢复原生观感。默认关。"),
-    }),
-    // 标题栏液态玻璃（默认关）：壳层顶栏（拖拽区 / 窗口按钮那一行）是本插件唯一**刻意**
-    // 留成不透明的面（画布被清成透明后，这一层必须保留底色否则标题文字压在壁纸上）。
-    // 打开后它改吃**与其余面板同一张配方表**，且与左侧栏那条**逐条同形** —— 同一组釉层
-    // 变量、同一条可读性下限、同一条玻璃色 ⇒ 两侧栏在同一数值下同观感，不出现色差。
-    // ⚠️ 与左侧栏同为**乙类**（关 = 恢复宿主那条不透明底），所以同为**总开关级**（两档都画）；
-    //    它的「独立配置」层属高级配置，在节尾折叠块里（D4 表见函数头）。
-    switchRow(weT("标题栏液态玻璃"), sel.titlebarGlass === true, onTitlebarGlass, {
-      key: "titlebar-glass",
-      hint: weT("标题栏也跟随玻璃配方（配色 / 玻璃颜色 / 透明度 / 雾化 / 边框）"),
-      tooltip: weT("桌面壳顶栏（拖拽区 / 窗口按钮那一行）默认保持不透明底色。打开后它变成与其余界面、**以及左侧栏完全同款**的玻璃面板，跟随「配色 / 玻璃颜色 / 玻璃透明度 / 雾化 / 边框」——两侧栏同一数值下观感一致，不会出现色差；关闭即恢复原生观感。默认关。"),
-    }),
-    // 侧栏玻璃（dsh-better-sidebar 适配）：总开关 + 专用模糊 / 透明度 / 玻璃基底色调，
-    // 只作用于 dsh-better-sidebar 子树，不动会话玻璃的设置。仅在宿主检测到该插件时显示。
-    sel.sidebarPresent && switchRow(weT("侧栏液态玻璃"), sel.sidebarGlass, onSidebarGlass, {
-      key: "sidebar-glass-toggle",
-      hint: weT("dsh-better-sidebar 侧栏毛玻璃适配"),
-      tooltip: weT("dsh-better-sidebar 侧栏（文件 / 终端 / Git 等面板）的毛玻璃适配；关闭则恢复其原生外观"),
-    }),
-    // 侧栏全透明（issue #137）：放弃可读性下限换全透的显式开关。刻意**不跟在
-    // 侧栏液态玻璃的门后面** —— 玻璃关着时右栏那条原生不透明兜底同样是"透不出来"
-    // 的一极，本开关在两个状态都要可达（issue 里用户正是在玻璃关着的档位打的补丁）。
-    sel.sidebarPresent && switchRow(weT("侧栏全透明"), sel.sidebarFullClear === true, onSidebarFullClear, {
-      key: "sidebar-fullclear",
-      hint: weT("壁纸下撤掉侧栏的可读性底与色染"),
-      tooltip: weT("打开：壁纸激活时侧栏的可读性下限、色染与釉光整块撤掉，壁纸原样透出（文字直接压在壁纸上）；模糊仍由侧栏模糊/全局雾化旋钮管。关闭（默认）：保留可读性下限，最坏壁纸下正文仍 ≥4.5:1"),
-    }),
-    // 跟随全局（sidebarFollowGlobal，默认开，现场口径："我需要侧栏玻璃也跟随全局"）：
-    // 开着 ⇒ 侧栏的釉变量直接指向全局三件套（effects 里写 var() 引用），并把下面
-    // 侧栏那一族的「独立配置」收起 —— 画出来又不生效的旋钮是要防的。
-    // 内容面（可读性旋钮）与跟随无关 ⇒ 不受此门影响，照旧在场。
-    sel.sidebarPresent && sel.sidebarGlass && switchRow(weT("侧栏玻璃跟随全局"), sel.sidebarFollowGlobal === true, onSidebarFollowGlobal, {
-      key: "sidebar-follow-global",
-      hint: weT("模糊 / 透明度 / 底色都跟随全局玻璃"),
-      tooltip: weT("打开：侧栏玻璃跟随「玻璃 / 玻璃透明度 / 玻璃颜色」（与原生左栏同一条配方，两侧栏一致）；关闭：用下面三个旋钮单独调侧栏"),
-    }),
-    // ── 「详细玻璃调节」折叠开关（**仅侧栏档**；默认收起）──────────────────────────
-    //    开关后面的 `advRows` = 全部高级行（胶囊细调 / 各面独立配置及参数 / 子 UI 独立配置），
-    //    见函数头构建处。设置页档不画开关也不画这些行（真迁移，D4 2026-10-09）。
-    //    开合状态住 localStorage（quick-panel 的 qp-glass-detail），渲染器只经 ctx 读它。
-    sidebarSurface && switchRow(weT("详细玻璃调节"), glassDetailOpen === true,
-      (e) => onToggleGlassDetail && onToggleGlassDetail(e.target.checked), {
-        key: "glass-detail-toggle",
-        hint: weT("各面独立配置、胶囊细调等进阶旋钮（默认收起）"),
-        tooltip: weT("展开后出现每个面自己的「独立配置」与细调行（胶囊雾化 / 胶囊颜色、侧栏族参数等）——调完立刻能看到实时效果；收起只留本节的简化配置"),
+    sectionHead(weT("玻璃 UI"), open, onToggleGlassUiSection),
+    // ── 折叠门（2026-10-11 用户口径「这三个在侧边栏改成默认收敛」）：**只在侧边栏**生效 ——
+    //    设置页 `collapsible` 为假、`open` 恒真 ⇒ 这一层 Fragment 里的内容照旧整个渲染。
+    //    ⚠️ 包一层 Fragment 是刻意的：本节约有 80 个并列 children，逐个挂门既啰嗦又容易漏；
+    //    而 React 的 Fragment 不产生 DOM 节点 ⇒ 观感与无障碍树都没有多出来的层级。
+    open && React.createElement(React.Fragment, null,
+      // ── 预设方案（本节第一行，先于一切旋钮；**高级配置：只在设置页画**，ADR-0008 D4）──
+      // ctx 成员由 client.js 的 glassPresetCtx 提供（清单/错误是宿主投影；应用走 settings 通道）。
+      // ⚠️ 这道门是**显式**的，三处对齐：① 门在这里；② `glassPresets` 已进 quick-panel 的
+      //    setting-only 占位器（误补 ⇒ 当场炸）；③ verify-scene-live 两档都钉住预设块
+      //    （标签序列 + 整树文本锚：侧栏档不许有、设置档必须有）。
+      //    分类理由：它不是"总开关"也不是"逐面覆盖"，而是**跨面批量覆盖**（一份预设 = 玻璃子系统
+      //    完整快照，应用即 Object.assign 整套覆盖、**无确认无撤销**），且出厂预设**删除即永久** ——
+      //    这类动作按 D4 的取向属高阶；侧栏是窄面板 + 随手调的场合。
+      !sidebarSurface && renderGlassPresetsBlock(ctx.glassPresets),
+      // ── 全局四件套 ──
+      // 玻璃颜色: the settings-window glass BASE tint. Defaults keep the stock
+      // look (white light / deep navy dark); picking any preset or a custom
+      // color tints the whole window glass in BOTH themes.
+      // #159② 分主题：色板行的"一个颜色"是**浅色那一侧**；开了「深色单独设置」再多一行专写深色。
+      // `sel.glassDarkSeparate` 只是面板开关，不改渲染 —— 取色在 effects.js / glass.js 按主题各取一半。
+      // 侧栏档（窄面板 + 随手调）**不给这个开关**（D4 同向：独立/分套属配置层）；它只有一个色板，
+      // 只写**浅色那一侧** —— 侧栏的玻璃色变量就只消费浅色半（`src/glass.js` / `src/effects.js`
+      // 的 sidebar 分支都取 `glassColorOf(sel,"light")`：侧栏没有 `data-ds-dark-theme` 孪生，
+      // 有意不分深浅）。**不要**改回"写当前配色那一侧"：深色主题下那等于让用户改一个他看不到的
+      // 值（§11 A2-F2）；面板也不许自己采样主题（`panelThemeIsDark` 已随之删除）。
+      !sidebarSurface && switchRow(weT("深色单独设置"), sel.glassDarkSeparate === true, (e) => onGlassDarkSeparate(e.target.checked), {
+        key: "glass-dark-separate",
+        tooltip: weT("关闭时一个颜色同时用于浅色与深色两套（内部仍存两套值）；开启后浅色/深色分别设置"),
       }),
-    ...advRows,
+      swatchRow(weT("玻璃颜色"), GLASS_COLOR_PRESETS,
+        glassPair.light,
+        (hex, live) => onGlassColor("light", hex, live), { key: "glass-color" }),
+      !sidebarSurface && sel.glassDarkSeparate === true && swatchRow(weT("玻璃颜色 · 深色"), GLASS_COLOR_PRESETS, glassPair.dark,
+        (hex, live) => onGlassColor("dark", hex, live), { key: "glass-color-dark" }),
+      SliderRow(weT("玻璃透明度"), 0, 100, 5, sel.glassAlpha, onGlassAlpha, sel.glassAlpha + "%"),
+      // 「雾化」控制的只有**模糊半径**（雾面深度），饱和度是解耦的常量材料属性（见 GLASS_SATURATE）。
+      // ⚠️ 覆盖面的实测口径（`.test-cache/blur-selectors.mjs` 复算，按规则头归面）：
+      //    它喂的 `--we-blur` 被这些面消费 —— 对话栏一族（输入卡片 / 气泡 / 工具弹卡）、
+      //    **左侧栏液态玻璃**（`data-we-left-sidebar` 那列的 `::before`）、**设置窗口**、
+      //    插件自身浮层（更新提示 / 仓库面板）。
+      //    而**侧栏**（dsh-better-sidebar 与右栏面板）走的是它**自己的** `--we-sidebar-blur`
+      //    （由「侧栏模糊」管）—— 那才是唯一不吃本项的面。
+      SliderRow(weT("雾化"), 0, 60, 1, sel.blur, onBlur, sel.blur + "px", "glass-frost", {
+        tooltip: weT("玻璃面板（对话栏卡片、左侧栏、设置窗口、插件浮层）的模糊半径 —— 越大越像磨砂玻璃；色彩饱和度不随本滑块变化。侧栏有自己的「侧栏模糊」，不受本项影响"),
+      }),
+      // 玻璃保真度（默认 100 = 完整可读性红线）：唯一的「颜色 vs 可读」权衡旋钮。
+      // 100 = 玻璃色经亮度钳制保正文 ≥4.5:1（深色压暗 / 浅色提亮的现状）；拉低 =
+      // 釉色向用户原色线性回退（单调，中间档不会更黑/更白）+ 地板层覆盖度同比例
+      // 减薄，正文在极端壁纸上可读性让位；0 = 原色直出不钳制。数学入口
+      // weClampSurfaceColor 第三参 + --we-glass-fidelity。
+      SliderRow(weT("玻璃保真度"), 0, 100, 5, sel.glassFidelity, onGlassFidelity, sel.glassFidelity + "%", "glass-fidelity", {
+        tooltip: weT("100 = 完整可读性红线（默认）：自定义玻璃色经亮度钳制，正文对比度始终 ≥4.5:1 —— 深色主题下颜色被压暗、浅色主题下被提亮。拉低后颜色更贴你选的原色，但正文在极端明暗的壁纸上可能看不清；看不清字时把本项拉回 100，或按「看不清字三步」调节。"),
+      }),
+      // ⚠️ 「对话栏的保真度」**只有**「对话框玻璃·独立配置」下的「对话框玻璃·玻璃保真度」一个入口
+      //    （两个旋钮控同一件事是要防的）；存储键复用 `chatGlassFidelity`（D2：不新建平行键），
+      //    老配置值不丢。
+      // 思考块液态玻璃 —— **三挡**（用户口径）：关（对话区半透明透壁纸）/ 液态玻璃（磨砂）/
+      // 原生（**只有正文内容** —— 气泡 / 代码块 / 思考区 —— 恢复 DSH 原生不透明实色；输入框与画布
+      // 保留玻璃）。存储是两个布尔（thinkingGlass + thinkingNative），**原生挡赢**的互斥在 effects.js
+      // 门控层保证，本分段只负责把两键写一致。总开关级 ⇒ 两侧都画（D4）。
+      // ⚠️ 原生挡下胶囊两行（门 = thinkingGlass）整组不画 —— 那族 CSS 挂在
+      //    data-we-thinking-glass 门下，原生挡不挂门 ⇒ 画了就是死旋钮。
+      React.createElement("div", { className: "we-picker__ctl we-picker__ctl--wrap", key: "thinking-mode" },
+        ctlText(weT("思考块液态玻璃"), weT("对话内容的三挡：关（半透明）/ 液态玻璃 / 原生（正文实色、输入框保持玻璃）")),
+        React.createElement("div", { className: "we-picker__seg" },
+          thinkGear("off", weT("关"), weT("对话区保持半透明：壁纸透过面板与代码块显出来（无磨砂）")),
+          thinkGear("glass", weT("液态玻璃"), weT("思考区与文件卡清底，文字胶囊与七类工具内容玻璃；代码块随玻璃透明度透出壁纸")),
+          thinkGear("native", weT("原生"), weT("消息正文（气泡、代码块、思考区）恢复 DSH 原生不透明实色；输入框与对话画布保留玻璃透壁纸；胶囊与思考条的玻璃细调在本挡停用")),
+        ),
+      ),
+      // ── 既有面的**显示开关**与它们的独立配置 ──
+      // ⚠️ 门槛分两层：宿主能力位（`sidebarPresent` / `sidebarGlass`：装没装 dsh-better-sidebar、
+      //    总开关开没开）**与**档位门 —— **总开关**两档都画；挂在它们下面的**独立配置层**
+      //    属高级配置：只在侧栏档「详细玻璃调节」展开时画（见函数头的 D4 表；设置页不再画）。
+      // 左侧栏液态玻璃（默认关）：宿主原生左栏在壁纸下只是「透明的洞」，打开后它走同一张配方表。
+      // ⚠️ 它**不是**"要不要玻璃"那一类：它的「关」是**恢复背景**（那一列回到壁纸原样）——
+      //    所以它是唯一保留的**显示开关**（乙类），与其余面"恒吃玻璃"不同。
+      switchRow(weT("左侧栏液态玻璃"), sel.leftSidebarGlass === true, onLeftSidebarGlass, {
+        key: "left-sidebar-glass",
+        hint: weT("左侧栏也跟随玻璃配方（配色 / 玻璃颜色 / 透明度 / 雾化 / 边框）"),
+        tooltip: weT("宿主原生左侧栏（会话列表 / 工作区那一列）默认直接透出壁纸、不吃玻璃参数。打开后它变成与其余界面同款的玻璃面板，跟随「配色 / 玻璃颜色 / 玻璃透明度 / 雾化 / 边框」；关闭即恢复原生观感。默认关。"),
+      }),
+      // 标题栏液态玻璃（默认关）：壳层顶栏（拖拽区 / 窗口按钮那一行）是本插件唯一**刻意**
+      // 留成不透明的面（画布被清成透明后，这一层必须保留底色否则标题文字压在壁纸上）。
+      // 打开后它改吃**与其余面板同一张配方表**，且与左侧栏那条**逐条同形** —— 同一组釉层
+      // 变量、同一条可读性下限、同一条玻璃色 ⇒ 两侧栏在同一数值下同观感，不出现色差。
+      // ⚠️ 与左侧栏同为**乙类**（关 = 恢复宿主那条不透明底），所以同为**总开关级**（两档都画）；
+      //    它的「独立配置」层属高级配置，在节尾折叠块里（D4 表见函数头）。
+      switchRow(weT("标题栏液态玻璃"), sel.titlebarGlass === true, onTitlebarGlass, {
+        key: "titlebar-glass",
+        hint: weT("标题栏也跟随玻璃配方（配色 / 玻璃颜色 / 透明度 / 雾化 / 边框）"),
+        tooltip: weT("桌面壳顶栏（拖拽区 / 窗口按钮那一行）默认保持不透明底色。打开后它变成与其余界面、**以及左侧栏完全同款**的玻璃面板，跟随「配色 / 玻璃颜色 / 玻璃透明度 / 雾化 / 边框」——两侧栏同一数值下观感一致，不会出现色差；关闭即恢复原生观感。默认关。"),
+      }),
+      // 侧栏玻璃（dsh-better-sidebar 适配）：总开关 + 专用模糊 / 透明度 / 玻璃基底色调，
+      // 只作用于 dsh-better-sidebar 子树，不动会话玻璃的设置。仅在宿主检测到该插件时显示。
+      sel.sidebarPresent && switchRow(weT("侧栏液态玻璃"), sel.sidebarGlass, onSidebarGlass, {
+        key: "sidebar-glass-toggle",
+        hint: weT("dsh-better-sidebar 侧栏毛玻璃适配"),
+        tooltip: weT("dsh-better-sidebar 侧栏（文件 / 终端 / Git 等面板）的毛玻璃适配；关闭则恢复其原生外观"),
+      }),
+      // 侧栏全透明（issue #137）：放弃可读性下限换全透的显式开关。刻意**不跟在
+      // 侧栏液态玻璃的门后面** —— 玻璃关着时右栏那条原生不透明兜底同样是"透不出来"
+      // 的一极，本开关在两个状态都要可达（issue 里用户正是在玻璃关着的档位打的补丁）。
+      sel.sidebarPresent && switchRow(weT("侧栏全透明"), sel.sidebarFullClear === true, onSidebarFullClear, {
+        key: "sidebar-fullclear",
+        hint: weT("壁纸下撤掉侧栏的可读性底与色染"),
+        tooltip: weT("打开：壁纸激活时侧栏的可读性下限、色染与釉光整块撤掉，壁纸原样透出（文字直接压在壁纸上）；模糊仍由侧栏模糊/全局雾化旋钮管。关闭（默认）：保留可读性下限，最坏壁纸下正文仍 ≥4.5:1"),
+      }),
+      // 跟随全局（sidebarFollowGlobal，默认开，现场口径："我需要侧栏玻璃也跟随全局"）：
+      // 开着 ⇒ 侧栏的釉变量直接指向全局三件套（effects 里写 var() 引用），并把下面
+      // 侧栏那一族的「独立配置」收起 —— 画出来又不生效的旋钮是要防的。
+      // 内容面（可读性旋钮）与跟随无关 ⇒ 不受此门影响，照旧在场。
+      sel.sidebarPresent && sel.sidebarGlass && switchRow(weT("侧栏玻璃跟随全局"), sel.sidebarFollowGlobal === true, onSidebarFollowGlobal, {
+        key: "sidebar-follow-global",
+        hint: weT("模糊 / 透明度 / 底色都跟随全局玻璃"),
+        tooltip: weT("打开：侧栏玻璃跟随「玻璃 / 玻璃透明度 / 玻璃颜色」（与原生左栏同一条配方，两侧栏一致）；关闭：用下面三个旋钮单独调侧栏"),
+      }),
+      // ── 「详细玻璃调节」折叠开关（**仅侧栏档**；默认收起）──────────────────────────
+      //    开关后面的 `advRows` = 全部高级行（胶囊细调 / 各面独立配置及参数 / 子 UI 独立配置），
+      //    见函数头构建处。设置页档不画开关也不画这些行（真迁移，D4 2026-10-09）。
+      //    开合状态住 localStorage（quick-panel 的 qp-glass-detail），渲染器只经 ctx 读它。
+      sidebarSurface && switchRow(weT("详细玻璃调节"), glassDetailOpen === true,
+        (e) => onToggleGlassDetail && onToggleGlassDetail(e.target.checked), {
+          key: "glass-detail-toggle",
+          hint: weT("各面独立配置、胶囊细调等进阶旋钮（默认收起）"),
+          tooltip: weT("展开后出现每个面自己的「独立配置」与细调行（胶囊雾化 / 胶囊颜色、侧栏族参数等）——调完立刻能看到实时效果；收起只留本节的简化配置"),
+        }),
+      ...advRows,
+    ),
   ),
   );
 }

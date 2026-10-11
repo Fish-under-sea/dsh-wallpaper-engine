@@ -117,6 +117,12 @@ const WE_I18N_EN = {
   "小女仆": "Chibi maid",
   "鲸御姐": "Whale onee-san",
   "菲比啾比": "Phoebe Jiubi",
+  // ⚠️ **八只「模型娘」的名字刻意不进词表**（2026-10-11）。原因不是"忘了翻"，而是本仓 i18n 的
+  //    模型：真源是**中文**，扫描器 `test/tools/i18n-scan.mjs` 的 `scanCjkStrings` 只提取
+  //    **含中日韩字符**的字面量 —— 纯 ASCII 的名字（Claude / DeepSeek / …）压根不进这条管线，
+  //    加进词表反而会被「零孤儿键」判据判成多余词条（实测：一次红 8 条）。
+  //    `ROPE_FORMS` 里仍写 `weT("Claude")`：查不到就**原样返回**，正好是要的结果；
+  //    留着 weT 是为了与其余形态标签走同一条取值路径（将来真要翻也有唯一入口）。
   "壁纸库拉绳：沿顶部拖动移动位置，向下拉打开壁纸库面板": "Library pull-cord: drag along the top to move it, pull down to open the Library panel",
   "壁纸库 · 沿顶部拖动 / 向下拉打开": "Library · drag along the top / pull down to open",
   "壁纸库面板": "Library panel",
@@ -339,7 +345,6 @@ const WE_I18N_EN = {
   "试验性功能 · 关 = 不按壁纸自动改深浅主题（默认关）": "Experimental · Off = no automatic light/dark theme switching by wallpaper (off by default)",
   "试验性功能：开着时按当前壁纸自动切全局深/浅：作者配色 → 画面主色，两条腿不一致时取深色；在 DSH 设置里手动改过主题后，本张壁纸不再自动。关（默认）时这个功能整体不生效：不取色、不判决、不改主题；切换开关立刻生效。": "Experimental: when on, automatically switches the global light/dark theme by the current wallpaper: author palette → dominant frame color; if the two signals disagree, dark wins; after you change the theme manually in DSH settings, this wallpaper no longer switches automatically. When off (the default), the whole feature has no effect: no color sampling, no decision, no theme change; toggling takes effect immediately.",
   "当前：{line}": "Current: {line}",
-  "配色": "Accent",
   "玻璃颜色": "Glass color",
   "玻璃颜色 · 深色": "Glass color · Dark",
   "玻璃透明度": "Glass opacity",
@@ -391,9 +396,29 @@ const WE_I18N_EN = {
   "{target}：字体族（跟随 = 不覆盖，用 DSH 默认）": "{target}: font family (Follow = don't override, use the DSH default)",
   "字体集预设": "Font set preset",
   "预设 = 一整套字体外观；改动只落到当前这一套，随时可以恢复原样": "A preset is a complete font look; edits land only in the current set and can be restored anytime",
-  "输入光标": "Input caret",
   "光标颜色": "Caret color",
-  "输入框光标看不清时换个颜色": "Pick a different color when the input caret is hard to see",
+  // ── 全局 UI 配色（2026-10-11）：新节 + 五个元素行 + 跟随语义 ──
+  "全局 UI 配色": "Global UI colors",
+  "全局配色": "Global accent",
+  "一处调全部：界面强调色、按钮、选中态与下面那几处都会跟着变": "One control for everything: the UI accent, buttons, selection states and the items below all follow it",
+  "调它等于一次性改全部；想给某几处单独指定颜色，打开下面的「UI 配色自定义」": "Changing it recolors everything at once; to give specific spots their own color, turn on \"Custom UI colors\" below",
+  "UI 配色自定义": "Custom UI colors",
+  "开启后「全局配色」不再生效，改由下面五项分别决定；每一项留「跟随」即回到全局配色": "Once on, \"Global accent\" no longer applies and the five items below decide instead; leave an item on \"Follow\" to go back to the global accent",
+  "已开启「UI 配色自定义」—— 此刻由下面五项分别决定，本行暂不生效": "\"Custom UI colors\" is on — the five items below decide right now, so this row has no effect",
+  "关闭「UI 配色自定义」后本行重新生效": "This row takes effect again once \"Custom UI colors\" is turned off",
+  "跟随「全局配色」": "Follow the global accent",
+  "跟随全局配色": "Follow the global accent",
+  "发送键": "Send button",
+  "输入框右侧那个圆形箭头按钮（它的箭头固定白色，建议选中间调）": "The round arrow button at the right of the composer (its arrow is hard-coded white, so mid tones read best)",
+  "链接文字": "Link text",
+  "会话与面板里的链接、强调文字": "Links and emphasised text in the conversation and panels",
+  "文件图标": "File icon",
+  "交付物卡片里 `</>` 那个文件图标（与链接共用令牌，这里单独覆盖）": "The `</>` file icon on deliverable cards (it shares the link token; this overrides it separately)",
+  "页签 / 焦点环": "Tabs / focus rings",
+  "会话的「对话 / 轨迹」页签与下划线；焦点环与状态点同源，一并跟色": "The conversation's Chat / Trajectory tabs and their underline; focus rings and status dots share the same source and follow along",
+  "深度求索状态": "Deep-diving status",
+  "「深度求索中，用时 …」那行文字与它的微光": "The \"deep diving, elapsed …\" line and its shimmer",
+  "输入框光标看不清时换个颜色（与上面的总开关无关，始终可调）": "Pick a different color when the input caret is hard to see (independent of the switch above — always adjustable)",
   "跟随 dsh 原生光标颜色": "Follow the native dsh caret color",
   "光标颜色 自动": "Caret color: Auto",
   "自动": "Auto",
@@ -427,10 +452,18 @@ const WE_I18N_EN = {
   "关闭后隐藏吉祥物与壁纸仓库抽屉": "Hides the mascot and the wallpaper-library drawer when off",
   "关闭后隐藏吉祥物与壁纸仓库抽屉；可随时在本页重新开启": "Hides the mascot and the wallpaper-library drawer when off; turn it back on here anytime",
   "吉祥物形态": "Mascot form",
-  "自定义立绘生效中：主页面吉祥物用的是这张图；点任一内置卡 = 换回出厂自带（导入的这张图会被清除）": "Custom artwork is in use: the mascot on the main page is this picture; click any built-in card to switch back to a factory form (the imported picture will be cleared)",
-  "换成出厂自带的「{name}」：导入的自定义立绘会被清除": "Switch back to the factory form \"{name}\": the imported custom artwork will be cleared",
-  "换成出厂自带失败：{error}": "Could not switch back to a factory form: {error}",
-  "卡片固定大小 · 大小只作用于主页面吉祥物；最后一张卡片可导入自定义立绘": "Cards keep a fixed size · the size slider only affects the mascot on the main page; the last card imports a custom picture",
+  // ⚠️ 2026-10-11 删掉四条**只服务已删 UI 的**词条（不改文案、直接删）：
+  //    · 「自定义立绘生效中：…点其他立绘可换…」与「拖一拖、按 ‹ ›、…」—— 两句都是**提示行**
+  //      的文案，而提示行按用户口径「上面文案去掉」整行删了（它还写着按 ‹ ›，而 ‹ › 同一轮
+  //      被删 —— 留着等于指导用户去点不存在的东西）；
+  //    · 「上一个形态 / 下一个形态」—— 两个箭头的 aria-label / title，箭头已删。
+  //    词表判据（零孤儿键）会立刻抓出留着不删的：实测留下时一次红 4 条。
+  "改用「{name}」（会先清除自定义立绘）": "Switch to “{name}” (clears the custom artwork first)",
+  "改用「{name}」需要先清除自定义立绘（清除不可恢复），继续吗？": "Switching to “{name}” requires clearing the custom artwork first (clearing cannot be undone). Continue?",
+  // 圆点（3D 环）：11 只内置时一只一只翻太笨，圆点给直接跳任意一只的路。
+  "切换到「{name}」": "Switch to “{name}”",
+  // 屏读播报（转盘）：形态一变就念一次。轮播控件不能只靠视觉。
+  "{name}，第 {n} 个，共 {m} 个": "{name}, {n} of {m}",
   "替换图片…（再导入会覆盖上一次）": "Replace image… (importing again overwrites the previous one)",
   "吉祥物大小": "Mascot size",
   "还没有启用壁纸": "No wallpaper enabled yet",

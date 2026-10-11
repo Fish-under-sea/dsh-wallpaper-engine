@@ -465,6 +465,71 @@ const CSS = `
     --dsw-alias-label-dimmed: rgb(50, 52, 56);
   }
 
+  /* ── 全局 UI 配色：把宿主界面里那几处「蓝色元素」接进调色板 ────────────────────
+     用户口径（2026-10-11）：「我给你图片里面这些蓝色的东西也要加入配色修改」——
+     症状是它们**从来不跟着「配色」变**。
+
+     根因（在 DSH 产物 CSS 里实证，不是推断）：本插件此前**一处都没改过**这几个令牌 ——
+     button-info-fill / link / label-deep-diving 各 0 处；而 state-business-primary 虽有
+     3 处，却只落在**设置对话框 / 左栏 / 右栏**的作用域里，主会话区不在其中 ⇒ 页面上的蓝
+     全停在宿主原生色。
+
+     令牌 → 宿主消费者（逐条实测自 DSH 产物 CSS）：
+       · 发送键（输入区主按钮，34×34 圆）　button-info-fill（:hover 用 -info-hover）
+             ⚠️ 它的箭头是宿主**写死的 color:#fff**（不是令牌）⇒ 只能改填充、改不了字形。
+                故该项只提供色板里的中间调；若用户经取色器选到极浅色，白箭头会不可读 ——
+                这是宿主契约的限制，已在面板 tooltip 里写明。
+       · 链接文字　　　　　　　link
+       · 文件图标（</> 那个）　　 link —— **与链接同令牌** ⇒ 靠 [data-presented-file] 作用域
+             覆盖分开。该锚点是宿主自带的（span[data-presented-file] 包着 FileTypeIcon，
+             实测自 dsh-client-ui-deliverables 的 JSX），不是猜模块哈希。
+       · 会话页签 + 下划线　　state-business-primary（tabActive 与它的 :after）
+       · 「深度求索中…」文字　label-deep-diving（-shimmer 是它的微光伴生）
+
+     ⚠️ 变量**恒定义**（effects.js 里空值即 accent）⇒ 关着「UI 配色自定义」时这几处照样
+        跟「全局配色」走 —— 那正是用户口径「全局配色用于直接调整全部」。不存在"关掉就不染"
+        的档位，只有"这些行显不显示"。
+     ⚠️ 页签那一项设在 body 级：state-business-primary 的消费者不止页签（还有焦点环与几处
+        状态标记），它们一起跟色才自洽 —— 面板里的标签如实写作「页签 / 焦点环」。
+     ⚠️ 锚点一律取宿主自带的 data-* 属性；本仓纪律：**不猜 CSS 模块哈希**。
+     ⚠️ 本段在**模板字符串**里：注释内**不许出现反引号**（会把 CSS 字符串提前终止，
+        build-client 报 "postfix operation" 一类的怪错）。示范令牌名时不加引号。 */
+  body[data-we-glass-page] {
+    --dsw-alias-link: var(--we-ui-link, #4f8cff);
+    --dsw-alias-label-deep-diving: var(--we-ui-deep-diving, #4f8cff);
+    /* 微光伴生色：由主色推出（往白里提一档），不新增设置键。 */
+    --dsw-alias-label-deep-diving-shimmer: color-mix(in srgb, var(--we-ui-deep-diving, #4f8cff) 62%, #ffffff);
+    --dsw-alias-state-business-primary: var(--we-ui-tab, #4f8cff);
+  }
+  /* 全局 UI 配色的**深色孪生块**：本组映射其实**与主题无关**（四个值全部来自 --we-ui-*，
+     浅深两档取值逐字相同），单独写一份是**本仓约定**而非主题分叉 ——
+     verify-glass-compositing 的 G8 要求「任何 alias 接管都必须在浅 / 深两个 body 级块里
+     各出现一次」，它防的是"只改浅色、漏了深色孪生"那类漂移。缺了这一块 G8 会判红，
+     而那个红是对的牙 —— 不为自己的功能把守卫放松。 */
+  body[data-ds-dark-theme][data-we-glass-page] {
+    --dsw-alias-link: var(--we-ui-link, #4f8cff);
+    --dsw-alias-label-deep-diving: var(--we-ui-deep-diving, #4f8cff);
+    --dsw-alias-label-deep-diving-shimmer: color-mix(in srgb, var(--we-ui-deep-diving, #4f8cff) 62%, #ffffff);
+    --dsw-alias-state-business-primary: var(--we-ui-tab, #4f8cff);
+  }
+  /* 发送键：填充 + 悬停（悬停往黑压一档，与宿主原来的 fill→hover 明暗关系同向）。
+     ⚠️ 作用域用 data-composer-seat（输入**座位**，宿主自带锚点）而**不是**
+        data-composer-card：后者是 verify-glass-surfaces 的 W5 用来认「对话玻璃子面」的
+        成员选择器（见那里 GATE 表 glass-child-conversation 的 member 正则），本条却是
+        **纯配色**规则、不画任何釉层 —— 写上它会被那条守卫算成"该子面有一条无门控规则"，
+        判红且判错（真正的失效模式是"关掉对话玻璃后还剩玻璃味"，与本条无关）。
+        座位是输入卡的**祖先**（宿主：座位里就有 data-composer-card），覆盖范围等价、
+        锚点同样是宿主的稳定 data-* 属性 ⇒ 不改产品行为，只避免被误归类。 */
+  body[data-we-glass-page] [data-composer-seat] {
+    --dsw-alias-button-info-fill: var(--we-ui-send, #4f8cff);
+    --dsw-alias-button-info-hover: color-mix(in srgb, var(--we-ui-send, #4f8cff) 82%, #000000);
+  }
+  /* 文件图标（</>）：同令牌的第二处作用域 ⇒ 内层更近的祖先胜出，于是与「链接文字」分开可调。
+     锚点对不上时（宿主改结构）本条不匹配，图标回落成「跟随链接文字」——**优雅降级**，不炸。 */
+  body[data-we-glass-page] [data-presented-file] {
+    --dsw-alias-link: var(--we-ui-file-icon, #4f8cff);
+  }
+
   /* ── 文字面可读性下限 (text-surface readability floor, #82) ───────────────
      动机、IDEA 模型与 4.5:1 目标见 JS 的 READABILITY_FLOOR 注释（数值的唯一
      来源，下面用模板插值注入，二者不会漂移）。写法：每个承载文字的面都从
@@ -2079,6 +2144,11 @@ const CSS = `
     gap: 12px; min-height: 32px;
   }
   .we-picker__ctl--wrap { flex-wrap: wrap; row-gap: 8px; }
+  /* 禁用态的一整行（「全局 UI 配色」的「全局配色」行：开了「UI 配色自定义」后不由它说了算）。
+     ⚠️ 只做「看得出失效 + 点不动」，**不隐藏** —— 用户口径是"禁用"，且留着这一行才读得懂
+     "此刻是谁在决定颜色"。pointer-events:none 同时挡掉色板与取色器；渲染器那边也给了空
+     处理器 —— 两道都有，样式万一挂了也不至于写脏配置。 */
+  .we-picker__ctl--disabled { opacity: 0.45; pointer-events: none; }
   .we-picker__ctl-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
   .we-picker__ctl-label {
     font-size: 0.88em; color: var(--we-ink, inherit);
@@ -2091,36 +2161,135 @@ const CSS = `
   .we-picker__ctl-side { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
   .we-picker__swatches { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 
-  /* ── 吉祥物形态卡片：立绘按基础尺寸固定渲染，「吉祥物大小」滑块只作用于主页面吉祥物。 ── */
-  .we-picker__mascot-row { display: flex; gap: 10px; flex-wrap: wrap; }
-  .we-picker__mascot-card {
-    display: flex; flex-direction: column; align-items: center; gap: 6px;
-    padding: 12px 16px 10px; min-width: 96px;
-    border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.28));
-    border-radius: 12px; cursor: pointer;
-    background: var(--dsw-alias-bg-layer-1, rgba(128, 128, 128, 0.08));
-    transition:
-      border-color var(--we-dur-fast, 120ms) var(--we-ease, ease),
-      background-color var(--we-dur-fast, 120ms) var(--we-ease, ease),
-      box-shadow var(--we-dur-fast, 120ms) var(--we-ease, ease),
-      transform var(--we-dur-fast, 120ms) var(--we-ease, ease);
+  /* ── 吉祥物形态**3D 圆环转盘**（2026-10-11 四次返工；形态取自用户给的 28-3d.html）─────
+      三层，每层只干一件事：
+        .we-picker__mascot-carousel  居中的一行（**只有舞台** —— 两侧箭头已按用户口径删掉）
+        .we-picker__mascot-window    只负责**裁剪**与两端淡出遮罩
+        .we-picker__mascot-stage     3D 上下文根（perspective）+ 指针 / 键盘事件
+        .we-picker__mascot-ring      整环旋转 rotateY(−逻辑索引 · 步进)
+      每张卡：rotateY(i · 步进) translateZ(半径) —— 真 3D 排布，前后由**真实 z** 决定，
+      不靠层叠与 z-index 猜（那正是前几版"看着能点、点了却是别人"的来源）。
+      ⚠️ 裁剪（overflow / mask）**必须由祖先做**，不能加在 perspective 那一层上：
+        它们是"分组属性"，加在 3D 上下文根上会把它**压平**成 2D。参考实现同样靠更上层
+        （body）裁剪 —— 它的 stage 就是 overflow: visible。
+      ⚠️ 背面剔除靠 backface-visibility: hidden：|φ| > 90° 的卡在环的后半圈，
+        不剔会透到中间来、看着很乱（参考实现同款做法）。
+      ⚠️ **窗口高度由渲染器算好写进行内样式**（这里刻意不写 height）：3D 透视会把卡片
+        **整体**放大（前排约 1.20×），按卡高原样写高度就会切掉立绘头顶与名字底部 ——
+        用户实测的「上下有截断」正是这个。推导见 panel-tabs.js 的 FRONT_ZOOM / WINDOW_H_PX。
+      ⚠️ 只动 transform / opacity；prefers-reduced-motion 的降级是**去掉过渡、保留终态**。 */
+  .we-picker__mascot-carousel {
+    display: flex; align-items: center; justify-content: center; width: 100%;
   }
-  .we-picker__mascot-card:hover { border-color: var(--dsw-alias-label-dimmed, rgba(128, 128, 128, 0.5)); }
-  .we-picker__mascot-card:active { transform: scale(0.97); }
-  .we-picker__mascot-card--active {
+  .we-picker__mascot-window {
+    position: relative; flex: 0 1 auto; min-width: 0;
+    /* 宽度：width:100% + **行内的 max-width**（= 环的水平外沿，随 scale 变）。
+       窗口**贴住环**：铺满整行会在环两侧留下大片空白（"中间一小坨"的成因），
+       写死一个数又会在宽面板里显得窄。高度同样走行内（见渲染器 WINDOW_H_PX）。 */
+    width: 100%;
+    overflow: hidden;
+    /* 两端淡出：把被裁掉的档位残影收干净，看起来是"淡出"而不是"被切断"。 */
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 10%, #000 90%, transparent 100%);
+    mask-image: linear-gradient(90deg, transparent 0, #000 10%, #000 90%, transparent 100%);
+  }
+  .we-picker__mascot-stage {
+    position: absolute; inset: 0;
+    /* 透视 = 舞台上限 340 × 2.4（参考实现的公式），取整 820。 */
+    perspective: 820px;
+    perspective-origin: 50% 50%;
+    cursor: grab;
+    /* 横拖归环，纵滚仍交给面板 —— 否则手指横划会把整块面板带着滚。 */
+    touch-action: pan-y;
+    user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+  }
+  .we-picker__mascot-stage:active { cursor: grabbing; }
+  .we-picker__mascot-stage:focus-visible { outline: 2px solid var(--we-accent, #4f8cff); outline-offset: 2px; }
+  .we-picker__mascot-ring {
+    /* 一个**零尺寸的点** = 环心；每张卡靠自己的负 margin 落在圆上。 */
+    position: absolute; left: 50%; top: 50%;
+    width: 0; height: 0;
+    transform-style: preserve-3d;
+    transition: transform var(--we-dur, 220ms) cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: transform;
+  }
+  /* ⚠️ 拖动期**必须**关掉过渡：否则移动时每帧写下的 rotateY 都会被 220ms 的过渡再"追"一遍，
+     手感从"跟手"变成"拖橡皮筋"（这是返工前真实存在的一个缺陷）。 */
+  .we-picker__mascot-ring.is-dragging { transition: none; }
+  /* 屏读专用（只给 aria-live 播报用）：视觉上不存在，但仍留在无障碍树里。
+     绝不能用 display: none —— 那会把它从无障碍树里摘掉，播报就永远不会发生。 */
+  .we-sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+  .we-picker__mascot-item {
+    position: absolute; left: 0; top: 0;
+    /* 宽 / 高 / 负 margin / transform 全部**行内**写（见渲染器）—— 这里只留三维机制与观感。
+       box-sizing: border-box 是必须的：宽高由行内定死，padding 不能再把它们撑大
+       （撑大了就等于给邻卡送了一圈透明内边距 ⇒ 抢邻卡的点击，前几版的死带就是这么来的）。 */
+    box-sizing: border-box;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px;
+    padding: 6px 0;
+    border: 1px solid transparent; border-radius: 12px;
+    background: transparent; cursor: pointer;
+    /* 绕自己的中心转 —— 环上所有卡共用一个水平轴，这样它们才排在一个圆周上。 */
+    transform-origin: 50% 50%;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    /* 只列 transform / opacity / border-color / background-color —— 全是合成器或廉价属性 */
+    transition:
+      transform var(--we-dur, 220ms) cubic-bezier(0.22, 1, 0.36, 1),
+      opacity var(--we-dur, 220ms) cubic-bezier(0.22, 1, 0.36, 1),
+      border-color var(--we-dur-fast, 120ms) linear,
+      background-color var(--we-dur-fast, 120ms) linear;
+  }
+  .we-picker__mascot-item:hover:not(:disabled) { border-color: var(--dsw-alias-label-dimmed, rgba(128, 128, 128, 0.5)); }
+  .we-picker__mascot-item:focus-visible {
+    outline: 2px solid var(--we-accent, #4f8cff); outline-offset: 2px;
+  }
+  /* 中心项：选中环 + 极淡的 accent 底（选中同时由 aria-pressed 与环表达，不只靠颜色深浅） */
+  .we-picker__mascot-item--center {
     border-color: var(--we-accent, #4f8cff);
     background: color-mix(in srgb, var(--we-accent, #4f8cff) 10%, transparent);
     box-shadow: 0 0 0 1px var(--we-accent, #4f8cff);
   }
-  /* 禁用态：现在只剩"导入进行中"那张自定义卡（2026-10-12 起内置卡可点 = 换回出厂自带 + 清掉
-     导入的那张）。理由照旧：不淡化的禁用按钮和可点的长得一样，用户会当成坏了（点击无反应）。 */
-  .we-picker__mascot-card:disabled { cursor: default; opacity: 0.45; }
-  .we-picker__mascot-card:disabled:hover { border-color: var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.28)); }
-  .we-picker__mascot-card:disabled:active { transform: none; }
+  /* 禁用态（只有"自定义立绘正在导入"那一瞬间会用到；内置项**永不禁用**）：要看得出来点不动。
+     不淡化的禁用按钮与可点的长得一模一样，用户会当成坏了（点击无反应比灰掉更糟）。 */
+  .we-picker__mascot-item:disabled { cursor: default; }
+  .we-picker__mascot-item:disabled:hover { border-color: transparent; }
+  .we-picker__mascot-item:disabled:not(.we-picker__mascot-item--center) { opacity: 0.45 !important; }
+  /* ⚠️ 这里曾有 .we-picker__mascot-nav（‹ › 两个圆形箭头钮）。2026-10-11 按用户口径
+     「把左右两个箭头去掉」删掉了组件与样式 —— 它们与圆点功能重叠，而圆点更强（直接跳
+     任意一只 + 显示总数）。**别把它加回来**：换形态仍有四条路（拖环 / 点圆点 / 点立绘 /
+     键盘 ← →），而箭头会把舞台挤窄、并抢走最外侧那两张卡的点击。 */
   .we-picker__mascot-art { display: flex; align-items: flex-end; justify-content: center; }
   .we-picker__mascot-art img { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
-  .we-picker__mascot-name { font-size: 0.78em; color: var(--we-ink-2, rgba(128, 128, 128, 0.9)); }
-  .we-picker__mascot-card--active .we-picker__mascot-name { color: var(--we-ink, inherit); }
+  .we-picker__mascot-name { font-size: 0.78em; color: var(--we-ink, inherit); white-space: nowrap; }
+  /* ── 圆点（11 只内置时"按 › 十几次"太笨 ⇒ 给直接跳任意一只的路，并回答"一共几只"）── */
+  .we-picker__mascot-dots {
+    display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px;
+    margin-top: 8px;
+  }
+  .we-picker__mascot-dot {
+    position: relative;
+    width: 7px; height: 7px; padding: 0;
+    border: 0; border-radius: 999px;
+    background: var(--dsw-alias-label-dimmed, rgba(128, 128, 128, 0.45));
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+      width var(--we-dur, 220ms) cubic-bezier(0.22, 1, 0.36, 1),
+      background-color var(--we-dur-fast, 120ms) linear;
+  }
+  /* 命中区下限：点本体只有 7px，靠**透明的** ::after 撑到 25×25（视觉不变、手指点得中）。 */
+  .we-picker__mascot-dot::after { content: ""; position: absolute; inset: -9px; }
+  .we-picker__mascot-dot:hover { background: var(--dsw-alias-label-primary, rgba(128, 128, 128, 0.7)); }
+  .we-picker__mascot-dot:focus-visible { outline: 2px solid var(--we-accent, #4f8cff); outline-offset: 2px; }
+  .we-picker__mascot-dot.is-active { width: 20px; background: var(--we-accent, #4f8cff); }
+  /* reduced-motion 降级 = **一帧终态**：位置（行内 transform）照旧生效，只是不做过渡。
+     绝不用 display:none / opacity:0 那类"关掉即看不见"的写法 —— 那会让内容永久消失。 */
+  @media (prefers-reduced-motion: reduce) {
+    .we-picker__mascot-ring, .we-picker__mascot-item, .we-picker__mascot-dot { transition: none; }
+  }
 
   /* ── 效果页签空态：不摆一列无效滑块，引导去选壁纸。 ── */
   .we-picker__empty {

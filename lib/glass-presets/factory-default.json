@@ -35,11 +35,11 @@
     "typeFilter": "all",
     "pickerLayout": "fixed",
     "edgeCompat": true,
-    "accent": "#8cff00",
+    "accent": "#00c800",
     "glassAlpha": 80,
     "glassColor": {
-      "light": "#258349",
-      "dark": "#258349"
+      "light": "#0d1524",
+      "dark": "#0d1524"
     },
     "glassDarkSeparate": false,
     "glassFidelity": 35,
@@ -88,10 +88,16 @@
     "sidebarContentAlpha": 20,
     "sidebarContentColor": "#ffffff",
     "ropeShown": true,
-    "ropeForm": "maid",
+    "ropeForm": "glm",
     "ropeScale": 0.5,
     "fontCustom": true,
-    "caretColor": "#8cff00",
+    "caretColor": "#96ff00",
+    "uiColorCustom": false,
+    "uiColorSend": "",
+    "uiColorLink": "",
+    "uiColorFileIcon": "",
+    "uiColorTab": "",
+    "uiColorDeepDiving": "",
     "themeFollow": false,
     "fxEnabled": true,
     "fxClick": false,
@@ -130,12 +136,12 @@
       "values": {
         "themeColors": {
           "secondary": {
-            "light": "#00ff8c",
-            "dark": "#00ff8c"
+            "light": "#00ff96",
+            "dark": "#00ff96"
           },
           "caption": {
-            "light": "#8cff00",
-            "dark": "#8cff00"
+            "light": "#96ff00",
+            "dark": "#96ff00"
           }
         },
         "themeDarkSeparate": false,
@@ -146,6 +152,6 @@
         "componentFonts": {}
       }
     },
-    "mascot": "maid"
+    "mascot": "glm"
   }
 }

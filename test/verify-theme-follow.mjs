@@ -405,10 +405,17 @@ console.log('\n⑥ 开关「主题随壁纸」：默认关 · 关时主题不变
   const schema = await import(pathToFileURL(join(root, 'lib', 'settings-schema.js')).href);
   const tabsCode = stripComments(read('src/panel-tabs.js'));
   const clientCode = stripComments(read('src/client.js'));
-  // i18n 之后行文案走 `weT("…")`（中文原文即键）—— 判据认"开关 + 配色行都还在、且顺序如此"，
+  // i18n 之后行文案走 `weT("…")`（中文原文即键）—— 判据认"开关 + 配色行都还在、且位置如此"，
   // 不认裸字面量（认形态的判据会在下一次改包装时静默失效）。
   const switchAt = tabsCode.indexOf('switchRow(weT("主题随壁纸")');
-  const swatchAt = tabsCode.indexOf('swatchRow(weT("配色")');
+  // 「配色」2026-10-11 迁出「主题」节、进「全局 UI 配色」节（用户口径：配色成为独立大项）。
+  // ⇒ 不再判"它在开关之后"，改判"它在新的节里、且那节在**渲染顺序**上位于「全局字体」之上"。
+  // ⚠️ 渲染顺序必须看 **renderAppearanceTab 的调用序**，不能看文件里的定义序 ——
+  //    本文件里字体节的函数**定义**在前，但渲染时排在新节之后（拿定义序判会得到相反结论）。
+  //    故匹配串带尾随逗号：定义行后面是 ` {`，只有**调用行**才是 `(ctx),`。
+  const swatchAt = tabsCode.indexOf('swatchRow(weT("全局配色")');
+  const uiCallAt = tabsCode.indexOf('renderAppearanceUiColorSection(ctx),');
+  const fontCallAt = tabsCode.indexOf('renderAppearanceFontSection(ctx),');
 
   check('开关存在且默认为关（设置模型 DEFAULTS.themeFollow === false，kind = boolFalse）',
     schema.DEFAULTS.themeFollow === false && schema.KINDS.themeFollow
@@ -416,8 +423,12 @@ console.log('\n⑥ 开关「主题随壁纸」：默认关 · 关时主题不变
     'DEFAULTS=' + String(schema.DEFAULTS.themeFollow) + ' kind=' + String((schema.KINDS.themeFollow || {}).kind));
 
   check('面板「主题」段有这个开关，且文案说明「关 = 不按壁纸自动改深浅主题」（面板面可见）',
-    switchAt >= 0 && swatchAt > switchAt && tabsCode.includes('不按壁纸自动改深浅主题'),
-    '开关下标=' + switchAt + ' / 配色行下标=' + swatchAt);
+    switchAt >= 0 && tabsCode.includes('不按壁纸自动改深浅主题'),
+    '开关下标=' + switchAt);
+
+  check('「配色」已迁入「全局 UI 配色」节，且该节在渲染顺序上位于「全局字体」**之上**（2026-10-11 口径）',
+    swatchAt > 0 && uiCallAt > 0 && fontCallAt > 0 && uiCallAt < fontCallAt,
+    '配色行下标=' + swatchAt + ' / UI配色节调用=' + uiCallAt + ' / 字体节调用=' + fontCallAt);
 
   /**
    * 判据本体（正/负对照**共用这一个函数**）：给定开关值与当前偏好，喂一张壁纸。

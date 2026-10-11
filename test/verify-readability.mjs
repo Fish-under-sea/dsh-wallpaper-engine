@@ -799,6 +799,37 @@ function main() {
         + ' z-index=' + JSON.stringify(z));
   }
 
+  // ── C6t：CSS 模板里**不许有裸反引号**（2026-10-11 加, 因为这条连踩三次）──────────
+  // 背景: `src/styles.js` 的整张样式表是一个**模板字符串**, 而它内部的注释很容易顺手
+  // 写成 Markdown 那种 `` `token` `` 反引号 —— 那个反引号会**提前终止模板字符串**, 后面的
+  // CSS 文本于是被当 JS 解析。症状极具误导性: `node scripts/build-client.mjs` 报
+  // "产物语法错误: Unexpected identifier 'verify'" / "Invalid left-hand side expression in
+  // postfix operation"（报的是 CSS 里的词, 不是反引号本身）⇒ 会让人去查完全无关的地方。
+  // 本条把它变成**指名道姓**的判据。判据读**源码**（不是产物）: 产物构建失败时它根本不会
+  // 更新, 拿产物判会测到上一次的旧文本。
+  {
+    const stylesSrc = readFileSync(new URL('../src/styles.js', import.meta.url), 'utf8');
+    const open = stylesSrc.indexOf('const CSS = `');
+    // 结尾锚在行首的 `;`（与上面 C6s 取 CSS 的方式同源, 避免散文里的反引号影响）
+    const tail = stylesSrc.slice(open + 13).match(/^`;/m);
+    const bodyStart = open + 13;
+    const bodyEnd = tail ? bodyStart + tail.index : -1;
+    const body = bodyEnd > bodyStart ? stylesSrc.slice(bodyStart, bodyEnd) : '';
+    const strays = bodyEnd > bodyStart ? (body.match(/`/g) || []).length : -1;
+    // 行号定位（便于直接去改）: 第一个裸反引号所在行
+    const firstAt = body.indexOf('`');
+    const lineNo = firstAt >= 0 ? stylesSrc.slice(0, bodyStart + firstAt).split('\n').length : -1;
+    check('C6t styles.js 的 CSS 模板内无裸反引号（会把模板提前终止, 报错却指向别处）',
+      bodyEnd > bodyStart && strays === 0,
+      strays < 0 ? '取不到模板体（锚点变了?）' : strays + ' 个裸反引号 · 首个在第 ' + lineNo + ' 行');
+    // 负对照: 同一判据必须能判出**合成**的裸反引号（否则它可能恒真）。
+    // 用与正面**同一个谓词**（strays === 0）判, 而不是自己数一遍 —— 数一遍等于把判据抄成
+    // 期望值, 那样"谓词写错"时正负对照会一起错（本仓的"期望值不许与被测对象同源"）。
+    const synth = body.slice(0, 200) + '\n/* `demo` */\n' + body.slice(200);
+    check('negative control C6t-1: 合成一个裸反引号会被同一条判据判出',
+      (synth.match(/`/g) || []).length !== 0 && bodyEnd > bodyStart);
+  }
+
   // ── F7: 侧栏全透明（issue #137）—— 放弃地板的显式开关链路（默认关）──────
   // 与上面所有判据互为反向：F1–F5/C* 钉"地板在"，F7 钉"地板只能被这个开关
   //（且仅在壁纸下、仅侧栏子树）拿掉"。全部从**产物**取（schema/glass/effects/
