@@ -44,7 +44,8 @@
  *   reapplyAll()                   **整批重应用**编排点：emit() 订阅链之外的几件
  *                                  （syncLayers / syncRotationTimer / syncSceneAudio）
  *   saveGlassPreset(name, embeds)  以当前整机配置新建一份用户预设（embeds = 资产勾选名单）
- *   presetSaveChecks(checks)       保存/导出共用的资产勾选前置校验（勾了但本机没有 ⇒ 拦下）
+ *   presetSaveChecks(checks)       保存时的资产勾选**提示语**（勾了但本机没有 ⇒ 提示"会声明成
+ *                                  无"，**不拦** —— 见本函数注释）
  *   exportGlassPresetUrl(id, embeds) 导出链接（普通 <a> 导航；宿主带附件头）
  *   importGlassPreset(file)        导入一份导出文件（成功后回读清单，**不自动应用**）
  *   deleteGlassPreset(id)          删预设（出厂或用户皆可；出厂删了即永久 ——
@@ -55,8 +56,11 @@
  *     selection；且 settings 段是**一次** `Object.assign`，资产应用失败时按合并前的
  *     快照原样滚回（此刻还没有任何落盘）—— 失败保留现状并给出可判定原因，绝不"改了一半"。
  *   · **两段的"缺席"语义相反，别写反**（ADR-0011 D4）：settings 段是完整快照（缺键补默认，
- *     由 sanitizePresetValues 保证）；资产段缺席 = **一个键都不碰**（不是回落默认）——
- *     正文没有 assets、或宿主 `applied` 里没有那一段，对应的现值原样保留。
+ *     由 sanitizePresetValues 保证）；资产段是**三态** —— ① 段不出现 = **一个键都不碰**
+ *     （不是回落默认）：正文没有 assets、或宿主 `applied` 里没有那一段，对应的现值原样保留；
+ *     ② 段是 `null` = **显式声明无**：那一族回内置默认（宿主删掉本机文件并回
+ *     `{ cleared: true }`，这里把键置空）；③ 段是对象 = 携带。少了 ②，一份"范围小"的预设
+ *     就撤销不了前一份预设装上的资产（实测 7 套出厂预设两两 A→B→A：42 个有序对里 30 个不收敛）。
  *   · **字体键不住 settings blob**：字体值经 `setFontValues` 写进 selection 并落盘到
  *     `fontsets/<活动 id>.json`；直接 Object.assign 进 selection 会"屏上变了、重启被回滚"。
  *   · **应用走设置通道**：合并之后只调 `persistSelection()`（debounce PUT + 本地缓存）。
@@ -150,6 +154,8 @@ async function refreshGlassPresets() { return loadGlassPresets(); }
  *
  * ⚠️ 判据是"`applied` **里有没有**这一段"：宿主没回的段**一个键都不碰** —— 那正是
  * "缺席 = 保持现值"的语义；正文没有 assets 时调用方根本不会进来（见 applyPreset）。
+ * ⚠️ 段里的 `{ cleared: true }` = **显式声明无**（D4 第三态）：宿主已删掉本机文件，这里把
+ * 那一族的键清空（吉祥物两个键 / 头像两侧一起）；它与"没回这一段"必须区别对待。
  * 返回 "" = 全部落位；非空 = 可判定的失败原因（形状不对 = 宿主契约被破坏，要说出来）。
  */
 async function applyPresetAssets(applied) {
@@ -169,17 +175,30 @@ async function applyPresetAssets(applied) {
   }
   const mascot = applied.mascot;
   if (mascot && typeof mascot === "object" && !Array.isArray(mascot)) {
-    setSetting("mascotImage", typeof mascot.file === "string" ? mascot.file : "");
-    setSetting("mascotImageBox", typeof mascot.box === "string" ? mascot.box : "");
+    if (mascot.cleared === true) {
+      // 「显式声明无」：宿主已把本机立绘文件删掉，这里把那两个键也清空 —— 与"宿主没回
+      // 这一段"**必须**区别开：没回 = 一个键都不碰，回了 cleared = 明确要求回到内置立绘。
+      setSetting("mascotImage", "");
+      setSetting("mascotImageBox", "");
+    } else {
+      setSetting("mascotImage", typeof mascot.file === "string" ? mascot.file : "");
+      setSetting("mascotImageBox", typeof mascot.box === "string" ? mascot.box : "");
+    }
   }
   const avatar = applied.avatar;
   if (avatar && typeof avatar === "object" && !Array.isArray(avatar)) {
-    // 两张头像各自独立：宿主只落了哪张就写哪张，另一张保持现值（缺席 = 不碰）。
-    if (avatar.user && typeof avatar.user === "object") {
-      setSetting("avatarUserImage", typeof avatar.user.file === "string" ? avatar.user.file : "");
-    }
-    if (avatar.ai && typeof avatar.ai === "object") {
-      setSetting("avatarAiImage", typeof avatar.ai.file === "string" ? avatar.ai.file : "");
+    if (avatar.cleared === true) {
+      // 整族声明无 ⇒ 两侧一起清（只清一侧会让另一侧接着用旧图，"声明无"就不成立了）。
+      setSetting("avatarUserImage", "");
+      setSetting("avatarAiImage", "");
+    } else {
+      // 两张头像各自独立：宿主只落了哪张就写哪张，另一张保持现值（缺席 = 不碰）。
+      if (avatar.user && typeof avatar.user === "object") {
+        setSetting("avatarUserImage", typeof avatar.user.file === "string" ? avatar.user.file : "");
+      }
+      if (avatar.ai && typeof avatar.ai === "object") {
+        setSetting("avatarAiImage", typeof avatar.ai.file === "string" ? avatar.ai.file : "");
+      }
     }
   }
   return "";
@@ -262,30 +281,34 @@ function newGlassPresetId() {
 }
 
 /**
- * 保存 / 导出共用的资产勾选**前置校验**（ADR-0011 D4 / D5 的客户端半边）。
- * `checks` 是三个布尔（字体 / 吉祥物 / 头像），只拦"勾了但本机没有"的组合：
- *   · 字体段的载体是**活动字体集** —— 全默认（一个角色都没改）的字体集没有可携带的
- *     个性，放行只会存出一份"看着勾了、其实什么都没带"的字体段 ⇒ 拦下并点名出路。
- *   · 吉祥物 / 头像没有图就是没有段 —— 宿主侧本就会略过空段，这里提前一句人话。
- * 返回 "" = 放行；非空 = 给用户的可判定原因（预设不创建 / 不下载）。
+ * 保存时的资产勾选**提示语**（ADR-0011 D4 三态的客户端半边）。
+ * `checks` 是三个布尔（字体 / 吉祥物 / 头像）。口径（2026-10-12 起）：
+ *   · **勾上** = "按本机现状声明这一族" —— 本机没有自定义图 ⇒ 落盘的就是 `null`（**显式
+ *     声明无**），套用它的人回到内置默认；宿主侧对"勾了但没有"就是这样落的，不需要客户端拦。
+ *   · **不勾** = "这一族我不管" —— 段根本不出现，对方的现值一个键都不碰。
+ * 旧版把"勾了但本机没有"直接拦下（`return` 一句错误、保存失败）：结果是**用户自存预设永远
+ * 无法声明"无"** —— 那一族只能靠出厂预设里的 `null` 来清，自己那份永远清不掉（本次缺陷的
+ * 客户端半边）。改成"照存 + 一句人话"，出路写在提示里（想带上就先导入一张 / 不想动对方就取消勾选）。
+ * @returns "" = 无需提示；非空 = 给用户的一句人话（**不阻断保存**）
  */
 function presetSaveChecks(checks) {
   const c = checks && typeof checks === "object" ? checks : {};
+  const notes = [];
   if (c.font === true) {
     const f = pickPresetFontValues();
     const hasFontTweaks = f.themeColors && typeof f.themeColors === "object"
       && Object.keys(f.themeColors).length > 0;
     if (!hasFontTweaks) {
-      return weT("当前字体集还是全默认（没改过颜色角色）—— 没有可携带的字体配置；先调好字体，或取消勾选「字体」");
+      notes.push(weT("字体这一族会按本机现状存成「无」（当前字体集还是全默认）—— 套用它的人回到内置字体；想带上自己的就先在字体页调好，或取消勾选「字体」（不勾 = 不动对方的字体）"));
     }
   }
   if (c.mascot === true && !selection.mascotImage) {
-    return weT("本机没有自定义吉祥物立绘 —— 想带上先在「系统」页签导入一张，或取消勾选「吉祥物」");
+    notes.push(weT("吉祥物这一族会按本机现状存成「无」（本机没有自定义立绘）—— 套用它的人回到内置立绘；想带上自己的就先在「系统」页签导入一张，或取消勾选「吉祥物」（不勾 = 不动对方的立绘）"));
   }
   if (c.avatar === true && !selection.avatarUserImage && !selection.avatarAiImage) {
-    return weT("本机没有自定义会话头像 —— 想带上先在「扩展」页签导入，或取消勾选「头像」");
+    notes.push(weT("头像这一族会按本机现状存成「无」（本机没有自定义会话头像）—— 套用它的人回到内置默认头像；想带上自己的就先在「扩展」页签导入，或取消勾选「头像」（不勾 = 不动对方的头像）"));
   }
-  return "";
+  return notes.join(" ");
 }
 
 /**
@@ -315,11 +338,8 @@ async function savePresetWithEmbeds(name, embeds) {
     return "";
   }
   const list = Array.isArray(embeds) ? embeds.filter((k) => k === "font" || k === "mascot" || k === "avatar") : [];
-  const why = presetSaveChecks({ font: list.includes("font"), mascot: list.includes("mascot"), avatar: list.includes("avatar") });
-  if (why) {
-    setPresetError(why);
-    return "";
-  }
+  // 提示语（**不阻断保存**）：勾了但本机没有 ⇒ 这一族会被**显式声明为「无」**，先把后果说清。
+  const assetNote = presetSaveChecks({ font: list.includes("font"), mascot: list.includes("mascot"), avatar: list.includes("avatar") });
   try {
     const res = await gpFetch(glassPresetCreateUrl(), {
       method: "POST",
@@ -330,7 +350,8 @@ async function savePresetWithEmbeds(name, embeds) {
       setPresetError(glassPresetFailureReason(res));
       return "";
     }
-    setPresetError("");
+    setPresetError(""); // 顺手清掉上一条提示 —— 所以下面这条提示必须写在它**之后**
+    if (assetNote) setTransient("glassPresetNote", assetNote);
     await refreshGlassPresets();
     emit();
     const data = res.data || {};

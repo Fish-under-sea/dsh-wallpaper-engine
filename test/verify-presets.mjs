@@ -460,6 +460,20 @@ const OLD_TAG = 'dsh-we/glass-preset@1';
       && typeof author.assets.mascot.data === 'string' && author.assets.mascot.data.length > 0
       && typeof author.assets.mascot.box === 'string' && /^\d+x\d+$/.test(author.assets.mascot.box),
       JSON.stringify(author.assets ? Object.keys(author.assets) : null));
+    // ★ 三态回归钉子（2026-10-12）：七套出厂预设**每套都必须显式声明吉祥物族**（携带对象或
+    //   `null`，不留缺席）—— 缺席就是本次缺陷的载体：A（不携带立绘）→ B（携带立绘）→ A 之后，
+    //   屏上留着 B 的图（A 的 110 键 settings 快照里根本没有 mascotImage 这两个键）。
+    //   四套不带立绘的必须是 `null`（声明「无」），三套带的必须是对象；头像族一律不声明。
+    const undeclared = [];
+    let nullMascot = 0;
+    for (const f of files) {
+      const d = JSON.parse(readFileSync(join(BUILTIN, f), 'utf8'));
+      if (!d.assets || !('mascot' in d.assets)) undeclared.push(f);
+      else if (d.assets.mascot === null) nullMascot += 1;
+    }
+    check('★ 七套出厂预设每套都显式声明吉祥物族（null×4 声明无 + 对象×3 携带；缺席即缺陷）',
+      files.length === 7 && undeclared.length === 0 && nullMascot === 4,
+      undeclared.length ? '缺席:' + undeclared.join(',') : 'null×' + nullMascot + ' + 携带×' + (7 - nullMascot));
   }
 
   // 创建用户预设：settings 段补齐成完整快照（100 键）
@@ -799,6 +813,54 @@ section('③d 资产段：install-assets 落盘与 applied 语义、export→imp
     Object.keys(iaOnly.applied || {}).length === 1 && 'mascot' in (iaOnly.applied || {}),
     JSON.stringify(Object.keys(iaOnly.applied || {})));
 
+  // ★ 三态（2026-10-12）：`assets.<seg> === null` = **显式声明「无」** ⇒ 那一族回内置默认
+  //   （宿主先删本机同族文件再置空键；读侧 `mascotPath()` / `avatarPath()` 是**按前缀扫目录
+  //   取第一个命中**、不看 settings 记的文件名 ⇒ 只置空键清不干净）。这是"范围小的预设必须
+  //   能撤销范围大的预设装上的资产"的落点：四套不带立绘的出厂预设就此声明 null（见 ① 段钉子）。
+  check('★ sanitizePresetAssets 认「显式声明无」：`{mascot:null}` 原样保 null（不折成空对象、不丢键）',
+    JSON.stringify(schema.sanitizePresetAssets({ mascot: null })) === '{"mascot":null}'
+    && JSON.stringify(schema.sanitizePresetAssets({ font: null, mascot: null })) === '{"font":null,"mascot":null}'
+    && JSON.stringify(schema.sanitizePresetAssets({ mascot: false })) === '{}',
+    JSON.stringify(schema.sanitizePresetAssets({ mascot: null })) + ' / false⇒'
+    + JSON.stringify(schema.sanitizePresetAssets({ mascot: false })));
+  {
+    // 造"勾了而本机没有"的真实来路：先把本机立绘文件挪走，再走 create 的 embed 名单。
+    const beforeM = readdirSync(MASCOT_DIR).filter((f) => f.startsWith('mascot-'));
+    for (const f of beforeM) rmSync(join(MASCOT_DIR, f), { force: true });
+    const declM = bodyJson(await create('声明无立绘', { glassAlpha: 47 }, 'preset-declare-none-m', ['mascot'])) || {};
+    check('★ 勾了而本机没有 ⇒ create 落 `assets.mascot = null`（显式声明无，不再把整段丢掉）',
+      declM.ok === true && declM.assets && 'mascot' in declM.assets && declM.assets.mascot === null,
+      JSON.stringify(declM.assets));
+    const iaDeclM = bodyJson(await installAssetsCall('preset-declare-none-m')) || {};
+    check('★ 声明无的预设 install-assets ⇒ `applied.mascot = {cleared:true}` 且 mascot/ 被清空',
+      declM.ok === true && iaDeclM.ok === true && iaDeclM.applied && iaDeclM.applied.mascot
+      && iaDeclM.applied.mascot.cleared === true
+      && readdirSync(MASCOT_DIR).filter((f) => f.startsWith('mascot-')).length === 0,
+      JSON.stringify({ before: beforeM.length, applied: iaDeclM.applied, after: readdirSync(MASCOT_DIR) }));
+    await del('preset-declare-none-m');
+    // 头像族同形（整族声明无 ⇒ 两侧一起清）。
+    const beforeA = readdirSync(AVATARS_DIR);
+    for (const f of beforeA) rmSync(join(AVATARS_DIR, f), { force: true });
+    const declA = bodyJson(await create('声明无头像', { glassAlpha: 48 }, 'preset-declare-none-a', ['avatar'])) || {};
+    check('★ 勾了而本机两侧都没有头像 ⇒ create 落 `assets.avatar = null`',
+      declA.ok === true && declA.assets && 'avatar' in declA.assets && declA.assets.avatar === null,
+      JSON.stringify(declA.assets));
+    const iaDeclA = bodyJson(await installAssetsCall('preset-declare-none-a')) || {};
+    check('★ 头像族声明无 ⇒ `applied.avatar = {cleared:true}` 且两侧文件都被清',
+      declA.ok === true && iaDeclA.applied && iaDeclA.applied.avatar && iaDeclA.applied.avatar.cleared === true
+      && readdirSync(AVATARS_DIR).length === 0,
+      JSON.stringify({ before: beforeA.length, applied: iaDeclA.applied, after: readdirSync(AVATARS_DIR) }));
+    await del('preset-declare-none-a');
+    // 复位：把带内嵌字节的那一份重新应用，让后面"整批语义"按 PNG1 字节计数的判据仍有图可数
+    //   （⚠️ 必须先复位再往下走，否则那些判据会因为"图被本探针清了"而假红）。
+    const iaRestore = bodyJson(await installAssetsCall('preset-embed-1')) || {};
+    check('前置复位：重新应用带字节的那份预设 ⇒ 立绘 1 张 + 头像 2 张都回来',
+      iaRestore.ok === true
+      && readdirSync(MASCOT_DIR).some((f) => statSync(join(MASCOT_DIR, f)).size === PNG1.length)
+      && readdirSync(AVATARS_DIR).filter((f) => statSync(join(AVATARS_DIR, f)).size === PNG1.length).length === 2,
+      JSON.stringify({ mascot: readdirSync(MASCOT_DIR), avatars: readdirSync(AVATARS_DIR) }));
+  }
+
   // export → import 往返
   const exp = await exportPreset('preset-embed-1', 'font,mascot,avatar');
   const expDoc = JSON.parse(exp.__state.body.toString('utf8'));
@@ -1112,6 +1174,31 @@ section('④ 客户端形态棘轮：新编排链（合并→落盘→reapplyAll
     && applyBody.indexOf('selection[key] = before[key]') < applyBody.indexOf('persistSelection()'));
   check('正文带资产段才调 install-assets（缺席 = 一个键都不碰，不是回落默认）',
     /rawAssets && typeof rawAssets === "object"[\s\S]{0,200}\/install-assets/.test(applyBody));
+  // ★ 三态的应用半边：宿主用 `{cleared:true}` 告诉客户端"那一族回到内置"，客户端必须把键清空
+  //   —— 与"宿主没回这一段"（一个键都不碰）区别对待。落点在 `applyPresetAssets`（不是 applyPreset）。
+  {
+    const assetsBody = (() => {
+      const at = storeCode.indexOf('function applyPresetAssets(');
+      return at < 0 ? '' : storeCode.slice(at, at + 2600);
+    })();
+    check('★ 客户端认 `{cleared:true}` 把那一族键置空（声明「无」的落地半边）',
+      /mascot\.cleared === true/.test(assetsBody) && /avatar\.cleared === true/.test(assetsBody)
+      && /setSetting\("mascotImage", ""\)/.test(assetsBody) && /setSetting\("mascotImageBox", ""\)/.test(assetsBody)
+      && /setSetting\("avatarUserImage", ""\)/.test(assetsBody) && /setSetting\("avatarAiImage", ""\)/.test(assetsBody),
+      assetsBody ? 'applyPresetAssets 体已定位' : '未找到 applyPresetAssets');
+    check('negative control: `cleared` 不是恒真判据 —— 没带 cleared 的段仍走"写文件名"那条路',
+      /mascot\.file/.test(assetsBody) && /avatar\.user/.test(assetsBody));
+    const saveBody = (() => {
+      const at = storeCode.indexOf('async function savePresetWithEmbeds(');
+      return at < 0 ? '' : storeCode.slice(at, at + 1800);
+    })();
+    check('★ 勾了而本机没有 ⇒ 保存不再被拦下，改成成功路径上屏一条提示（提示必须排在 setPresetError("") 之后）',
+      /const assetNote = presetSaveChecks\(/.test(saveBody)
+      && /if \(assetNote\) setTransient\("glassPresetNote", assetNote\);/.test(saveBody)
+      && saveBody.indexOf('setTransient("glassPresetNote"') > saveBody.indexOf('setPresetError("");')
+      && /return notes\.join\(" "\);/.test(storeCode),
+      saveBody ? 'savePresetWithEmbeds 体已定位' : '未找到 savePresetWithEmbeds');
+  }
   check('字体值走字体集通道，落进**预设专用槽** landPresetFontSet（不写用户活动集 —— 写活动集会把用户自己的设计整个染绿，实测教训）',
     /landPresetFontSet\(sanitizeFontset\(font\.values\), font\.name\)/.test(storeCode));
   check('negative control: 旧的 setFontValues 直写形态必须从 preset-store 消失（落到专用槽是唯一路径）',
@@ -1152,11 +1239,23 @@ section('④ 客户端形态棘轮：新编排链（合并→落盘→reapplyAll
   check('broken 文案按 origin 分：出厂点名"版本已作废"+ 重存出路（不是笼统读不出来）',
     /这份出厂预设的版本已作废/.test(panelSrc) && /从预设栏重新保存一份/.test(panelSrc)
     && /这份预设读不出来/.test(panelSrc));
-  // D4：勾选对话框必须把"不勾的后果"逐项写出来（用户明确要求）。
-  check('资产勾选对话框逐项写明不勾的后果（字体/吉祥物/头像三条都在）',
-    /不勾：接收方的字体回落它当前那份/.test(panelSrc)
-    && /不勾：吉祥物回落内置立绘/.test(panelSrc)
-    && /不勾：会话头像回落内置默认头像/.test(panelSrc));
+  // D4（2026-10-12 三态）：勾选对话框必须把**三态**口径写出来 —— 勾了而本机没有 = 声明「无」
+  // （对方回内置），不勾 = 一个字都不动对方。旧文案写的是"不勾吉祥物 ⇒ 回落内置立绘"，与
+  // "资产段缺席 = 保持现值"自相矛盾（实测 A→B→A 30/42 不收敛）—— 这条棘轮就是那颗钉子。
+  check('★ 资产勾选对话框按三态写明后果（勾了没有 = 声明「无」/ 不勾 = 不动对方；三族都在）',
+    /本机字体还是全默认 —— 勾着存 = 声明「无」/.test(panelSrc)
+    && /本机没有自定义立绘 —— 勾着存 = 声明「无」/.test(panelSrc)
+    && /本机没有自定义头像 —— 勾着存 = 声明「无」/.test(panelSrc)
+    && /不勾 = 不动对方的字体/.test(panelSrc)
+    && /不勾 = 不动对方的立绘/.test(panelSrc)
+    && /不勾 = 不动对方的头像/.test(panelSrc)
+    && !/不勾：吉祥物回落内置立绘/.test(panelSrc)
+    && !/不勾：会话头像回落内置默认头像/.test(panelSrc));
+  // 负对照（本次缺陷的客户端半边）：勾选框**不再按 available 禁用** —— 旧版 `disabled: !xxxAvailable`
+  // 让"本机没有自定义立绘"的用户永远无法声明「无」，那一族只能靠出厂预设里的 null 来清。
+  check('★ 勾选框不再按 available 禁用（禁用 = 本机没有的用户永远无法声明「无」）',
+    /const fontAvailable = /.test(panelSrc) && !/disabled:\s*!\w*[Aa]vailable/.test(panelSrc),
+    /disabled:\s*!\w*[Aa]vailable/.test(panelSrc) ? '仍有禁用表达式' : '无禁用');
   check('保存与导出两处都先过勾选对话框（同一组勾选项）',
     /saveTarget === "export"/.test(panelSrc) && /saveTarget === "save"/.test(panelSrc)
     && /onExportCommit\(\)/.test(panelSrc) && /assetRows/.test(panelSrc));
@@ -1336,10 +1435,25 @@ section('④b 行为判据：删除令牌链 + broken 行禁用与可删 + 勾�
   check('勾选对话框渲染出三个勾选项（字体 / 吉祥物立绘 / 会话头像）',
     toggles.length >= 3 && Boolean(fontToggle) && Boolean(avatarToggle),
     toggles.map((t) => t.label).join(','));
-  check('本机没有的资产项禁用（avatarAvailable=false ⇒ 会话头像不可勾；字体可用则不可禁）',
-    Boolean(avatarToggle) && avatarToggle.disabled === true
+  // D4 三态（2026-10-12）：本机没有的资产项**不再禁用** —— 勾上就是"声明「无」"，禁用等于
+  // 剥夺用户声明无的能力（旧版 `disabled: !xxxAvailable` 正是本次缺陷的客户端半边）。
+  check('★ 本机没有的资产项不再禁用（勾上 = 声明「无」；字体可用同样不禁）',
+    Boolean(avatarToggle) && avatarToggle.disabled === false
     && Boolean(fontToggle) && fontToggle.disabled === false,
     JSON.stringify(toggles));
+  // 提示文案必须随 available 变（读 `we-picker__ctl-hint` span；Toggle 的投影里没有 hint）：
+  // 本机有的 ⇒ "带进预设"；本机没有 ⇒ "声明「无」"。
+  {
+    const hints = collect(treeSave, [])
+      .filter((n) => isEl(n) && n.props && n.props.className === 'we-picker__ctl-hint')
+      .map((n) => textOf(n));
+    check('★ 勾选行的提示随本机现状给两套口径（有 = 带进预设 / 没有 = 声明「无」）',
+      hints.some((h) => /勾上：把当前字体带进预设/.test(h))
+      && hints.some((h) => /本机没有自定义头像 —— 勾着存 = 声明「无」/.test(h)),
+      JSON.stringify(hints.map((h) => h.slice(0, 16))));
+    check('negative control: 提示文案不是恒真的同一条（两类文案确实不同形）',
+      hints.every((h) => !(/勾上：把当前字体带进预设/.test(h) && /声明「无」/.test(h))));
+  }
   // 负对照：把 available 全部翻真 ⇒ 同一条判据必须判"没有禁用项"（证明它读的是 ctx 而不是常量）。
   {
     const allAvail = renderGlassPresetsBlock(baseCtx({

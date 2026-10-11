@@ -3955,9 +3955,10 @@ function fontSetCtx() {
 // 应用预设会**整机快照覆盖**（settings 段 + 勾选的资产段）⇒ 动作前先清掉挂着的删除确认
 //（上下文切换必清，同字体集）。
 /**
- * 保存对话框的**资产可用位 + 默认勾**（ADR-0011 D4）：
+ * 保存对话框的**资产可用位 + 默认勾**（ADR-0011 D4，三态）：
  *   · 默认勾：字体 ✅ / 吉祥物 ✅ / 头像 ❌（头像体积翻倍、与"分享一份外观配置"关系最弱）；
- *   · available = 本机现在**有**那份资产（没有可带的段 ⇒ 勾了也带不出东西，行禁用）：
+ *   · available = 本机现在**有**那份资产 —— **只决定提示文案**（勾上是"带过去"还是"声明无"），
+ *     **不再禁用开关、也不再把勾选钳成 false**（那样用户就没法声明"这一族是无"）：
  *     字体段的可带判据 = 活动字体集至少改过一个颜色角色（全默认的字体集没有个性）；
  *     吉祥物 = selection.mascotImage 非空；头像 = 两张任一非空。
  * 纯函数、零副作用：调用点（打开保存对话框时）把产物经 setTransient 存进 glassPresetAssetChecks。
@@ -3976,10 +3977,13 @@ function presetAssetChecksNow() {
   const prev = (selection.glassPresetAssetChecks && typeof selection.glassPresetAssetChecks === "object")
     ? selection.glassPresetAssetChecks : {};
   return {
-    // 用户上一轮的勾选保留（重开对话框不丢他的选择）；available 位每次现算。
-    font: prev.font !== false && fontAvailable,
-    mascot: prev.mascot !== false && mascotAvailable,
-    avatar: prev.avatar === true && avatarAvailable,
+    // 用户上一轮的勾选保留（重开对话框不丢他的选择）；available 位每次现算，**只决定提示文案**。
+    // ⚠️ 勾选**不再**被 available 钳住（2026-10-12）：勾上 = "按本机现状声明这一族" —— 本机没有
+    //    图 ⇒ 宿主落 `null`（**显式声明「无」**，套用它的人回到内置），这是用户有权做的声明；
+    //    不勾 = 不动对方。旧版把勾选钳成 false + 行禁用 ⇒ 用户自存预设永远无法声明「无」。
+    font: prev.font !== false,
+    mascot: prev.mascot !== false,
+    avatar: prev.avatar === true,
     fontAvailable,
     mascotAvailable,
     avatarAvailable,

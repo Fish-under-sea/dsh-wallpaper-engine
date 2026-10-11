@@ -99,38 +99,38 @@ function renderGlassPresetsBlock(gp) {
   const checks = assetChecks || {};
   const has = (k) => checks[k] === true;
   // ── 资产勾选对话框的行（保存与导出共用同一组勾选项与后果说明；非模态、就地展开）──
-  // 每行 = 胶囊开关（复用 switchRow）+ 一行**不勾的后果**（D4 用户明确要求写出来）。
-  // available = 本机现在**有**这份资产（没有可带的段 —— 勾了也带不出东西，禁用并说明）。
+  // 每行 = 胶囊开关（复用 switchRow）+ 一行**三态后果**（D4）。
+  // 口径（2026-10-12 起）：**勾上 = 按本机现状声明这一族**（有就带上；没有就**显式声明「无」**），
+  // **不勾 = 不动对方的这一族**。所以开关**不再按 available 禁用** —— 旧版禁用导致"本机没有
+  // 自定义立绘"的用户永远无法声明「无」，那一族只能靠出厂预设的 null 来清（本次缺陷的客户端半边）。
+  // available 只决定提示文案（说清"勾上会存成无"还是"勾上会把这张带过去"）。
   const fontAvailable = checks.fontAvailable === true;
   const mascotAvailable = checks.mascotAvailable === true;
   const avatarAvailable = checks.avatarAvailable === true;
   const assetRows = React.createElement(React.Fragment, null,
     switchRow(weT("字体"), has("font"), (e) => onAssetToggle("font", e.target.checked), {
       key: "pa-font",
-      disabled: !fontAvailable,
       hint: fontAvailable
-        ? weT("不勾：接收方的字体回落它当前那份（颜色 / 排版 / 字族不变）")
-        : weT("本机还是默认字体（没改过字体集）—— 没有可携带的字体配置"),
+        ? weT("勾上：把当前字体带进预设（不勾 = 不动对方的字体，保持它当前那份）")
+        : weT("本机字体还是全默认 —— 勾着存 = 声明「无」，套用它的人回到内置字体（不勾 = 不动对方的字体）"),
       tooltip: weT("把当前活动字体集的颜色角色 / 排版 / 字族 / 组件字体一并存进预设"),
     }),
     switchRow(weT("吉祥物立绘"), has("mascot"), (e) => onAssetToggle("mascot", e.target.checked), {
       key: "pa-mascot",
-      disabled: !mascotAvailable,
       hint: mascotAvailable
-        ? weT("不勾：吉祥物回落内置立绘（小女仆 / 鲸御姐 / 菲比啾比）")
-        : weT("本机没有自定义立绘 —— 用的是内置小女仆 / 鲸御姐 / 菲比啾比"),
+        ? weT("勾上：把自定义立绘带进预设（不勾 = 不动对方的立绘，保持它当前那张）")
+        : weT("本机没有自定义立绘 —— 勾着存 = 声明「无」，套用它的人回到内置立绘（小女仆 / 鲸御姐 / 菲比啾比）；不勾 = 不动对方的立绘"),
       tooltip: weT("把自定义吉祥物立绘的图片与显示盒一并存进预设（默认勾选）"),
     }),
     switchRow(weT("会话头像"), has("avatar"), (e) => onAssetToggle("avatar", e.target.checked), {
       key: "pa-avatar",
-      disabled: !avatarAvailable,
       hint: avatarAvailable
-        ? weT("不勾：会话头像回落内置默认头像；头像体积翻倍，默认不勾")
-        : weT("本机没有自定义头像 —— 会话用的是内置默认头像"),
+        ? weT("勾上：把两张自定义头像带进预设（不勾 = 不动对方的头像；头像体积翻倍，默认不勾）")
+        : weT("本机没有自定义头像 —— 勾着存 = 声明「无」，套用它的人回到内置默认头像（不勾 = 不动对方的头像）"),
       tooltip: weT("把自定义会话头像的两张图一并存进预设（默认不勾：体积翻倍，与分享一份外观配置关系最弱）"),
     }),
     React.createElement("div", { className: "we-picker__hint", key: "pa-note" },
-      weT("数值配置（开关 / 尺寸 / 圆角 / 颜色等）总是完整保存，不受勾选影响 —— 勾选只决定图片与字体要不要一并带走。")),
+      weT("数值配置（开关 / 尺寸 / 圆角 / 颜色等）总是完整保存，不受勾选影响 —— 勾选只决定图片与字体要不要一并带走；不勾的那一族一个字都不动对方，勾了而本机没有 = 声明「无」（对方回到内置）。")),
   );
   // 两行四列的圆角表格（用户口径）：每格 = 预设名（点击应用，占满）
   // + 右侧固定删除键；不足 8 个的格子画虚框空位 —— 上限 8 直接看得见。
