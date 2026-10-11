@@ -153,15 +153,52 @@ const CALLERS = N1_FILES.filter((f) => f !== 'lib/notice.js');
 
 // ── N3 源码级不重复（每个 kind 的调用点恰好一处）──────────────────────────────
 {
-  const counts = new Map((KINDS || []).map((k) => [k, 0]));
-  for (const f of CALLERS) {
-    for (const k of noticeLiteralKinds(read(f))) counts.set(k, (counts.get(k) || 0) + 1);
-  }
-  const bad = [...counts.entries()].filter(([, n]) => n !== 1);
+  const sources = CALLERS.map((f) => [f, read(f)]);
+  const { counts, bad } = kindCounts(KINDS, sources);
   check('N3 每个 kind 在调用点里恰好出现一次（会话内幂等由运行时 Set 负责）',
     counts.size > 0 && bad.length === 0,
     bad.length ? '次数不为 1：' + bad.map(([k, n]) => k + '=' + n).join(' ')
       : [...counts].map(([k, n]) => k + '=' + n).join(' '));
+
+  // 负对照：变异**真扫描面读到的**源码，再喂回同一个 `kindCounts`（不是回测抽取器）——
+  //   ① 复制一份真调用点 ⇒ 该 kind 出现两次；② 抹掉一份真调用点 ⇒ 该 kind 出现零次。
+  // 地板：要求扫描面里真有调用点、且它在真树上的计数就是 1（正是这条契约要求的好形态），
+  //       否则"没有东西可变异"会让对照恒真。计数与"被判出"两件事都断言。
+  const sites = sources.flatMap(([f, src]) => noticeLiteralKinds(src).map((k) => ({ f, k })));
+  const first = sites[0] || null;
+  const healthy = first !== null && counts.get(first.k) === 1;
+  const dupSources = first === null ? [] : sources.map(([f, src]) =>
+    [f, f === first.f ? src + "\n  notice('" + first.k + "', 'mutant');" : src]);
+  const dropSources = first === null ? [] : sources.map(([f, src]) =>
+    [f, f === first.f ? withoutNoticeCall(src, first.k) : src]);
+  const dup = first === null ? null : kindCounts(KINDS, dupSources);
+  const drop = first === null ? null : kindCounts(KINDS, dropSources);
+  check('N3 negative control: 复制一份真调用点 / 抹掉一份真调用点，都会被同一个计数判据判出',
+    healthy
+    && dup.counts.get(first.k) === 2 && dup.bad.some(([k]) => k === first.k)
+    && drop.counts.get(first.k) === 0 && drop.bad.some(([k]) => k === first.k)
+    && dup.bad.length + drop.bad.length > 0,
+    first === null ? '扫描面里没有调用点可变异'
+      : '变异对象=' + first.f + ' 的 ' + first.k + '；复制后=' + dup.counts.get(first.k)
+        + ' 抹掉后=' + drop.counts.get(first.k));
+}
+
+/** N3 的判据本体（纯函数）：喂 [文件名, 源码] 列表 + 白名单，返回每个 kind 的计数与"次数不为 1"的清单。
+ *  正判据喂真源码，负对照喂真源码的变异副本 —— 两边走**同一个函数**，
+ *  否则负对照测的只是抽取器，而不是"恰好一次"这条契约。 */
+function kindCounts(kinds, sources) {
+  const counts = new Map((kinds || []).map((k) => [k, 0]));
+  for (const [, src] of sources) {
+    for (const k of noticeLiteralKinds(src)) counts.set(k, (counts.get(k) || 0) + 1);
+  }
+  return { counts, bad: [...counts.entries()].filter(([, n]) => n !== 1) };
+}
+
+/** 抹掉某个 kind 的调用点：把两种引号形态的 `notice('<kind>'` 前缀换成括号。
+ *  只在守卫的合成输入上做文本变异，不执行；抽取器只认 `notice(` 后紧跟字面量这一种形态。 */
+function withoutNoticeCall(src, kind) {
+  return src.split("notice('" + kind + "'").join('(/*removed*/')
+    .split('notice("' + kind + '"').join('(/*removed*/');
 }
 
 // ── N4 成功不发日志（lib/notice.js 的日志出口只有失败路径的那一个处理器）──────
