@@ -806,6 +806,7 @@ const WE_I18N_EN = {
   "思考块液态玻璃": "Thinking-block liquid glass",
 
   "玻璃 UI": "Glass UI",
+  "主题预设": "Theme presets",
   "详细玻璃调节": "Advanced glass tuning",
   "各面独立配置、胶囊细调等进阶旋钮（默认收起）": "Advanced knobs: per-surface independent config, capsule fine-tuning, etc. (collapsed by default)",
   "展开后出现每个面自己的「独立配置」与细调行（胶囊雾化 / 胶囊颜色、侧栏族参数等）——调完立刻能看到实时效果；收起只留本节的简化配置": "Expanding reveals each surface’s own “independent config” and fine-tuning rows (capsule frost / capsule color, sidebar-family parameters, etc.) — you see the live result right away; collapsed keeps only this section’s simplified config",
