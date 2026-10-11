@@ -999,7 +999,7 @@ section('③d 资产段：install-assets 落盘与 applied 语义、export→imp
   {
     const mascotFiles = () => readdirSync(MASCOT_DIR).filter((f) => f.startsWith('mascot-')).sort().join(',');
     const filesBefore = mascotFiles();
-    const pWhale = bodyJson(await create('指向鲸御姐', {}, 'preset-point-whale', null, { mascot: 'whale' })) || {};
+    const pWhale = bodyJson(await create('指向Deepseek_Pro', {}, 'preset-point-whale', null, { mascot: 'whale' })) || {};
     const docWhale = JSON.parse(readFileSync(userFilePath('preset-point-whale'), 'utf8'));
     check('★ create 带 point ⇒ 那一段落成字符串指向（零字节、不带图），settings 段照旧全量',
       pWhale.assets && pWhale.assets.mascot === 'whale'
@@ -1475,11 +1475,11 @@ section('④b 行为判据：删除令牌链 + broken 行禁用与可删 + 勾�
     //   "台架自己造字段"：这里只补作用域，不替代任何被判定为真的字段）。
     //   值域**从真源读**（本文件已在 `:71` 把 `lib/settings-schema.js` 取成 `schema`）—— 手抄一份必然
     //   漂移：2026-10-13 并入 #180 时形态从 3 只涨到 12 只，于是"一组 4 键"那条判据自己先聋了。
-    //   显示名照 `src/client.js` 的 `ROPE_FORMS` 抄（那边是 `weT("鲸御姐")` 的取值路径，还挂着 img
+    //   显示名照 `src/client.js` 的 `ROPE_FORMS` 抄（那边是 `weT("Deepseek_Pro")` 的取值路径，还挂着 img
     //   的 data URL，无法内联）；下面紧跟着一条判据钉住"标签表的键集 == 真源值域"，两边不许打架。
     ROPE_FORM_VALUES: schema.ROPE_FORM_VALUES,
     ROPE_FORMS: Object.fromEntries(Object.entries({
-      whale: '鲸御姐', phoebe: '菲比啾比',
+      whale: 'Deepseek_Pro', phoebe: '菲比啾比',
       claude: 'Claude', deepseek: 'DeepSeek', gemini: 'Gemini', gpt: 'GPT',
       glm: 'GLM', grok: 'Grok', kimi: 'Kimi', qwen: 'Qwen',
     }).map(([k, label]) => [k, { label }])),
@@ -1665,8 +1665,8 @@ section('④b 行为判据：删除令牌链 + broken 行禁用与可删 + 勾�
     check('★ 勾选对话框里有「吉祥物 · 指向」一组键（本机现状 + 真源里的每一只出厂自带，当前 10 只）',
       groupOf(treePoint).length === 1 && segBtns(treePoint).length === 1 + schema.ROPE_FORM_VALUES.length,
       segBtns(treePoint).length + ' 键：' + (segBtns(treePoint).map((b) => textOf(b)).join(',') || '未找到分组'));
-    check('★ 指向的选中态是**受控**的：ctx.mascotPoint="whale" ⇒ 只有「鲸御姐」按下',
-      pressedOf(treePoint).length === 1 && pressedOf(treePoint)[0] === '鲸御姐',
+    check('★ 指向的选中态是**受控**的：ctx.mascotPoint="whale" ⇒ 只有「Deepseek_Pro」按下',
+      pressedOf(treePoint).length === 1 && pressedOf(treePoint)[0] === 'Deepseek_Pro',
       pressedOf(treePoint).join(','));
     // 负对照 1：换一个 ctx 值 ⇒ 按下的必须换成那一只（证明选中态读 ctx，不是硬编码第一只 / 恒真）。
     check('negative control: 同一组键在 mascotPoint="phoebe" 下换成「菲比啾比」按下（选中态随 ctx 变）',
@@ -1675,7 +1675,7 @@ section('④b 行为判据：删除令牌链 + broken 行禁用与可删 + 勾�
     check('★ mascotPoint 为空 ⇒ 只有「本机现状」按下（默认是老行为，不是偷偷指向内置）',
       pressedOf(segTree('', true)).join(',') === '本机现状', pressedOf(segTree('', true)).join(','));
 
-    const whaleBtn = segBtns(treePoint).find((b) => textOf(b) === '鲸御姐') || null;
+    const whaleBtn = segBtns(treePoint).find((b) => textOf(b) === 'Deepseek_Pro') || null;
     const ownBtn = segBtns(treePoint).find((b) => textOf(b) === '本机现状') || null;
     check('★ 两个边界的键都在场（内置形态 + 本机现状）', Boolean(whaleBtn) && Boolean(ownBtn));
     if (whaleBtn) whaleBtn.props.onClick();

@@ -1719,7 +1719,7 @@ setTimeout(async () => {
     assert.equal(ringLabels.length, ringEnum.length,
       '形态表条目数（' + ringLabels.length + '）必须等于 ROPE_FORM_VALUES 项数（' + ringEnum.length + '）');
     // 默认形态也**从真源推**（`DEFAULTS.ropeForm`）：2026-10-13「小女仆」除名、默认改 `deepseek`
-    //   之后，"默认 = 枚举第一只"这条假设不再成立（第一只现在是「鲸御姐」）⇒ 写死会假红。
+    //   之后，"默认 = 枚举第一只"这条假设不再成立（第一只现在是「Deepseek_Pro」）⇒ 写死会假红。
     //   注意锚点：注释里也会出现 `ropeForm: "maid"` 这种字样 ⇒ 只认 `DEFAULTS` 那一行（缩进两格 + 行尾逗号）。
     const ringDefaultForm = ((ringSchemaSrc.match(/^  ropeForm: "([a-z]+)",$/m) || [])[1] || '');
     const defaultLabel = ringLabels[ringEnum.indexOf(ringDefaultForm)] || '';
@@ -2222,7 +2222,7 @@ setTimeout(async () => {
       assert.ok(ri2 && String(ri2.props.value) === '1.5', 'rope size slider updates to 1.5:');
       // 设置页形态卡片固定基础尺寸（2026-10-04 用户口径）：「吉祥物大小」只作用于
       // 主页面 RopeDock，卡片不跟着缩放 —— 若有人把 `form.w * sel.ropeScale` 的
-      // 乘法加回去，1.5 倍下小女仆会是 78px、鲸御姐 144px，这里当场红。
+      // 乘法加回去，1.5 倍下小女仆会是 78px、Deepseek_Pro 144px，这里当场红。
       const artsAtScale = [];
       (function walkArt(n) {
         if (!n || typeof n !== 'object') return;
@@ -2235,10 +2235,10 @@ setTimeout(async () => {
       // ropeScale 缩放"，与有几只内置无关。数量对齐形态表（加了图忘了渲染就会红）。
       assert.equal(artsAtScale.length, ringLabels.length,
         '1.5 倍下形态卡片立绘应有 ' + ringLabels.length + ' 个（= 内置形态数；卡片不消失）');
-      // 前两只（鲸御姐 / 菲比啾比）与第一只「模型娘」的固定基础尺寸逐条钉住 —— 顺序由枚举决定。
+      // 前两只（Deepseek_Pro / 菲比啾比）与第一只「模型娘」的固定基础尺寸逐条钉住 —— 顺序由枚举决定。
       //   ⚠️ 2026-10-13「小女仆」从出厂形态除名（那只图改由「作者自用」预设携带）⇒ 这里从
       //      "maid / whale / phoebe" 改成 "whale / phoebe / 第一只模型娘"，索引与数字同步前移。
-      assert.equal(artsAtScale[0] && artsAtScale[0].props.style?.height, '96px', '鲸御姐卡片高度固定 96px（不随滑块缩放）');
+      assert.equal(artsAtScale[0] && artsAtScale[0].props.style?.height, '96px', 'Deepseek_Pro卡片高度固定 96px（不随滑块缩放）');
       assert.equal(artsAtScale[1] && artsAtScale[1].props.style?.height, '87px', '菲比啾比卡片高度固定 87px（不随滑块缩放）');
       // 八只「模型娘」也必须是**固定**尺寸、且各自等于形态表里写的那一对数（不是统一 64×64，
       // 也不是被 ropeScale 乘过）。这条同时钉住"8 张比例各不同 ⇒ 盒高逐个算"这个决定。

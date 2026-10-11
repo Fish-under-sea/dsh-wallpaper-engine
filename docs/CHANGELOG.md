@@ -19,6 +19,12 @@
 
 > v1.3.0-r2 之后的增量；`NOTICE_VERSION` 哨兵同步 `1.3.1`（公告改版 ⇒ 看过 r2 公告的用户会再看到一次），；`package.json` 版本号已同步 `1.3.1`。
 
+- **变更：出厂吉祥物形态 `whale` 的显示名由「鲸御姐」改为 `Deepseek_Pro`**。
+  **口径**：用户口径（2026-10-13）：这只形态以后叫 `Deepseek_Pro`。只改**显示名**，形态 id 仍是 `whale` —— 它已被五套出厂预设的 `assets.mascot` / `values.ropeForm` 与用户自己存的预设指向着，换 id 等于让这些指向在 sanitize 里整条失效（那正是 ADR-0011 D4 第四态最不想看到的事）。
+  **修法**：`src/client.js` 的 `ROPE_FORMS.whale.label` 由 `weT("鲸御姐")` 改为 `weT("Deepseek_Pro")`；新名是**纯 ASCII** ⇒ 按本仓 i18n 口径（扫描器只提取含中日韩字符的字面量 + 「零孤儿键」判据）**删掉** `src/i18n-copy.js` 里的 `"鲸御姐": "Whale onee-san"` 词条，并把勾选对话框那句提示的中英两侧同步（`（Deepseek_Pro / 菲比啾比）` / `(Deepseek_Pro / Phoebe Jiubi)`）；注释与测试台架里手抄的显示名一并改名（`test/verify-presets.mjs` 的 stub 标签表与「指向的选中态」断言、`test/verify-client.mjs` 的环断言标题、`src/panel-tabs.js` / `lib/settings-schema.js` / `assets/mascot/README.md` 的说明文字）。
+  **判据**：`test/verify-presets.mjs` 仍 **201**（改名不改条数；stub 标签表跟着改，`pressedOf(...)[0] === 'Deepseek_Pro'`）、`test/verify-i18n.mjs` 仍 **42**（删一条孤儿键 + 改一条既有键的中英两侧）；`npm run verify:all` 全绿（含 `verify:docs` 与 `smoke`）。
+  **影响面**：用户可见的只有转盘上那一格与「吉祥物 · 指向」里的第 2 个键 —— 现在同一行里会同时出现 **`Deepseek_Pro`**（鲸尾女仆立绘、原名「鲸御姐」）与 **`DeepSeek`**（模型娘），两者是**不同的图**，别按名字猜；形态数、值域、预设文件、`lib/client.js` 体积都不变（base64 一行未动）。改的是前端 bundle 与随包数据 ⇒ **刷新页面即可见，不需要重启 `dsh web`**。
+
 - **变更：出厂列表里的「小女仆」除名、「作者自用」改为携带那只立绘当彩蛋、出厂默认吉祥物改为 DeepSeek**。
   **根因**：上游口径（2026-10-13，维护者群里定）——「烧香的（= 当时的内置「小女仆」）默认不可见，塞在「作者自用」里当彩蛋；上吊就留群里，不上传」，并且「除它和「紫色心情」（也是自定义）外其它所有预设的吉祥物改为 Deepseek，用户刚下载未修改任何配置时看见的也应该是 Deepseek」。此前 `DEFAULTS.ropeForm` 与五套出厂预设都指向 `"maid"` ⇒ 新装用户第一眼看到的是一只"按上游口径不该默认露面"的立绘。
   **修法**：① `lib/settings-schema.js` 的 `ROPE_FORM_VALUES` 去掉 `maid`（11 → **10 只**）、`DEFAULTS.ropeForm` → `"deepseek"`（并改掉相关注释里的旧例子）；② 那只内联立绘（256×283 PNG、113,771 B、base64 151,696 chars）从 `src/client.js` 的 `ROPE_IMG` 常量搬进 `lib/glass-presets/factory-author.json` 的 `assets.mascot`（对象态 `file` / `box: "52x57"` / `data`，键序 `file → box → data` 即规范形），`src/client.js` 删掉该常量与 `ROPE_FORMS.maid` 条目、`ropeArtOf` 的兜底改 `ROPE_FORMS.deepseek`；③ 其余五套预设的 `assets.mascot` 与 `values.ropeForm` 一律 → `"deepseek"`（「紫色心情」仍携带自定义图片、指向 `phoebe`）；④ 删掉「小女仆」i18n 词条与勾选对话框指向行里内嵌它的那句话。
