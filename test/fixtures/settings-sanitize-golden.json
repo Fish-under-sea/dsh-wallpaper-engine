@@ -133,7 +133,10 @@
         "mascotImage": "",
         "mascotImageBox": "",
         "skinYieldRestoreId": "",
-        "skinYieldRestoreRotation": false
+        "skinYieldRestoreRotation": false,
+        "layerPositionX": 50,
+        "layerPositionY": 50,
+        "layerScale": 100
       },
       "host": {
         "id": "",
@@ -404,7 +407,10 @@
         "mascotImage": "",
         "mascotImageBox": "",
         "skinYieldRestoreId": "",
-        "skinYieldRestoreRotation": false
+        "skinYieldRestoreRotation": false,
+        "layerPositionX": 50,
+        "layerPositionY": 50,
+        "layerScale": 100
       },
       "host": "__null__"
     },
@@ -548,7 +554,10 @@
         "mascotImage": "",
         "mascotImageBox": "",
         "skinYieldRestoreId": "",
-        "skinYieldRestoreRotation": false
+        "skinYieldRestoreRotation": false,
+        "layerPositionX": 50,
+        "layerPositionY": 50,
+        "layerScale": 100
       },
       "host": "__null__"
     },
@@ -692,7 +701,10 @@
         "mascotImage": "",
         "mascotImageBox": "",
         "skinYieldRestoreId": "",
-        "skinYieldRestoreRotation": false
+        "skinYieldRestoreRotation": false,
+        "layerPositionX": 50,
+        "layerPositionY": 50,
+        "layerScale": 100
       },
       "host": "__null__"
     },
@@ -828,7 +840,10 @@
         "mascotImage": "",
         "mascotImageBox": "",
         "skinYieldRestoreId": "",
-        "skinYieldRestoreRotation": false
+        "skinYieldRestoreRotation": false,
+        "layerPositionX": 50,
+        "layerPositionY": 50,
+        "layerScale": 100
       },
       "host": {
         "id": "",
@@ -1148,7 +1163,10 @@
         "mascotImage": "",
         "mascotImageBox": "",
         "skinYieldRestoreId": "",
-        "skinYieldRestoreRotation": false
+        "skinYieldRestoreRotation": false,
+        "layerPositionX": 50,
+        "layerPositionY": 50,
+        "layerScale": 100
       },
       "host": {
         "id": "",
@@ -1513,7 +1531,10 @@
         "mascotImage": "",
         "mascotImageBox": "",
         "skinYieldRestoreId": "",
-        "skinYieldRestoreRotation": false
+        "skinYieldRestoreRotation": false,
+        "layerPositionX": 50,
+        "layerPositionY": 50,
+        "layerScale": 100
       },
       "host": {
         "id": "",
@@ -1777,7 +1798,10 @@
         "mascotImage": "",
         "mascotImageBox": "",
         "skinYieldRestoreId": "",
-        "skinYieldRestoreRotation": false
+        "skinYieldRestoreRotation": false,
+        "layerPositionX": 50,
+        "layerPositionY": 50,
+        "layerScale": 100
       },
       "host": {
         "id": "",
@@ -2055,7 +2079,10 @@
         "mascotImage": "",
         "mascotImageBox": "",
         "skinYieldRestoreId": "",
-        "skinYieldRestoreRotation": false
+        "skinYieldRestoreRotation": false,
+        "layerPositionX": 50,
+        "layerPositionY": 50,
+        "layerScale": 100
       },
       "host": {
         "id": "",
@@ -2333,7 +2360,10 @@
         "mascotImage": "",
         "mascotImageBox": "",
         "skinYieldRestoreId": "",
-        "skinYieldRestoreRotation": false
+        "skinYieldRestoreRotation": false,
+        "layerPositionX": 50,
+        "layerPositionY": 50,
+        "layerScale": 100
       },
       "host": {
         "id": "",
@@ -2598,7 +2628,10 @@
         "mascotImage": "",
         "mascotImageBox": "",
         "skinYieldRestoreId": "",
-        "skinYieldRestoreRotation": false
+        "skinYieldRestoreRotation": false,
+        "layerPositionX": 50,
+        "layerPositionY": 50,
+        "layerScale": 100
       },
       "host": {
         "id": "",
@@ -2868,7 +2901,10 @@
         "mascotImage": "",
         "mascotImageBox": "",
         "skinYieldRestoreId": "",
-        "skinYieldRestoreRotation": false
+        "skinYieldRestoreRotation": false,
+        "layerPositionX": 50,
+        "layerPositionY": 50,
+        "layerScale": 100
       },
       "host": {
         "id": "",
@@ -3135,7 +3171,10 @@
         "mascotImage": "",
         "mascotImageBox": "",
         "skinYieldRestoreId": "",
-        "skinYieldRestoreRotation": false
+        "skinYieldRestoreRotation": false,
+        "layerPositionX": 50,
+        "layerPositionY": 50,
+        "layerScale": 100
       },
       "host": {
         "id": "",
@@ -3409,7 +3448,10 @@
         "mascotImage": "",
         "mascotImageBox": "",
         "skinYieldRestoreId": "",
-        "skinYieldRestoreRotation": false
+        "skinYieldRestoreRotation": false,
+        "layerPositionX": 50,
+        "layerPositionY": 50,
+        "layerScale": 100
       },
       "host": {
         "id": "",
@@ -3747,7 +3789,10 @@
         "mascotImage": "",
         "mascotImageBox": "",
         "skinYieldRestoreId": "",
-        "skinYieldRestoreRotation": false
+        "skinYieldRestoreRotation": false,
+        "layerPositionX": 50,
+        "layerPositionY": 50,
+        "layerScale": 100
       },
       "host": {
         "id": "",
@@ -4034,7 +4079,10 @@
         "mascotImage": "",
         "mascotImageBox": "",
         "skinYieldRestoreId": "",
-        "skinYieldRestoreRotation": false
+        "skinYieldRestoreRotation": false,
+        "layerPositionX": 50,
+        "layerPositionY": 50,
+        "layerScale": 100
       },
       "host": {
         "id": "",
@@ -4297,7 +4345,10 @@
         "mascotImage": "",
         "mascotImageBox": "",
         "skinYieldRestoreId": "",
-        "skinYieldRestoreRotation": false
+        "skinYieldRestoreRotation": false,
+        "layerPositionX": 50,
+        "layerPositionY": 50,
+        "layerScale": 100
       },
       "host": {
         "id": "wallpaper-42",
@@ -4561,7 +4612,10 @@
         "mascotImage": "",
         "mascotImageBox": "",
         "skinYieldRestoreId": "",
-        "skinYieldRestoreRotation": false
+        "skinYieldRestoreRotation": false,
+        "layerPositionX": 50,
+        "layerPositionY": 50,
+        "layerScale": 100
       },
       "host": {
         "id": "",
