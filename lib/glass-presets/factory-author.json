@@ -32,7 +32,7 @@
     "flip": false,
     "objectFit": "cover",
     "contentRatingFilter": "everyone",
-    "typeFilter": "image",
+    "typeFilter": "all",
     "pickerLayout": "fixed",
     "edgeCompat": true,
     "accent": "#67DCE7",

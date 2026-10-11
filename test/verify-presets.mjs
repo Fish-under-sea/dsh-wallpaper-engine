@@ -470,10 +470,12 @@ const OLD_TAG = 'dsh-we/glass-preset@1';
     const undeclared = [];
     const ptr = {};
     const form = {};
+    const types = {};
     for (const f of files) {
       const d = JSON.parse(readFileSync(join(BUILTIN, f), 'utf8'));
       const key = f.replace(/^factory-|\.json$/g, '');
       form[key] = d.values.ropeForm;
+      types[key] = d.values.typeFilter;
       if (!d.assets || !('mascot' in d.assets)) undeclared.push(f);
       else ptr[key] = typeof d.assets.mascot === 'string' ? d.assets.mascot
         : d.assets.mascot === null ? null : 'object';
@@ -494,6 +496,16 @@ const OLD_TAG = 'dsh-we/glass-preset@1';
       && ptr.night === form.night && ptr.readable === form.readable && ptr.vivid === form.vivid
       && form['purple-mood'] === 'phoebe',
       JSON.stringify(form));
+    // ★ 出厂预设不得替用户收窄**类型档**：套用一份外观预设不该顺手把壁纸库 / 轮播候选池切到
+    //   单一分支（「作者自用」曾误设 `image` —— 用户看到的是"切个主题，壁纸列表突然只剩图片"）。
+    //   值域同一套 id（`all` / `video` / `web` / `image` / `scene`），这里钉的是七套一律 `all`。
+    const narrowedOf = (m) => Object.entries(m).filter(([, v]) => v !== 'all');
+    const narrowed = narrowedOf(types);
+    check('★ 七套出厂预设的类型档一律「全部」（外观预设不得替用户收窄壁纸分类）',
+      files.length === 7 && narrowed.length === 0,
+      narrowed.length ? narrowed.map(([k, v]) => k + '=' + v).join(',') : JSON.stringify(types));
+    check('  └ 负对照（同一条判据，喂被改窄的合成输入）：判得出 —— 判据有牙',
+      narrowedOf({ ...types, author: 'image' }).length === 1, '合成 author=image');
   }
 
   // 创建用户预设：settings 段补齐成完整快照（100 键）
