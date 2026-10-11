@@ -1701,14 +1701,27 @@ setTimeout(async () => {
         assert.ok(/const previewArt = ropeArtOf\(sel\);/.test(tabsNow)
           && /const customArt = previewArt\.custom;/.test(tabsNow),
           '设置页的自定义立绘那一格必须复用同一条解析（两处各写一遍必然漂）');
-        // 自定义生效时的三件事：明说"主页面用的是这张图"、按钮变「替换图片…」+「清除」、
-        // 形态卡片**禁用**（点了不会变 ⇒ 不许做成"点了没反应"）。
-        assert.ok(tabsNow.includes('自定义立绘生效中：主页面吉祥物用的是这张图；点卡片可换一张')
+        // 自定义生效时的形态（2026-10-12 用户口径改了其中两件）：明说"主页面用的是这张图"、
+        // 按钮变「替换图片…」+「清除」、卡片 active 按自定义 —— 而**内置卡不再禁用**：
+        // 点任一内置卡 = 换回出厂自带（并清掉导入的那张图），所以这里必须同时有"新文案在场"
+        // 与"旧的禁用标记不在场"（只删禁用不换文案 = 用户不知道点了会发生什么）。
+        const ropeFormSrc = srcNow.slice(srcNow.indexOf('const onRopeFormChange = (form) => {'));
+        const ropeFormBody = ropeFormSrc.slice(0, ropeFormSrc.indexOf('\n};') + 3);
+        assert.ok(tabsNow.includes('自定义立绘生效中：主页面吉祥物用的是这张图；点任一内置卡 = 换回出厂自带（导入的这张图会被清除）')
+          && !tabsNow.includes('disabled: customArt')
+          && tabsNow.includes('weT("换成出厂自带的「{name}」：导入的自定义立绘会被清除", { name: form.label })')
           && tabsNow.includes('customArt ? weT("替换图片…（再导入会覆盖上一次）") : weT("导入图片…")')
-          && tabsNow.includes('disabled: customArt,')
           && tabsNow.includes('customArt && React.createElement("button"')
           && tabsNow.includes('className: "we-picker__mascot-card" + (customArt ? " we-picker__mascot-card--active" : "")'),
-          '自定义立绘生效时的四个形态（提示 / 卡片 active / 替换提示 / 内置卡禁用）必须在渲染器里逐条在位');
+          '自定义立绘生效时的形态必须在渲染器里逐条在位：提示改成"点内置卡 = 换回出厂自带"、内置卡**不再禁用**、标题点明会清掉导入的图');
+        // 点内置卡那条处理器（客户端半边）：本机没有自定义立绘 ⇒ 只写档位（零网络，与旧行为一字不差）；
+        // 有 ⇒ 走与「清除」按钮**同一条** apiDelete 路，**成功之后**才钉形态 + 摘两个引用键
+        //（失败一个字段都不动 ⇒ 屏上仍是那张自定义图，原因进 mascotError）。
+        assert.ok(/if \(!selection\.mascotImage\) \{ setSetting\("ropeForm", form\); emit\(\); return; \}/.test(ropeFormBody)
+          && ropeFormBody.includes('apiDelete("/mascot", { parse: "always" })')
+          && /setSetting\("ropeForm", form\);\s*setSetting\("mascotImage", ""\);\s*setSetting\("mascotImageBox", ""\);/.test(ropeFormBody)
+          && /weT\("换成出厂自带失败：\{error\}"/.test(ropeFormBody),
+          '「出厂自带替换自定义」必须成对：无自定义只写档位；有则删同族文件成功后才钉形态 + 清两个引用键，失败只报错');
         // 显示盒的算法在导入处（96×192 等比适配、短边不小于 28），主页面与预览读同一份设置。
         // 上限常量的真源在 schema（MASCOT_BOX_MAX_W/H，verify-contracts 的单源判据盯着）——
         // 这里钉"client 不本地重声明 + 导入记账三件"。

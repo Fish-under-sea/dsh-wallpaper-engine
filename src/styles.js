@@ -2112,8 +2112,8 @@ const CSS = `
     background: color-mix(in srgb, var(--we-accent, #4f8cff) 10%, transparent);
     box-shadow: 0 0 0 1px var(--we-accent, #4f8cff);
   }
-  /* 禁用态（自定义立绘生效时两张内置卡）：要"看得出来点不动" —— 不淡化的禁用按钮
-     和可点的长得一模一样，用户会当成坏了（点击无反应比灰掉更糟）。 */
+  /* 禁用态：现在只剩"导入进行中"那张自定义卡（2026-10-12 起内置卡可点 = 换回出厂自带 + 清掉
+     导入的那张）。理由照旧：不淡化的禁用按钮和可点的长得一样，用户会当成坏了（点击无反应）。 */
   .we-picker__mascot-card:disabled { cursor: default; opacity: 0.45; }
   .we-picker__mascot-card:disabled:hover { border-color: var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.28)); }
   .we-picker__mascot-card:disabled:active { transform: none; }

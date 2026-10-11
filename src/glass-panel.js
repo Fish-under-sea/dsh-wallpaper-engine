@@ -71,7 +71,7 @@ let gpImportInput = null;
 function renderGlassPresetsBlock(gp) {
   const {
     presets, loading, error, note, saving, draftName, armedId,
-    saveTarget, exportTargetId, assetChecks, onAssetToggle, onExportCommit, onSaveCommit2,
+    saveTarget, exportTargetId, assetChecks, onAssetToggle, onMascotPoint, onExportCommit, onSaveCommit2,
     onApply, onOpenSave, onOpenExport, onExportTargetChange, onDraftName, onSaveCommit, onCancelSave,
     onArmDelete, onDisarm, onDelete,
     onImportFile,
@@ -107,6 +107,9 @@ function renderGlassPresetsBlock(gp) {
   const fontAvailable = checks.fontAvailable === true;
   const mascotAvailable = checks.mascotAvailable === true;
   const avatarAvailable = checks.avatarAvailable === true;
+  // 吉祥物族的**指向**（第四态，2026-10-12 用户口径）：`""` = 按本机现状（老行为），
+  // `'maid' | 'whale' | 'phoebe'` = 这一段只存"指向出厂自带的那一只"（字符串、零字节）。
+  const mascotPoint = typeof checks.mascotPoint === "string" ? checks.mascotPoint : "";
   const assetRows = React.createElement(React.Fragment, null,
     switchRow(weT("字体"), has("font"), (e) => onAssetToggle("font", e.target.checked), {
       key: "pa-font",
@@ -122,6 +125,37 @@ function renderGlassPresetsBlock(gp) {
         : weT("本机没有自定义立绘 —— 勾着存 = 声明「无」，套用它的人回到内置立绘（小女仆 / 鲸御姐 / 菲比啾比）；不勾 = 不动对方的立绘"),
       tooltip: weT("把自定义吉祥物立绘的图片与显示盒一并存进预设（默认勾选）"),
     }),
+    // ── 吉祥物族的**指向**（ADR-0011 D4 第四态，用户口径 2026-10-12）──────────────────
+    // 勾上这一族才有意义（不勾 = 不动对方那一族，指向无处可落）。两种选择：
+    //   ·「本机现状」= 老行为：有自定义立绘就带上它（内嵌字节），没有就声明「无」；
+    //   · 选一只出厂自带 = 正文里只存**指向**（`assets.mascot` 字符串，零字节），套用它的人
+    //     换回那一只 —— 这是"自己存的预设也能指定出厂自带"的唯一入口（旧版只能存"我的图"
+    //     或"无"两态，想让人换回内置那一只只能用出厂预设）。
+    has("mascot") && React.createElement("div", {
+      className: "we-picker__ctl we-picker__ctl--wrap", key: "pa-mascot-point",
+    },
+      ctlText(weT("吉祥物 · 指向"), mascotAvailable
+        ? weT("「本机现状」= 把这台的自定义立绘带进预设；选一只出厂自带 = 只存「指向它」（不占体积），套用它的人换回那一只")
+        : weT("本机没有自定义立绘 —— 「本机现状」会存成「无」；也可以直接选一只出厂自带，让套用它的人换回那一只")),
+      React.createElement("div", { className: "we-picker__seg", role: "group", "aria-label": weT("吉祥物 · 指向") },
+        React.createElement("button", {
+          key: "own",
+          type: "button",
+          className: "we-picker__btn we-picker__rate" + (mascotPoint ? "" : " we-picker__rate--active"),
+          "aria-pressed": mascotPoint ? "false" : "true",
+          title: weT("按本机现状存这一族：有自定义立绘就连图带显示盒一起存，没有就声明「无」（套用的人回到内置立绘）"),
+          onClick: () => onMascotPoint(""),
+        }, weT("本机现状")),
+        ROPE_FORM_VALUES.map((k) => React.createElement("button", {
+          key: k,
+          type: "button",
+          className: "we-picker__btn we-picker__rate" + (mascotPoint === k ? " we-picker__rate--active" : ""),
+          "aria-pressed": mascotPoint === k ? "true" : "false",
+          title: weT("预设里只存「指向出厂自带的「{name}」」（不内嵌图片；套用它的人换回那一只，本机自己的立绘不动）", { name: ROPE_FORMS[k].label }),
+          onClick: () => onMascotPoint(k),
+        }, ROPE_FORMS[k].label)),
+      ),
+    ),
     switchRow(weT("会话头像"), has("avatar"), (e) => onAssetToggle("avatar", e.target.checked), {
       key: "pa-avatar",
       hint: avatarAvailable

@@ -3984,6 +3984,9 @@ function presetAssetChecksNow() {
     font: prev.font !== false,
     mascot: prev.mascot !== false,
     avatar: prev.avatar === true,
+    // 吉祥物族的**指向**（第四态）：`""` = 按本机现状，形态值 = 这一族只存"指向出厂自带的那一只"。
+    // 与勾选同款：保留上一轮的选择（重开对话框不丢），值域由宿主再判一次（认不清就丢）。
+    mascotPoint: typeof prev.mascotPoint === "string" ? prev.mascotPoint : "",
     fontAvailable,
     mascotAvailable,
     avatarAvailable,
@@ -4017,6 +4020,14 @@ function glassPresetCtx() {
       setTransient("glassPresetAssetChecks", next);
       emit();
     },
+    // 吉祥物族的**指向**（第四态）：`""` = 按本机现状；形态值 = "这一段只存指向出厂自带的那一只"。
+    // 与勾选同住 glassPresetAssetChecks（内存 UI 瞬态，不进 settings schema）；值域外的值一律折成 ""。
+    onMascotPoint: (value) => {
+      const next = Object.assign({}, selection.glassPresetAssetChecks);
+      next.mascotPoint = ROPE_FORM_VALUES.includes(value) ? value : "";
+      setTransient("glassPresetAssetChecks", next);
+      emit();
+    },
     onApply: (id) => {
       disarmConfirm();
       busy(applyPreset(id));
@@ -4047,7 +4058,8 @@ function glassPresetCtx() {
       setTransient("glassPresetNote", "");
       // 可用位在这里现算，但**勾选默认重置**成 D4 默认值：导出的对象是"那一份预设"，
       // 不是当前 selection —— 沿用上一轮为"保存"勾过的状态反而容易带错东西。
-      setTransient("glassPresetAssetChecks", Object.assign(presetAssetChecksNow(), { font: true, mascot: true, avatar: false }));
+      // 指向同理重置（导出的是"那一份"，别把上一轮为保存选过的指向带进去）。
+      setTransient("glassPresetAssetChecks", Object.assign(presetAssetChecksNow(), { font: true, mascot: true, avatar: false, mascotPoint: "" }));
       disarmConfirm();
       emit();
     },
@@ -4064,12 +4076,15 @@ function glassPresetCtx() {
       if (!isGlassPresetId(id)) return;
       const checks = selection.glassPresetAssetChecks || {};
       const embeds = ["font", "mascot", "avatar"].filter((k) => checks[k] === true);
+      // 指向出厂自带（第四态）：走 ?point=mascot:<形态> —— 与内嵌互斥（那一段没有字节可带），
+      // 所以有指向时把 `mascot` 从内嵌名单里摘掉（否则宿主会照旧把本机那张图内嵌进去）。
+      const point = ROPE_FORM_VALUES.includes(checks.mascotPoint) ? checks.mascotPoint : "";
       setTransient("glassPresetSaving", false);
       setTransient("glassPresetSaveTarget", "");
       setTransient("glassPresetTargetId", "");
       emit();
       const a = document.createElement("a");
-      a.href = exportGlassPresetUrl(id, embeds);
+      a.href = exportGlassPresetUrl(id, embeds.filter((k) => !(k === "mascot" && point)), point);
       a.download = id + ".json";
       document.body.appendChild(a);
       a.click();
@@ -4334,10 +4349,30 @@ const onSwitchTransitionSpeed = (id) => {
 const onRopeVisibilityChange = (e) => {
   setSetting("ropeShown", e.target.checked); emit();
 };
-// Mascot form (maid / whale) + scale, persisted with the other rope settings.
+/**
+ * 点「吉祥物形态」的一张内置卡 = **出厂自带替换自定义**（2026-10-12 用户口径：内置卡不再禁用）：
+ *   · 本机没有自定义立绘 ⇒ 纯档位切换（写一个键、零网络，与旧行为一字不差）；
+ *   · 本机有自定义立绘 ⇒ 走与「清除」按钮**同一条路**（宿主删同族文件），成功后才摘引用 + 钉 form
+ *     —— 失败就一个字段都不动（屏上仍是那张自定义图），原因进 `mascotError`。
+ * 与预设的第四态（`assets.mascot` 字符串 = 指向内置形态 ⇒ 清本机立绘族 + 钉 `ropeForm`）同语义：
+ * 三个入口（内置卡 / 「清除」按钮 / 套用"指向出厂自带"的预设）在"这一族归谁"上必须给同一个结果。
+ */
 const onRopeFormChange = (form) => {
   if (!ROPE_FORM_VALUES.includes(form)) return;
-  setSetting("ropeForm", form); emit();
+  if (!selection.mascotImage) { setSetting("ropeForm", form); emit(); return; }
+  setTransient("mascotError", "");
+  apiDelete("/mascot", { parse: "always" }).then((r) => {
+    if (!r.ok) throw new Error(assetRouteFailure(r, weT("立绘")));
+    setSetting("ropeForm", form);
+    setSetting("mascotImage", "");
+    setSetting("mascotImageBox", "");
+    emit();
+  }).catch((err) => {
+    setTransient("mascotError", weT("换成出厂自带失败：{error}", {
+      error: err && err.message ? err.message : String(err),
+    }));
+    emit();
+  });
 };
 const onRopeScaleChange = (scale) => {
   setSetting("ropeScale", clampNum(scale, ROPE_SCALE_MIN, ROPE_SCALE_MAX, DEFAULTS.ropeScale)); emit();

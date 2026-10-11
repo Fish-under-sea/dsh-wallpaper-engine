@@ -1083,7 +1083,7 @@
     return React.createElement("div", { className: "we-picker__ctl we-picker__ctl--wrap" },
       ctlText(weT("吉祥物形态"),
         customArt
-          ? weT("自定义立绘生效中：主页面吉祥物用的是这张图；点卡片可换一张")
+          ? weT("自定义立绘生效中：主页面吉祥物用的是这张图；点任一内置卡 = 换回出厂自带（导入的这张图会被清除）")
           : weT("卡片固定大小 · 大小只作用于主页面吉祥物；最后一张卡片可导入自定义立绘")),
       React.createElement("div", { className: "we-picker__mascot-row", role: "group", "aria-label": weT("吉祥物形态") },
         ROPE_FORM_VALUES.map((k) => {
@@ -1091,11 +1091,15 @@
           return React.createElement("button", {
             key: k,
             type: "button",
-            // 自定义立绘生效时这些内置卡禁用（主页面用的是导入的那张，点了也不会变）。
-            disabled: customArt,
+            // 自定义立绘生效时也**照样可点**（2026-10-12 用户口径）：点一张内置卡 = 换回出厂自带
+            // —— 主页面立刻换成那一只，导入的那张图连同它的同族文件一起被清除（与「清除」按钮、
+            // 与套用一份"指向出厂自带"的预设**同一条路**）。旧行为是"禁用 + 提示先清除"：那等于
+            // 把两步操作推给用户，而且与预设那条路语义不一致（预设能替、面板不能替）。
             className: "we-picker__mascot-card" + (!customArt && sel.ropeForm === k ? " we-picker__mascot-card--active" : ""),
             "aria-pressed": !customArt && sel.ropeForm === k ? "true" : "false",
-            title: customArt ? weT("自定义立绘生效中：清除后形态才可选") : form.label,
+            title: customArt
+              ? weT("换成出厂自带的「{name}」：导入的自定义立绘会被清除", { name: form.label })
+              : form.label,
             onClick: () => onRopeFormChange(k),
           },
             React.createElement("span", {
@@ -1167,7 +1171,8 @@
         // ── 自定义立绘（用户口径：可导入，已导入时下一次导入覆盖上一次）──────────
         // 它是**形态卡片那一排的第三张卡**（用户口径：导入后显示在「鲸御姐」后面、同样的
         // 卡片大小和样式）—— 点它导入 / 替换（再导入即覆盖），正在用时是 `--active` 那张，
-        // 两个内置卡片同时禁用（点了也不会变 ⇒ 不许做成"点了没反应"）。
+        // 三个内置卡（三只出厂自带）在自定义生效时**照样可点**：点 = 换回出厂自带并清掉导入的
+        // 那张（2026-10-12 用户口径）—— 这一排不再出现"点了没反应"的禁用卡。
         // 卡面尺寸口径与内置卡一致（固定，不随「吉祥物大小」缩放）：图片按自己的宽高比
         // contain 进 64×96 的小舞台（那是最高的内置卡「鲸御姐」的盒）。
         // 清除入口排在这一排的最后（只在有自定义立绘时出现）。

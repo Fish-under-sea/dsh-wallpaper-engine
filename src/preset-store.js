@@ -303,8 +303,10 @@ function newGlassPresetId() {
  * 客户端半边）。改成"照存 + 一句人话"，出路写在提示里（想带上就先导入一张 / 不想动对方就取消勾选）。
  * @returns "" = 无需提示；非空 = 给用户的一句人话（**不阻断保存**）
  */
-function presetSaveChecks(checks) {
+function presetSaveChecks(checks, mascotPoint) {
   const c = checks && typeof checks === "object" ? checks : {};
+  // 吉祥物族的**指向**（第四态）：非空 ⇒ 这一族存的是"指向出厂自带的那一只"，不是"无"也不带图。
+  const point = ROPE_FORM_VALUES.includes(mascotPoint) ? mascotPoint : "";
   const notes = [];
   if (c.font === true) {
     const f = pickPresetFontValues();
@@ -314,7 +316,10 @@ function presetSaveChecks(checks) {
       notes.push(weT("字体这一族会按本机现状存成「无」（当前字体集还是全默认）—— 套用它的人回到内置字体；想带上自己的就先在字体页调好，或取消勾选「字体」（不勾 = 不动对方的字体）"));
     }
   }
-  if (c.mascot === true && !selection.mascotImage) {
+  if (c.mascot === true && point) {
+    // 有指向 ⇒ 上面那条"会存成「无」"不成立（这正是第四态要消掉的那个歧义），改说这一族存的是什么。
+    notes.push(weT("吉祥物这一族存的是「指向出厂自带的「{name}」」（不占体积、不带图）—— 套用它的人换回那一只，他自己导入的立绘会先被清除", { name: ROPE_FORMS[point].label }));
+  } else if (c.mascot === true && !selection.mascotImage) {
     notes.push(weT("吉祥物这一族会按本机现状存成「无」（本机没有自定义立绘）—— 套用它的人回到内置立绘；想带上自己的就先在「系统」页签导入一张，或取消勾选「吉祥物」（不勾 = 不动对方的立绘）"));
   }
   if (c.avatar === true && !selection.avatarUserImage && !selection.avatarAiImage) {
@@ -333,7 +338,9 @@ async function saveGlassPreset(name) {
   const checks = (selection.glassPresetAssetChecks && typeof selection.glassPresetAssetChecks === "object")
     ? selection.glassPresetAssetChecks : {};
   const embeds = ["font", "mascot", "avatar"].filter((k) => checks[k] === true);
-  return savePresetWithEmbeds(name, embeds);
+  // 指向出厂自带（第四态）与"内嵌这一族"互斥：那一段没有字节可带，正文里只存指向字符串。
+  const point = ROPE_FORM_VALUES.includes(checks.mascotPoint) ? checks.mascotPoint : "";
+  return savePresetWithEmbeds(name, embeds.filter((k) => !(k === "mascot" && point)), point);
 }
 
 /**
@@ -342,21 +349,33 @@ async function saveGlassPreset(name) {
  * 成功后回读清单（新那一片就是反馈）。重名（宿主 409）⇒ 原因进 `selection.glassPresetError`。
  * @param {string} name 预设名
  * @param {string[]} embeds 'font' | 'mascot' | 'avatar' 的子集
+ * @param {string} mascotPoint 吉祥物族的**指向**（第四态）："" = 按本机现状；形态值 = 只存指向
  */
-async function savePresetWithEmbeds(name, embeds) {
+async function savePresetWithEmbeds(name, embeds, mascotPoint) {
   const trimmed = typeof name === "string" ? name.trim() : "";
   if (!trimmed) {
     setPresetError(weT("先给预设起个名字"));
     return "";
   }
   const list = Array.isArray(embeds) ? embeds.filter((k) => k === "font" || k === "mascot" || k === "avatar") : [];
+  // 有指向时这一族**照样算"带上了"**（只是带的是指向而不是字节）—— 提示语据此二选一。
+  const point = ROPE_FORM_VALUES.includes(mascotPoint) ? mascotPoint : "";
+  const hasMascotSeg = list.includes("mascot") || Boolean(point);
   // 提示语（**不阻断保存**）：勾了但本机没有 ⇒ 这一族会被**显式声明为「无」**，先把后果说清。
-  const assetNote = presetSaveChecks({ font: list.includes("font"), mascot: list.includes("mascot"), avatar: list.includes("avatar") });
+  const assetNote = presetSaveChecks({ font: list.includes("font"), mascot: hasMascotSeg, avatar: list.includes("avatar") }, point);
+  // settings 段里的 `ropeForm` 与资产段的指向**必须是同一只**：宿主 `installAssets` 在 settings 合并
+  // **之后**跑，`assets.mascot` 的字符串会覆盖 `ropeForm` —— 两处不一致只会让"只读 values 的读者"
+  // （导出正文 / 手工查看）看到另一只吉祥物。
+  const values = pickPresetValues();
+  if (point) values.ropeForm = point;
   try {
     const res = await gpFetch(glassPresetCreateUrl(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: trimmed, values: pickPresetValues(), id: newGlassPresetId(), embed: list }),
+      body: JSON.stringify({
+        name: trimmed, values, id: newGlassPresetId(), embed: list,
+        ...(point ? { point: { mascot: point } } : {}),
+      }),
     });
     if (!res.ok) {
       setPresetError(glassPresetFailureReason(res));
@@ -377,13 +396,16 @@ async function savePresetWithEmbeds(name, embeds) {
 /**
  * 导出链接（ADR-0011 D7）：**普通链接** —— 调用方把它交给 `<a href>` / 锚点点击导航，
  * 宿主以 `Content-Disposition: attachment` 应答。不引入 blob / showSaveFilePicker。
- * `embeds`（勾选名单）走 `assets=` 查询参数，逗号分隔。
+ * `embeds`（勾选名单）走 `assets=` 查询参数，逗号分隔；`mascotPoint`（第四态）走 `point=mascot:<形态>`
+ * —— 与 `assets=` 里的 `mascot` **互斥**（有指向时那一段没有字节可带，宿主按声明写字符串）。
  */
-function exportGlassPresetUrl(id, embeds) {
+function exportGlassPresetUrl(id, embeds, mascotPoint) {
   if (!isGlassPresetId(id)) return "";
   const list = Array.isArray(embeds) ? embeds.filter((k) => k === "font" || k === "mascot" || k === "avatar") : [];
-  const q = list.length ? "?assets=" + encodeURIComponent(list.join(",")) : "";
-  return glassPresetUrl(id) + "/export" + q;
+  const q = [];
+  if (list.length) q.push("assets=" + encodeURIComponent(list.join(",")));
+  if (ROPE_FORM_VALUES.includes(mascotPoint)) q.push("point=" + encodeURIComponent("mascot:" + mascotPoint));
+  return glassPresetUrl(id) + "/export" + (q.length ? "?" + q.join("&") : "");
 }
 
 /**
