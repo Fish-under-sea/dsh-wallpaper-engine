@@ -202,6 +202,13 @@
   **做了什么**：① 侧栏当前壁纸行的按钮组从 暂停 / 清除 扩成 **暂停 / 刷新 / 清除**（`src/quick-panel.js`）—— 与设置页「刷新」**同一个动作**（`loadInventory()`）、同一个在途态（`刷新中…` + 禁用），tooltip 写明「重新扫描 Wallpaper Engine 壁纸库（新装 / 已删除的壁纸立即出现）」；抽屉档与官方右栏档共用这一份。② 公告配图限高 38vh → **26vh**（`src/styles.js`；1080p 下约 410px → 280px，方图不再独占半屏）。③ 公告「💡 使用提示」下新增一段大字说明（`we-update-notice__callout`，**`font-size: 16pt` ≈ 21px，约正文两倍** —— pt 是绝对单位，不吃正文 0.82em 的缩放）：「❗❗❗ **侧边栏的调节只是「简略版」！**细致的调节都在「设置 → 壁纸引擎」里！」—— 夸张的只有字号与感叹号，不夸大事实。**`NOTICE_VERSION` 升 `1.3.1`**：公告内容改版而不升哨兵的话，看过 -r2 的用户永远看不到新说明（改了等于没改），故重弹一次。
   **判据**：`test/verify-i18n.mjs` 双向对账（新增 3 键：tooltip 一条 + 大字说明两句，中英同步）；`verify-about` 第⑤节 art-gate 判据原样全绿（门控结构未动）；`lib/client.js` 重建，`npm run verify` / `verify:docs` / `smoke` 全部 exit 0。浏览器实机渲染台目检：抽屉顶栏三按钮（360px 档）不折行、标题正常截断；16pt 大字与配图缩小符合预期。**纯客户端改动 ⇒ 刷新页面即可**。
 
+- **修复：原生浏览器形态下壁纸被宿主主容器盖死（页面让开只清 token，宿主新构建不再消费它；本机 Chromium 实测社区 dsh-web 0.4.5）**。
+  **现象**：壁纸在播（诊断心跳 `leaf=VIDEO … paused=0`、场景渲染器已 started）但界面全黑 —— `body` / `[*_frame]` / `[*_root]` 三层主容器 computed 背景为实心 `rgb(10,10,10)`，把 z-index:-1 的壁纸层整片盖死；控制台零报错，用户只看到「选了壁纸没反应」。
+  **根因**：既有「页面让开」只做 token 清底（`--dsw-alias-bg-base` / `--dsw-specific-sidebar-fill` 置透明），前提是宿主主容器**读**这些 token；宿主新构建的主容器自带实心底、不再消费 token ⇒ 清底落空。
+  **修法**：`src/styles.js` 在「页面让开」两条之后补一组**直接清宿主容器背景**的兜底（`body[data-we-wallpaper][data-we-adapter="browser"]` 及其 `[*_frame]` / `[*_root]` 后代，`background: transparent !important`）——与「谁读哪个 token」解耦，对宿主 token 消费链漂移免疫；仅原生浏览器形态 + 壁纸在台生效，桌面壳的窗口材质让开不动，无壁纸时页面保持宿主原色（与既有口径一致）。
+  **判据**：`test/verify-client.mjs` 新增三条（body / _frame / _root 三条选择器齐 + 双门 + `transparent !important`；删任一门的变异体命中不到选择器字面量 ⇒ 判红）。
+  **验证**：`npm run build` + `npm run verify` / `verify:docs` / `smoke` 全绿；Chromium 实机（社区 dsh-web 0.4.5，1280×720）修复前三层 computed `rgb(10,10,10)` 壁纸不可见、修复后 `rgba(0,0,0,0)` 视频壁纸完整露出（选择器强清透明为对照复现同一效果）。**纯客户端改动 ⇒ 刷新页面即可**。
+
 ### v1.3.0-r2（未发布）
 
 > v1.3.0 之后的增量（GitHub Release v1.3.0 附件发出后、npm 渠道发布前修掉的三件事）；`package.json` 版本号同步 `1.3.0-r2`。

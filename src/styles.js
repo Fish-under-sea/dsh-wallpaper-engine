@@ -343,6 +343,23 @@ const CSS = `
     --dsw-alias-bg-base: transparent;
     --dsw-specific-sidebar-fill: transparent;
   }
+  /* 兜底清底（原生浏览器形态）：上面两组「让开」只清 token（--dsw-alias-bg-base /
+     --dsw-specific-sidebar-fill），前提是宿主主容器**读**这些 token —— 宿主新构建的
+     主容器已自带实心底、不再消费它们（computed 为实心 rgb(10,10,10)）⇒ token 清底
+     落空，body 的 z-index:-1 壁纸层被整片盖死（画面在播、控制台零报错）。
+     这里直接清**宿主自身的容器类**兜底，与 token 清底互为保险：
+       · 与"谁读哪个 token"解耦 —— 对宿主 token 消费链的版本漂移免疫（同 .dshDesktopFrame
+         那条的写法：壁纸激活时一律清底，不赌宿主当前的消费实现）；
+       · 只在壁纸在台（data-we-wallpaper）且**原生浏览器形态**（data-we-adapter=browser）
+         生效 —— 桌面壳的窗口材质让开由既有规则自理，本组不参与；
+       · 无壁纸时不生效：页面保持宿主原色（与"让开只让开、不设色"的口径一致）。
+     宿主类名是 CSS-module 哈希（pI_x6G_frame 等），只能按后缀约定匹配 —— 与
+     [class*="_bubble"] / [class*="_card"] 同一套做法。 */
+  body[data-we-wallpaper][data-we-adapter="browser"],
+  body[data-we-wallpaper][data-we-adapter="browser"] [class*="_frame"],
+  body[data-we-wallpaper][data-we-adapter="browser"] [class*="_root"] {
+    background: transparent !important;
+  }
   /* 深色档的**页面玻璃**映射：与上面那块逐条同形（同一张配方表、同一组层权重），
      只有玻璃色的**缺省值**不同：深色玻璃底色是深海军蓝。 */
   body[data-ds-dark-theme][data-we-glass-page] {
