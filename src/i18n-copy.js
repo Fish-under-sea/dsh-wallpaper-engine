@@ -935,6 +935,30 @@ const WE_I18N_EN = {
   "预设的资产应用失败：{reason}": "Applying the preset's assets failed: {reason}",
   "预设字体": "Preset fonts",
   "宿主回包里没有 applied 形状": "the host response has no applied payload",
+
+  // ── 外观 → 侧边栏圆角（左右侧栏四角圆角 / 直角）────────────────────────────
+  "侧边栏圆角": "Sidebar corners",
+  "左侧栏": "Left sidebar",
+  "右侧栏": "Right sidebar",
+  "{side} · 统一圆角": "{side} - uniform radius",
+  "四角都按这个值；单独标「直角」的角覆盖它": "All four corners use this value; a corner marked Square overrides it",
+  "跟随原生": "Native",
+  "小 6px": "S 6px",
+  "中 12px": "M 12px",
+  "大 20px": "L 20px",
+  "{side} · 四角单独": "{side} - per-corner",
+  "点一下就切换：圆角（用统一值）/ 直角（0px）": "Click to toggle: Round (uses the uniform value) / Square (0px)",
+  "左上": "Top-left",
+  "右上": "Top-right",
+  "右下": "Bottom-right",
+  "左下": "Bottom-left",
+  "圆角": "Round",
+  "直角": "Square",
+  "{corner}角 {state}": "{corner} corner: {state}",
+  "{side}{corner}：{state}": "{side} {corner}: {state}",
+  "{side}统一圆角 {value}": "{side} uniform radius {value}",
+  "四角全直角": "All corners square",
+  "四角全圆角": "All corners round",
 };
 
 // ── 宿主文案（lib/** 里由客户端显示的那些原文）────────────────────────────────
@@ -970,6 +994,7 @@ const WE_I18N_HOST_EN = {
   "预设数量已达上限": "Preset limit reached",
   "已存在同名的预设（换个名字再存）": "A preset with the same name already exists (choose another name)",
   "预设数量已达上限（最多 8 个 —— 删除不需要的预设腾位）": "Preset limit reached (8 max — delete presets you no longer need to free a slot)",
+
 };
 
 export {

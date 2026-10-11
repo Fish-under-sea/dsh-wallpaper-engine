@@ -158,6 +158,28 @@ function applyGlass(selection, s) {
   if (selection.leftSidebarGlass) document.body.setAttribute("data-we-left-sidebar", "on");
   else document.body.removeAttribute("data-we-left-sidebar");
 
+  // ── 侧边栏四角圆角 / 直角（外观 → 侧边栏圆角）────────────────────────────────
+  // 与玻璃无关的一对属性 + 一个变量（CSS 见 styles.js 同名块）：左栏锚点 = 座位出口的
+  // **父元素**（出口带 display:contents、不生成盒子），右栏锚点必须带
+  // [data-sidebar-right-open]（容器收起时仍挂在布局里，裸锚会给收起态留一块板子）。
+  // 默认（统一档 'native'、四角都不直角）时**一个属性都不挂** ⇒ 规则不生效、逐字节等于今天。
+  {
+    const px = (v) => (v === "6" || v === "12" || v === "20") ? v + "px" : "";
+    const tokens = (tl, tr, br, bl) => [tl && "tl", tr && "tr", br && "br", bl && "bl"].filter(Boolean).join(" ");
+    const leftR = px(selection.leftSidebarCornerRadius);
+    const rightR = px(selection.rightSidebarCornerRadius);
+    if (leftR) { s.setProperty("--we-left-sidebar-radius", leftR); document.body.setAttribute("data-we-left-sidebar-radius", "on"); }
+    else document.body.removeAttribute("data-we-left-sidebar-radius");
+    if (rightR) { s.setProperty("--we-right-sidebar-radius", rightR); document.body.setAttribute("data-we-right-sidebar-radius", "on"); }
+    else document.body.removeAttribute("data-we-right-sidebar-radius");
+    const leftSq = tokens(selection.leftSidebarSquareTL, selection.leftSidebarSquareTR, selection.leftSidebarSquareBR, selection.leftSidebarSquareBL);
+    const rightSq = tokens(selection.rightSidebarSquareTL, selection.rightSidebarSquareTR, selection.rightSidebarSquareBR, selection.rightSidebarSquareBL);
+    if (leftSq) document.body.setAttribute("data-we-left-sidebar-square", leftSq);
+    else document.body.removeAttribute("data-we-left-sidebar-square");
+    if (rightSq) document.body.setAttribute("data-we-right-sidebar-square", rightSq);
+    else document.body.removeAttribute("data-we-right-sidebar-square");
+  }
+
   // ── 左侧栏的**按面**釉层变量 ─────────────────────────────────────────────────
   // 该面的 CSS 读 `var(--we-left-sidebar-<x>, <原全局表达式>)`（styles.js 的
   // 「左侧栏液态玻璃」规则）⇒ 这一组变量就是它的来源。

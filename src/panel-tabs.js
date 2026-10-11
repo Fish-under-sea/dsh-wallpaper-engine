@@ -944,6 +944,71 @@
     );
   }
 
+  // ── 「侧边栏圆角」节（外观页签）：左右两条侧栏各自一套 —— 统一档 + 四角单独直角 ──
+  // 统一档写 border-radius 简写，四角开关写 border-*-radius 长属性覆盖它（CSS 见 styles.js
+  // 同名块，顺序即语义）；真源 lib/settings-schema.js 的 leftSidebarCornerRadius /
+  // rightSidebarCornerRadius 与两族 Square* 键。
+  // ⚠️ 宿主原生左栏与右栏面板**都不带圆角** ⇒「圆角」要靠统一档选 6 / 12 / 20px 才看得见，
+  //    「直角」是把某一角按回 0 的覆盖档；默认「跟随原生」= 一个属性都不挂（逐字节现状）。
+  // 四角按几何排（左上 / 右上 / 右下 / 左下），与用户看到的形状同构。
+  function sidebarCornerGroup(side, sideLabel, sel, onSidebarCornerRadius, onSidebarCornerSquare, onSidebarAllCorners) {
+    const radiusLabels = { native: weT("跟随原生"), 6: weT("小 6px"), 12: weT("中 12px"), 20: weT("大 20px") };
+    const corners = [["tl", weT("左上")], ["tr", weT("右上")], ["br", weT("右下")], ["bl", weT("左下")]];
+    const radiusKey = side + "SidebarCornerRadius";
+    const isSquare = (c) => sel[side + "SidebarSquare" + c.toUpperCase()] === true;
+    return React.createElement(React.Fragment, null,
+      React.createElement("div", { className: "we-picker__ctl we-picker__ctl--wrap" },
+        ctlText(weT("{side} · 统一圆角", { side: sideLabel }), weT("四角都按这个值；单独标「直角」的角覆盖它")),
+        React.createElement("div", { className: "we-picker__seg" },
+          SIDEBAR_CORNER_RADIUS_VALUES.map((v) =>
+            React.createElement("button", {
+              key: v,
+              className: "we-picker__btn we-picker__rate" + (sel[radiusKey] === v ? " we-picker__rate--active" : ""),
+              type: "button",
+              onClick: () => onSidebarCornerRadius(side, v),
+              "aria-pressed": sel[radiusKey] === v ? "true" : "false",
+              "aria-label": weT("{side}统一圆角 {value}", { side: sideLabel, value: radiusLabels[v] }),
+            }, radiusLabels[v]),
+          ),
+        ),
+      ),
+      React.createElement("div", { className: "we-picker__ctl we-picker__ctl--wrap" },
+        ctlText(weT("{side} · 四角单独", { side: sideLabel }), weT("点一下就切换：圆角（用统一值）/ 直角（0px）")),
+        React.createElement("div", { className: "we-picker__seg" },
+          corners.map(([c, cornerLabel]) =>
+            React.createElement("button", {
+              key: c,
+              className: "we-picker__btn we-picker__rate" + (isSquare(c) ? " we-picker__rate--active" : ""),
+              type: "button",
+              onClick: () => onSidebarCornerSquare(side, c, !isSquare(c)),
+              "aria-pressed": isSquare(c) ? "true" : "false",
+              "aria-label": weT("{side}{corner}：{state}", { side: sideLabel, corner: cornerLabel, state: weT(isSquare(c) ? "直角" : "圆角") }),
+            }, weT("{corner}角 {state}", { corner: cornerLabel, state: weT(isSquare(c) ? "直角" : "圆角") })),
+          ),
+        ),
+      ),
+      React.createElement("div", { className: "we-picker__ctl we-picker__ctl--wrap" },
+        React.createElement("div", { className: "we-picker__seg" },
+          React.createElement("button", { className: "we-picker__btn", type: "button", onClick: () => onSidebarAllCorners(side, true) }, weT("四角全直角")),
+          React.createElement("button", { className: "we-picker__btn", type: "button", onClick: () => onSidebarAllCorners(side, false) }, weT("四角全圆角")),
+        ),
+      ),
+    );
+  }
+
+  function renderAppearanceSidebarCornersSection(ctx) {
+    const { onSidebarAllCorners, onSidebarCornerRadius, onSidebarCornerSquare, sel } = ctx;
+    return React.createElement(React.Fragment, null,
+      React.createElement("div", { className: "we-picker__section" },
+        React.createElement("div", { className: "we-picker__section-head" },
+          React.createElement("span", { className: "we-picker__section-label" }, weT("侧边栏圆角")),
+        ),
+        sidebarCornerGroup("left", weT("左侧栏"), sel, onSidebarCornerRadius, onSidebarCornerSquare, onSidebarAllCorners),
+        sidebarCornerGroup("right", weT("右侧栏"), sel, onSidebarCornerRadius, onSidebarCornerSquare, onSidebarAllCorners),
+      ),
+    );
+  }
+
   function renderAppearanceCaretSection(ctx) {
     const { onCaretColor, sel } = ctx;
     return React.createElement(React.Fragment, null,
@@ -982,6 +1047,7 @@
     return React.createElement(React.Fragment, null,
       renderAppearanceThemeSection(ctx),
       renderAppearanceDetailSection(ctx),
+      renderAppearanceSidebarCornersSection(ctx),
       renderAppearanceGlassSection(ctx),
       renderAppearanceFontSection(ctx),
       renderAppearanceCaretSection(ctx),

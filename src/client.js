@@ -3214,6 +3214,32 @@ function onCancelEditWeAssetsDir() {
 
 // ── 外观 / 播放 / 系统页签的处理器（同上一条：渲染器只读值 + 调这些）────────────
 function onLeftSidebarGlass(e) { setSetting("leftSidebarGlass", e.target.checked); emit(); }
+
+// ── 侧边栏四角圆角 / 直角（外观 → 侧边栏圆角）────────────────────────────────
+// 键名表**只此一份**：面板按 (side, corner) 调，批量化也读它 —— 手抄第二份必然漂。
+const SIDEBAR_CORNER_KEYS = {
+  left: { tl: "leftSidebarSquareTL", tr: "leftSidebarSquareTR", br: "leftSidebarSquareBR", bl: "leftSidebarSquareBL" },
+  right: { tl: "rightSidebarSquareTL", tr: "rightSidebarSquareTR", br: "rightSidebarSquareBR", bl: "rightSidebarSquareBL" },
+};
+const SIDEBAR_RADIUS_KEYS = { left: "leftSidebarCornerRadius", right: "rightSidebarCornerRadius" };
+/** 统一档（'native' | '6' | '12' | '20'）：写 border-radius 简写的那一半。 */
+function onSidebarCornerRadius(side, value) {
+  const key = SIDEBAR_RADIUS_KEYS[side];
+  if (key) setSetting(key, value);
+  emit();
+}
+/** 单角直角开关：true = 这一角强制 0px（覆盖统一档）。 */
+function onSidebarCornerSquare(side, corner, square) {
+  const key = SIDEBAR_CORNER_KEYS[side] && SIDEBAR_CORNER_KEYS[side][corner];
+  if (key) setSetting(key, square === true);
+  emit();
+}
+/** 批量：四角一起直角 / 一起回到统一档（只 emit 一次，别让四个键各刷一遍）。 */
+function onSidebarAllCorners(side, square) {
+  const table = SIDEBAR_CORNER_KEYS[side];
+  if (table) for (const key of Object.values(table)) setSetting(key, square === true);
+  emit();
+}
 // 标题栏液态玻璃（titlebarGlass）：与左侧栏同一形状的**乙类**总开关 —— 门控属性挂在
 // src/glass.js（本文件只翻存储键，切换不重建任何东西）。
 function onTitlebarGlass(e) { setSetting("titlebarGlass", e.target.checked); emit(); }
@@ -4701,7 +4727,7 @@ function WallpaperPicker() {
       setSetting, setTransient,
       fontSet: fontSetCtx(),
       glassPresets: glassPresetCtx(),
-      officialColorOf, onAccent, onCapsuleBlur, onCapsuleColor, onBlur, onBorder, onCaretColor, onChatGlassFidelity, onComponentFamily, onComponentFont, onFontAdvanced, onFontResetAll, onGlassAlpha, onGlassColor, onGlassDarkSeparate, onGlassFidelity, onGlobalFamily, onLeftSidebarGlass, onTitlebarGlass, onRefreshSystemFonts, onSidebarAlpha, onSidebarBlur, onSidebarColor, onSidebarContentAlpha, onSidebarContentColor, onSidebarFollowGlobal, onSidebarGlass, onSidebarFullClear, onThemeColor, onThemeColorClear, onThemeDarkSeparate, onThemeFamily, onThemeSize, onThemeTypeOnly, onThemeWeight, onThinkingMode, onToggleFontCustom, onToggleThemeFollow, sel,
+      officialColorOf, onAccent, onCapsuleBlur, onCapsuleColor, onBlur, onBorder, onCaretColor, onChatGlassFidelity, onComponentFamily, onComponentFont, onFontAdvanced, onFontResetAll, onGlassAlpha, onGlassColor, onGlassDarkSeparate, onGlassFidelity, onGlobalFamily, onLeftSidebarGlass, onTitlebarGlass, onRefreshSystemFonts, onSidebarAllCorners, onSidebarAlpha, onSidebarBlur, onSidebarColor, onSidebarContentAlpha, onSidebarContentColor, onSidebarCornerRadius, onSidebarCornerSquare, onSidebarFollowGlobal, onSidebarGlass, onSidebarFullClear, onThemeColor, onThemeColorClear, onThemeDarkSeparate, onThemeFamily, onThemeSize, onThemeTypeOnly, onThemeWeight, onThinkingMode, onToggleFontCustom, onToggleThemeFollow, sel,
       // 玻璃 UI 子项开关 + 独立配置 + 独立参数（见 onToggleChildIndependent 那段注释）
       onToggleChildIndependent, onGlassChildParam, childIndependentOn,
     });

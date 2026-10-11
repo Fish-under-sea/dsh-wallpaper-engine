@@ -545,6 +545,14 @@ function clearEffects() {
   // 令牌映射与对话栏那一族规则照旧生效（"插件已卸载，玻璃还在"）。与下面三个同批。
   document.body.removeAttribute("data-we-glass-page");
   document.body.removeAttribute("data-we-left-sidebar");
+  // 侧边栏四角圆角 / 直角（src/glass.js 的 applyGlass 写出）：同批清理 —— 漏撤 ⇒ 插件
+  // 卸载 / 禁用后宿主侧栏仍停在上次的圆角上（"插件没了，侧栏还是圆的"）。
+  document.body.removeAttribute("data-we-left-sidebar-radius");
+  document.body.removeAttribute("data-we-right-sidebar-radius");
+  document.body.removeAttribute("data-we-left-sidebar-square");
+  document.body.removeAttribute("data-we-right-sidebar-square");
+  s.removeProperty("--we-left-sidebar-radius");
+  s.removeProperty("--we-right-sidebar-radius");
   // 标题栏液态玻璃门（与上面那个同批）：漏撤 ⇒ 插件卸载 / 禁用后，顶栏仍挂着玻璃底与
   // 雾化层，而壳层自己的不透明底色被压住 —— 表现为"插件没了，标题栏还是玻璃的"。
   document.body.removeAttribute("data-we-titlebar-glass");

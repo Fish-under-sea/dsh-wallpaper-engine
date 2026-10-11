@@ -1131,6 +1131,9 @@ const CSS = `
     content: "";
     position: absolute;
     inset: 0;
+    /* 圆角继承（外观 → 侧边栏圆角）：伪元素铺满整列，不给它 inherit 的话，列被改成圆角
+       后这一层仍然方角外溢。列没有圆角时 inherit 得到 0，等于没有这条声明。 */
+    border-radius: inherit;
     z-index: -1;
     pointer-events: none;
     -webkit-backdrop-filter: blur(var(--we-left-sidebar-blur)) saturate(var(--we-saturate, 1.8)) brightness(var(--we-glass-brightness, 1.04)) contrast(1.01);
@@ -1157,6 +1160,59 @@ const CSS = `
     body[data-ds-dark-theme][data-we-glass-page][data-we-left-sidebar] div:has(> [data-slot="sidebar"]) {
       background-color: color-mix(in srgb, var(--we-surface-tint-dark, #0d1524) 92%, transparent);
     }
+  }
+
+  /* ── 侧边栏四角圆角 / 直角（外观 → 侧边栏圆角）────────────────────────────────────
+     左右两条侧栏各自一套：**统一档**（6 / 12 / 20 px）写 border-radius 简写，四角开关
+     写 border-*-radius 长属性覆盖它。设置真源见 lib/settings-schema.js 的
+     leftSidebarCornerRadius / rightSidebarCornerRadius 与两族 Square* 键；属性由
+     src/glass.js 的 applyGlass 写出。
+
+     ⚠️ **顺序即语义**：简写会一次性设置四个角 ⇒ 四角规则必须排在简写规则**之后**，
+        否则被简写覆盖（dsh-myskin 的同款教训，见其 regions.ts 的 hoistShorthand）。
+     ⚠️ 左栏锚点与「左侧栏液态玻璃」同一条：座位出口 div[data-slot="sidebar"] 带
+        display:contents、**不生成盒子**，背景 / 圆角都画不出来 ⇒ 只能 :has() 反向选父元素。
+     ⚠️ 右栏锚点**必须**带 [data-sidebar-right-open]：容器收起时仍挂在布局里（只把子元素
+        visibility:hidden），裸锚会给收起态留一块板子（#107，与右栏玻璃同一条护栏）。
+     ⚠️ 默认（统一档 = 跟随原生、四角都不直角）时 body 上没有任何属性 ⇒ 本块全部不生效，
+        逐字节等于今天。
+     ⚠️ 宿主原生左栏与右栏面板都**不带圆角**（.pI_x6G_sidebarCol 只有底色 + 右分割线；
+        右栏面板的圆角长在内部 pane 上）⇒「圆角」靠统一档给 px 值才看得见。 */
+  body[data-we-left-sidebar-radius] div:has(> [data-slot="sidebar"]) {
+    border-radius: var(--we-left-sidebar-radius) !important;
+  }
+  body[data-we-left-sidebar-square~="tl"] div:has(> [data-slot="sidebar"]) { border-top-left-radius: 0 !important; }
+  body[data-we-left-sidebar-square~="tr"] div:has(> [data-slot="sidebar"]) { border-top-right-radius: 0 !important; }
+  body[data-we-left-sidebar-square~="br"] div:has(> [data-slot="sidebar"]) { border-bottom-right-radius: 0 !important; }
+  body[data-we-left-sidebar-square~="bl"] div:has(> [data-slot="sidebar"]) { border-bottom-left-radius: 0 !important; }
+  body[data-we-right-sidebar-radius] [data-sidebar-right-panel][data-sidebar-right-open] {
+    border-radius: var(--we-right-sidebar-radius) !important;
+  }
+  body[data-we-right-sidebar-square~="tl"] [data-sidebar-right-panel][data-sidebar-right-open] { border-top-left-radius: 0 !important; }
+  body[data-we-right-sidebar-square~="tr"] [data-sidebar-right-panel][data-sidebar-right-open] { border-top-right-radius: 0 !important; }
+  body[data-we-right-sidebar-square~="br"] [data-sidebar-right-panel][data-sidebar-right-open] { border-bottom-right-radius: 0 !important; }
+  body[data-we-right-sidebar-square~="bl"] [data-sidebar-right-panel][data-sidebar-right-open] { border-bottom-left-radius: 0 !important; }
+  /* 圆角一开，右栏左边缘那条**竖直分割线**（dockkit 拖拽手柄的 ::before：0.5px 宽、
+     top:0/bottom:0 全高）就成了"圆角旁边的一道直角"（用户实测截图）。修法 = 让它跟着
+     圆角缩进：上面那个角是圆的 ⇒ 线从半径处开始；下面那个角是圆的 ⇒ 线到半径处结束；
+     对应的角标了直角 ⇒ 那条边不动（线照旧顶到边）。
+     ⚠️ **不再要求它住在面板里**（第一版按"面板内"限定，用户第二轮实测那条线仍在 ⇒ 它可能挂在
+        面板的兄弟节点上）；仍然排除 pane 内部的 split 分割线（那是别的布局，缩进它会画错）。
+     ⚠️ 手柄本体（可拖拽的命中区）不动，只是那条线变短 —— 拖拽能力一点没少。
+     ⚠️ 兜底：--we-right-sidebar-radius 与门控属性由 src/glass.js 同批写出（零兜底读取）。 */
+  body[data-we-right-sidebar-radius]:not([data-we-right-sidebar-square~="tl"]) [data-dockkit-divider]:not([data-dockkit-pane] *)::before {
+    top: var(--we-right-sidebar-radius) !important;
+  }
+  body[data-we-right-sidebar-radius]:not([data-we-right-sidebar-square~="bl"]) [data-dockkit-divider]:not([data-dockkit-pane] *)::before {
+    bottom: var(--we-right-sidebar-radius) !important;
+  }
+  /* 宿主第二处画同一条线的地方：**第一列 dock 的 tab host 上的 border-left**（0.5px、
+     颜色同 --dsw-alias-border-l4，见前端包 _tabCell_[data-dockkit-host=dock][data-dockkit-column="0"]
+     > ._tabHost_ 那条规则）。它画在那个元素**自己**的边上，不跟着面板的圆角走 ⇒ 圆角一开就是
+     一道直角。锚点用"第一列 dock 的直接子元素"这个**结构事实**：宿主给它的是 CSS-module 哈希
+     类名，不能当锚点（跨构建会漂）。 */
+  body[data-we-right-sidebar-radius] [data-sidebar-right-panel][data-sidebar-right-open] [data-dockkit-host="dock"][data-dockkit-column="0"] > * {
+    border-left: none !important;
   }
 
   /* ── 标题栏液态玻璃（壳层顶栏的玻璃接管，默认关）────────────────────────────────
