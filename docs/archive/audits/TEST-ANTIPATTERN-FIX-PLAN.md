@@ -2,7 +2,7 @@
 
 > 本文只记**尚未解决、仍有风险、需要人决定**的事：不记过程，也不重复逐条改法。
 > 106 条发现的逐条现状（每条现在守什么、牙齿如何、`file:line` 证据）见 `docs/archive/audits/TEST-ANTIPATTERN-AUDIT.md`。
-> 本文出现的 `file:line` 都在**当前工作树**上现场核对过（基线 = 上游 `93a6ca2` + 工作树里未提交的 issue #172 修复）。
+> 本文出现的 `file:line` 都在**当前工作树**上现场核对过（基线 = 上游 `93a6ca2` + issue #172 修复 `e64207d`）。
 
 ## 0. 现状一句话
 
@@ -13,7 +13,7 @@
   **M32** 重录工具入库 `test/tools/regen-golden.mjs`（写入必须先 `--intend` 声明意图）+ 夹具 `note` 与段注释按"哪一侧真被守着"改写 ·
   **F4** 只在 `docs/DEV-GUIDE.md` §4.6 写明"只印候选、何时跑、看到候选怎么处置"（**仍不加棘轮、仍不进 CI**）·
   **F5** 补了对齐判据（`test/verify-logging.mjs` 的 N7③，含 4 条负对照：`test/tools/sync-webwallgl.mjs` 的 `BASE_PATH`、产物绝对引用、宿主注册前缀三者必须一致）。
-- 守卫全绿（在**当前**工作树上重跑实测，含未提交的 issue #172 修复）：`npm run verify` exit 0（**45 个守卫** = 主链 40 + `verify:docs` 5）· `npm run verify:docs` exit 0（末尾 `ALL GUARD MAP CHECKS PASSED`）· `npm run smoke` exit 0。
+- 守卫全绿（在**当前**工作树上重跑实测，含 issue #172 修复 `e64207d`）：`npm run verify` exit 0（**45 个守卫** = 主链 40 + `verify:docs` 5）· `npm run verify:docs` exit 0（末尾 `ALL GUARD MAP CHECKS PASSED`）· `npm run smoke` exit 0。
 - 改动面：`test/`（含 `test/fixtures/settings-sanitize-golden.json`）+ 两个生成物 `docs/GUARD-MAP.md`、`docs/ROUTE-INDEX.md`
   + 文档 `docs/README.md`、`docs/en/README.md`（登记这两份审计文档）、`docs/DEV-GUIDE.md`（§4.5 / §4.7 判定与写作约定）、
   `docs/CHANGELOG.md`、`docs/en/CHANGELOG.md`（v1.3.1 段各一条）；**就审计批次而言** `src/`、`lib/`、`scripts/`、`package.json` 零改动
@@ -32,8 +32,8 @@
   - 声明类收口（5 处声明的准确性）→ `76ccd0f` → 推送 `fork/main`；fork run **38028172020** 两条腿全 success。
   - 两者合为一个 PR **#170**，已被上游 **MERGED**（2026-10-10T20:47:30Z）⇒ 这两份文档描述的成果现在就在 `origin/main` 上。
     本地 `main` 已快进到上游 **`93a6ca2`**，本文件的所有 `file:line` 与次数都在**这条基线**上重新核对过。
-  - **当前工作树里未提交的是另一个批次**：issue #172 的修复 —— `lib/faststart.js`、`lib/index.js`、`test/verify-mp4-vfs.mjs`、
-    `docs/CHANGELOG.md`、`docs/en/CHANGELOG.md`、`docs/ROUTE-INDEX.md`（6 项，HEAD 仍是 `93a6ca2`）。它替上游补上了「≤ v1.3.1 的
+  - **本分支另带一个批次**：issue #172 的修复 —— `lib/faststart.js`、`lib/index.js`、`test/verify-mp4-vfs.mjs`、
+    `docs/CHANGELOG.md`、`docs/en/CHANGELOG.md`、`docs/ROUTE-INDEX.md`（6 项，提交 `e64207d`，已推送 `fork/main`；fork CI run **38120644633** 双平台 11 步全 success）。它替上游补上了「≤ v1.3.1 的
     faststart 副本写在数据目录、搬过缓存根的用户那几 GB 永远搁浅」这个洞（`lib/faststart.js` 的清扫改扫两个根 + 3 条新判据）。
     审计批次自身仍然只动 `test/` 与 `docs/`；`lib/client.js` 与 HEAD 逐字节一致（`npm run build` 幂等，`git diff --exit-code -- lib/client.js` = 0）。
     另外，**这两份审计文档本身**（本文件与 `TEST-ANTIPATTERN-AUDIT.md`）也会因为本次回填/行号核对而出现在 `git status` 里 —— 它们属审计产物，不算上面那个批次。
@@ -76,11 +76,13 @@
 - **结构性问题**：`compat-harness-*` 与 e2e **都不在** `npm run verify` 的主链上，`.github/workflows/harness-compat.yml` 又只有
   `workflow_dispatch` 触发 ⇒ 这一族守卫**默认不随改动跑**，动到它们时必须手动跑一次。
 
-### 1.3 M16：那条契约现在只有正判据
+### 1.3 M16：那条契约现在有正判据 + 负对照（已补）
 
-- 「每个 `kind` 在调用点恰好出现一次」这条契约只有正判据（`test/verify-logging.mjs:159` 起）撑着，没有配套的负对照。
-- 风险：计数口径或抽取器哪天退化，不会有守卫报警。
-- 建议：若要加固，补一条喂**变异调用点文本**、走同一个计数判据的负对照，而不是再回测一遍抽取器。
+- 「每个 `kind` 在调用点恰好出现一次」这条契约原先只有正判据（`test/verify-logging.mjs` 的 N3 段），没有配套的负对照；
+  风险是计数口径或抽取器哪天退化，不会有守卫报警。
+- **已补**：计数提成纯函数 `kindCounts(kinds, sources)`，正判据与负对照**走同一个函数**；负对照拿扫描面里**第一个真调用点**做两种
+  变异 —— 复制一份（该 kind 出现两次）、抹掉一份（出现零次）—— 两种都必须被判出；并带地板：扫描面里真有调用点、且它在真树上的
+  计数就是 1（正是这条契约要求的好形态），否则"没有东西可变异"会让对照恒真。
 
 ### 1.4 设置夹具是"漂移棘轮"，不是正确性判据
 
@@ -90,12 +92,13 @@
 - 重录工具已入库：`test/tools/regen-golden.mjs`（默认只报告；`--write --intend <host|client>:<键>` 才写入，除声明键外的漂移会被
   **拒绝写入**，且脚本不碰 `note`）⇒ 旧口径"重生成脚本不在仓库里、只能人工比对 diff"已作废。
 - **只有 host 侧的「值」被棘轮住**：`test/verify-client.mjs` 的 golden 段逐用例比对 `sanitizeFromSchema(input, 'host')`。
-  夹具里 `client` 侧的值**没有任何判据比对**（④ 在活值上钉 client == host、⑥ 只用键集）⇒ **client 侧现在就有 3 个键与当前实现不一致**
-  （`layerPositionX` / `layerPositionY` / `layerScale`，18/18 用例）而 `npm run verify` 全绿；工具会把它当提示报出来。
+  夹具里 `client` 侧的值**没有任何判据比对**（④ 在活值上钉 client == host、⑥ 只用键集）⇒ **client 侧曾有 3 个键与当前实现不一致**
+  （`layerPositionX` / `layerPositionY` / `layerScale`，18/18 用例）而 `npm run verify` 全绿；工具只会把它当提示报出来（**本轮已收口**：按现算值重录这三个键 —— `node test/tools/regen-golden.mjs --write --intend client:layerPositionX,layerPositionY,layerScale` —— 写入后工具报两侧零漂移，`note` 未被动过）。
 - 键的**存在性**由 `test/verify-glass-surfaces.mjs` 的 ⑥ 键集快照管，但它比的是**夹具自身逐用例的自洽** ⇒ 某个用例漏补键会红，
   **一个键在所有用例里都没补则抓不到**（那一类只有重录工具报）。
-- 需要决定（可选）：是否把 ⑥ 升级成"活值联合键集 ⊆ 夹具联合键集"的对账（会当场暴露 client 侧那 3 键陈旧 ⇒ 要么重录、要么显式豁免）；
-  或按每个键的**设计意图**把 client 侧也重录一遍。
+- 仍然可选（本次**未做**）：是否把 ⑥ 升级成"活值联合键集 ⊆ 夹具联合键集"的对账（会当场暴露 client 侧那 3 键陈旧 ⇒ 要么重录、要么显式豁免）；
+  或按每个键的**设计意图**把 client 侧也重录一遍 —— **本轮按"以现算值为准"重录了那 3 个键**；若日后要给 ⑥ 加"活值联合键集 ⊆ 夹具联合键集"的对账，
+  那层能补上 ⑥ 唯一的盲区（某个键在所有用例里都漏），届时这 3 键再陈旧会当场变红，而不是只落在提示里。
 
 ### 1.5 记账口径
 
@@ -117,15 +120,18 @@
 ## 2. 需要你决定 / 环境限制
 
 1. **是否提交**：审计本体与声明类收口**都已提交并推送**（`62a5dfc`、`76ccd0f` → `fork/main`），并已随 PR **#170** 合入上游；
-   当前工作树里未提交的 **6 项**是 issue #172 的修复（见 §0 的提交状态），**与本审计无关** —— 要不要提交由你定。
+   issue #172 的修复也已提交并推送（`e64207d` → `fork/main`，fork CI run **38120644633** 双平台全绿）—— 它与本审计无关，现作为一个独立 PR 提给上游。
 2. ~~是否补 `docs/CHANGELOG.md` 条目~~ **已补**：`docs/CHANGELOG.md` 与 `docs/en/CHANGELOG.md` 的 `### v1.3.1（未发布）` / `### v1.3.1 (unreleased)`
    段各加一条（测试框架反模式审计与加固），并已按"改动一处同步另一处"的口径对齐；两份审计文档也已登记进 `docs/README.md` 与 `docs/en/README.md`。
 3. **本机跑不了 CI 的一步**：`npm run verify:bridge` 在本沙箱恒 exit 1（`spawn EPERM`，见 §1.2）；GitHub runner 上**已实测通过**（fork 的 run 38026813312 第 7 步 success）。
 4. **删不掉的临时产物**（都在真实 `%TEMP%`、不在仓库内；`Remove-Item` / `unlinkSync` 均 EPERM）：
    `dsh-body.mjs`、`dsh-find-bad.mjs`、`dsh-pristine-check\`、`x1-harness-probe\` ⇒ 需要有权限的会话代删。
 5. **仓库内已清理**：`test/.tmp*` 计数 0，本地 CI 日志 `ci-local.log` 已删，无遗留探针。
-6. **夹具 `client` 侧的值**：现在有 3 个键与当前实现不一致，但**不影响任何守卫的红绿**（只有重录工具会提示，见 §1.4）。
-   要么接受"提示"，要么重录 client 侧；若给 ⑥ 加"活值联合键集 ⊆ 夹具联合键集"的对账，`npm run verify` 会**立刻红** —— 需要你决定取向。
+6. ~~夹具 `client` 侧的值~~ **已收口**：`client` 侧原先缺 `layerPositionX` / `layerPositionY` / `layerScale` 三个键（18/18 用例），
+   已按现算值重录（见 §1.4），工具现在两侧零漂移。**这一层仍然只证明"没有无理由地变化"，不证明取值正确** —— 值该不该是这些，
+   仍要看 `lib/settings-schema.js` 的 `DEFAULTS` / `KINDS` 与各键的设计意图。
+7. **仍未做（可选）**：给 `test/verify-glass-surfaces.mjs` 的 ⑥ 加"活值联合键集 ⊆ 夹具联合键集"的对账（补上"某个键在所有用例里都漏"这个盲区）；
+   以及 §1.6 说的**上游新增测试面 rubric 复审**（`test/verify-presets.mjs` 等，建议等 PR #174 合入后连同行号一起做）。
 
 ---
 
@@ -137,10 +143,10 @@ npm run verify:docs                  # 期望 exit 0，末尾 ALL GUARD MAP CHEC
 npm run smoke                        # 期望 exit 0
 npm run build                        # 期望 exit 0；跑完 lib/client.js 内容仍与 HEAD 一致（只是 stat 变新）
 npm run verify:bridge                # 本机期望 exit 1（spawn EPERM）—— 环境缺口，不是回归
-git status --short                   # 期望：只有 issue #172 的 6 项（见 §0）+ 这两份审计文档（若刚回填过）
+git status --short                   # 期望：干净（0 行；本批改动都已提交）
 node test/verify-media-bridge.mjs    # 本机期望 exit 1（缺中间件产物）—— 环境缺口，不是回归
 node test/verify-mp4-vfs.mjs         # 期望 exit 0（47 条；含 issue #172 那个修复的 D3/D4/D5）
 node test/verify-fontset.mjs         # 期望 ALL FONTSET CHECKS PASSED (157)
-node test/verify-logging.mjs         # 期望 exit 0；含 N7③ 的 rig/产物/宿主前缀对齐判据与 4 条负对照
-node test/tools/regen-golden.mjs     # 期望 exit 0；会报 client 侧 3 个键漂移（提示，不影响红绿，见 §1.4）
+node test/verify-logging.mjs         # 期望 exit 0；含 N7③ 的 rig/产物/宿主前缀对齐判据（4 条负对照）与 N3 的变异负对照
+node test/tools/regen-golden.mjs     # 期望 exit 0 且两侧零漂移（client 侧 3 键已按现算值重录，见 §1.4）
 ```
