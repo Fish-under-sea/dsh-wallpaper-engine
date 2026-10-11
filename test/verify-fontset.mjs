@@ -1049,6 +1049,11 @@ section('⑧ 面板渲染回归（配色区在总开关打开时必须渲染得�
     // 同理（wip §10.13）：「玻璃 UI」节的渲染器已抽到 `src/glass-panel.js`，
     // `panel-tabs.js` 里对它的调用只在**打包后**同作用域 ⇒ 这里也要映成全局。
     await import(pathToFileURL(join(root, 'src', 'glass-panel.js')).href),
+    // 同理（2026-10-11）：节头构件抽到了 `src/section-head.js`（三节在侧边栏默认收敛那一刀）。
+    // ⚠️ 必须给**真实现**，不能靠上面那个"自动补 noop"的循环 —— 它在 client.js 里已找不到
+    // `sectionHead`（搬走了），而就算找到、补成 noop 也会让**每个节头变成 `null`**：
+    // 本段判的是"渲染得出"，节头全丢照样"渲染得出" ⇒ 判据静默空转。
+    await import(pathToFileURL(join(root, 'src', 'section-head.js')).href),
     // 面板还会调 `filterUsableSystemFonts(...)`（本机字体那道"本浏览器能否匹配"的筛，同一条理由）。
     await import(pathToFileURL(join(root, 'src', 'system-fonts.js')).href),
     schema,
@@ -1211,12 +1216,17 @@ section('⑧ 面板渲染回归（配色区在总开关打开时必须渲染得�
   const setText = treeText(pickSurface(panelSel(), 'settings'));
   // ⚠️ 侧栏档的「全局字体」**节头**始终在（折叠只收内容、不收节 —— 收起时它就是"展开入口"）。
   //    所以这里判的是节**集合**；"收起时内容不进树"由上面 panelSideCtx 的展开态判据负对照。
-  check('设置页档不画「全局字体」一节（2026-10-09 真迁移；主题 / 细节 / 玻璃 UI / 输入光标照旧）',
-    !setText.includes('全局字体') && setText.includes('主题') && setText.includes('细节')
-      && setText.includes('玻璃 UI') && setText.includes('输入光标')
+  //    ⚠️ 节集合随 2026-10-11 的两次改动作了两处更新：① 字体节**两档都画**（三次修订）；
+  //       ② 原「输入光标」节**整节撤销**、其唯一一行并入新节「全局 UI 配色」（它同时在
+  //       「全局字体」之上）。两档的节集合因此都是：主题 / 细节 / 侧边栏圆角 / 玻璃 UI /
+  //       全局 UI 配色 / 全局字体。
+  const SECTIONS_BOTH = ['主题', '细节', '玻璃 UI', '全局 UI 配色', '全局字体'];
+  check('设置页档的节集合与侧栏档一致（字体节与新配色节两档都画；「输入光标」节已撤销）',
+    SECTIONS_BOTH.every((s) => setText.includes(s)) && !setText.includes('输入光标')
       && !setText.includes('窗口与侧栏'));
-  check('负对照：侧栏档「全局字体」必须在（节头 —— 证明上一条不是空转）',
-    sideText.includes('全局字体') && sideText.includes('输入光标') && !sideText.includes('窗口与侧栏'));
+  check('两档节集合逐项相同（同一批渲染器、只由 surface 门决定差异）',
+    SECTIONS_BOTH.every((s) => sideText.includes(s)) && !sideText.includes('输入光标')
+      && !sideText.includes('窗口与侧栏'));
 
   // 播放页（renderEffectsTab）同理：侧栏档少画「准备与诊断」那一组。
   // 本 harness 里 ctlText / SliderRow / switchRow 是 noop ⇒ 只有**直接 createElement 出来的

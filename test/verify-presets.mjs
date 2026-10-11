@@ -1172,7 +1172,13 @@ section('④ 客户端形态棘轮：新编排链（合并→落盘→reapplyAll
       handlers.length + ' 个');
     const clientAll = stripComments(readFileSync(join(root, 'src', 'client.js'), 'utf8'));
     const qpAll = stripComments(readFileSync(join(root, 'src', 'quick-panel.js'), 'utf8'));
-    const SIDEBAR_ONLY = ['onToggleGlassDetail'];
+    // 侧栏专属处理器（设置页 ctx 里**故意**没有）：设置页那一档不需要它们，硬塞一个死处理器
+    // 反而会把"这一档根本不会调它"这件事藏起来。
+    //   · `onToggleGlassDetail` —— 「详细玻璃调节」子门（只有侧栏有折叠块）；
+    //   · `onToggleGlassUiSection` —— 「玻璃 UI」**整节**折叠门（2026-10-11：只在侧边栏收敛）；
+    //   · 同批的 `onToggleDetailSection` / `onToggleCornersSection` 是另外两节的整节门，
+    //     同样只在侧栏（那两节的渲染器在 panel-tabs.js，不在这段扫描范围里）。
+    const SIDEBAR_ONLY = ['onToggleGlassDetail', 'onToggleGlassUiSection'];
     const missingClient = handlers.filter((h) => !SIDEBAR_ONLY.includes(h)
       && !new RegExp('\\b' + h + '\\b').test(clientAll));
     const missingQp = handlers.filter((h) => !new RegExp('\\b' + h + '\\b').test(qpAll));

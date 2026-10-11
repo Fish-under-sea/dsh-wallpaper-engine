@@ -359,6 +359,18 @@ function applyEffects(opts) {
   //   用户配色后，主题静态墨色不再保证可读（浅色配色 × 浅色主题墨 = 白底黄钮）。
   //   .we-picker__btn--primary 与整窗映射消费它。
   s.setProperty("--we-accent-ink", weAccentInk(selection.accent));
+  // ── 全局 UI 配色（2026-10-11 用户口径）：把宿主界面里那几处「蓝色元素」接进调色板 ──
+  // 空串 = 跟随「全局配色」（accent）⇒ 打开「UI 配色自定义」那一刻观感零变化，随后逐项微调。
+  // ⚠️ 这五个变量**恒定义**（不随总开关消失）：关着自定义时这几处照样跟 accent —— 用户口径
+  //    是「全局配色用于直接调整全部」。总开关只决定**面板显示哪几行**与「全局配色」可否点击。
+  // 令牌 → 宿主消费者的实证（DSH 产物 CSS，不是推断）见 lib/settings-schema.js 的 DEFAULTS
+  // 注释与 src/styles.js 的「全局 UI 配色」段。
+  const uiColor = (key) => selection[key] || selection.accent;
+  s.setProperty("--we-ui-send", uiColor("uiColorSend"));
+  s.setProperty("--we-ui-link", uiColor("uiColorLink"));
+  s.setProperty("--we-ui-file-icon", uiColor("uiColorFileIcon"));
+  s.setProperty("--we-ui-tab", uiColor("uiColorTab"));
+  s.setProperty("--we-ui-deep-diving", uiColor("uiColorDeepDiving"));
   // - --we-glass-alpha: white-overlay alpha of the glass surfaces. The 玻璃透明
   //   度 slider semantics: higher = MORE transparent (clearer wallpaper shows
   //   through), lower = closer to solid. 0% → ~0.25 (frosted, solid-ish),
@@ -534,6 +546,12 @@ function clearEffects() {
   s.removeProperty("--we-accent");
   s.removeProperty("--we-accent-src");
   s.removeProperty("--we-accent-ink");
+  // 全局 UI 配色（与上面那组写入成对）：卸载 / 禁用后 DOM 上不留变量。
+  s.removeProperty("--we-ui-send");
+  s.removeProperty("--we-ui-link");
+  s.removeProperty("--we-ui-file-icon");
+  s.removeProperty("--we-ui-tab");
+  s.removeProperty("--we-ui-deep-diving");
   s.removeProperty("--we-glass-alpha");
   s.removeProperty("--we-glass-color");
   s.removeProperty("--we-surface-tint-light");

@@ -146,7 +146,13 @@
         "rightSidebarSquareBL": false,
         "layerPositionX": 50,
         "layerPositionY": 50,
-        "layerScale": 100
+        "layerScale": 100,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       },
       "host": {
         "id": "",
@@ -284,7 +290,13 @@
         "rightSidebarSquareTL": false,
         "rightSidebarSquareTR": true,
         "rightSidebarSquareBR": true,
-        "rightSidebarSquareBL": false
+        "rightSidebarSquareBL": false,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       }
     },
     {
@@ -440,7 +452,13 @@
         "rightSidebarSquareBL": false,
         "layerPositionX": 50,
         "layerPositionY": 50,
-        "layerScale": 100
+        "layerScale": 100,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       },
       "host": "__null__"
     },
@@ -597,7 +615,13 @@
         "rightSidebarSquareBL": false,
         "layerPositionX": 50,
         "layerPositionY": 50,
-        "layerScale": 100
+        "layerScale": 100,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       },
       "host": "__null__"
     },
@@ -754,7 +778,13 @@
         "rightSidebarSquareBL": false,
         "layerPositionX": 50,
         "layerPositionY": 50,
-        "layerScale": 100
+        "layerScale": 100,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       },
       "host": "__null__"
     },
@@ -903,7 +933,13 @@
         "rightSidebarSquareBL": false,
         "layerPositionX": 50,
         "layerPositionY": 50,
-        "layerScale": 100
+        "layerScale": 100,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       },
       "host": {
         "id": "",
@@ -1041,7 +1077,13 @@
         "rightSidebarSquareTL": false,
         "rightSidebarSquareTR": true,
         "rightSidebarSquareBR": true,
-        "rightSidebarSquareBL": false
+        "rightSidebarSquareBL": false,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       }
     },
     {
@@ -1246,7 +1288,13 @@
         "rightSidebarSquareBL": false,
         "layerPositionX": 50,
         "layerPositionY": 50,
-        "layerScale": 100
+        "layerScale": 100,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       },
       "host": {
         "id": "",
@@ -1384,7 +1432,13 @@
         "rightSidebarSquareTL": false,
         "rightSidebarSquareTR": true,
         "rightSidebarSquareBR": true,
-        "rightSidebarSquareBL": false
+        "rightSidebarSquareBL": false,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       }
     },
     {
@@ -1634,7 +1688,13 @@
         "rightSidebarSquareBL": false,
         "layerPositionX": 50,
         "layerPositionY": 50,
-        "layerScale": 100
+        "layerScale": 100,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       },
       "host": {
         "id": "",
@@ -1772,7 +1832,13 @@
         "rightSidebarSquareTL": false,
         "rightSidebarSquareTR": true,
         "rightSidebarSquareBR": true,
-        "rightSidebarSquareBL": false
+        "rightSidebarSquareBL": false,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       }
     },
     {
@@ -1921,7 +1987,13 @@
         "rightSidebarSquareBL": false,
         "layerPositionX": 50,
         "layerPositionY": 50,
-        "layerScale": 100
+        "layerScale": 100,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       },
       "host": {
         "id": "",
@@ -2059,7 +2131,13 @@
         "rightSidebarSquareTL": false,
         "rightSidebarSquareTR": true,
         "rightSidebarSquareBR": true,
-        "rightSidebarSquareBL": false
+        "rightSidebarSquareBL": false,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       }
     },
     {
@@ -2222,7 +2300,13 @@
         "rightSidebarSquareBL": false,
         "layerPositionX": 50,
         "layerPositionY": 50,
-        "layerScale": 100
+        "layerScale": 100,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       },
       "host": {
         "id": "",
@@ -2360,7 +2444,13 @@
         "rightSidebarSquareTL": false,
         "rightSidebarSquareTR": true,
         "rightSidebarSquareBR": true,
-        "rightSidebarSquareBL": false
+        "rightSidebarSquareBL": false,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       }
     },
     {
@@ -2523,7 +2613,13 @@
         "rightSidebarSquareBL": false,
         "layerPositionX": 50,
         "layerPositionY": 50,
-        "layerScale": 100
+        "layerScale": 100,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       },
       "host": {
         "id": "",
@@ -2661,7 +2757,13 @@
         "rightSidebarSquareTL": false,
         "rightSidebarSquareTR": true,
         "rightSidebarSquareBR": true,
-        "rightSidebarSquareBL": false
+        "rightSidebarSquareBL": false,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       }
     },
     {
@@ -2811,7 +2913,13 @@
         "rightSidebarSquareBL": false,
         "layerPositionX": 50,
         "layerPositionY": 50,
-        "layerScale": 100
+        "layerScale": 100,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       },
       "host": {
         "id": "",
@@ -2949,7 +3057,13 @@
         "rightSidebarSquareTL": false,
         "rightSidebarSquareTR": true,
         "rightSidebarSquareBR": true,
-        "rightSidebarSquareBL": false
+        "rightSidebarSquareBL": false,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       }
     },
     {
@@ -3104,7 +3218,13 @@
         "rightSidebarSquareBL": false,
         "layerPositionX": 50,
         "layerPositionY": 50,
-        "layerScale": 100
+        "layerScale": 100,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       },
       "host": {
         "id": "",
@@ -3242,7 +3362,13 @@
         "rightSidebarSquareTL": false,
         "rightSidebarSquareTR": true,
         "rightSidebarSquareBR": true,
-        "rightSidebarSquareBL": false
+        "rightSidebarSquareBL": false,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       }
     },
     {
@@ -3394,7 +3520,13 @@
         "rightSidebarSquareBL": false,
         "layerPositionX": 50,
         "layerPositionY": 50,
-        "layerScale": 100
+        "layerScale": 100,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       },
       "host": {
         "id": "",
@@ -3532,7 +3664,13 @@
         "rightSidebarSquareTL": false,
         "rightSidebarSquareTR": true,
         "rightSidebarSquareBR": true,
-        "rightSidebarSquareBL": false
+        "rightSidebarSquareBL": false,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       }
     },
     {
@@ -3691,7 +3829,13 @@
         "rightSidebarSquareBL": false,
         "layerPositionX": 50,
         "layerPositionY": 50,
-        "layerScale": 100
+        "layerScale": 100,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       },
       "host": {
         "id": "",
@@ -3829,7 +3973,13 @@
         "rightSidebarSquareTL": false,
         "rightSidebarSquareTR": true,
         "rightSidebarSquareBR": true,
-        "rightSidebarSquareBL": false
+        "rightSidebarSquareBL": false,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       }
     },
     {
@@ -4052,7 +4202,13 @@
         "rightSidebarSquareBL": false,
         "layerPositionX": 50,
         "layerPositionY": 50,
-        "layerScale": 100
+        "layerScale": 100,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       },
       "host": {
         "id": "",
@@ -4214,7 +4370,13 @@
         "rightSidebarSquareTL": false,
         "rightSidebarSquareTR": true,
         "rightSidebarSquareBR": true,
-        "rightSidebarSquareBL": false
+        "rightSidebarSquareBL": false,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       }
     },
     {
@@ -4362,7 +4524,13 @@
         "rightSidebarSquareBL": false,
         "layerPositionX": 50,
         "layerPositionY": 50,
-        "layerScale": 100
+        "layerScale": 100,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       },
       "host": {
         "id": "",
@@ -4500,7 +4668,13 @@
         "rightSidebarSquareTL": false,
         "rightSidebarSquareTR": true,
         "rightSidebarSquareBR": true,
-        "rightSidebarSquareBL": false
+        "rightSidebarSquareBL": false,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       }
     },
     {
@@ -4648,7 +4822,13 @@
         "rightSidebarSquareBL": false,
         "layerPositionX": 50,
         "layerPositionY": 50,
-        "layerScale": 100
+        "layerScale": 100,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       },
       "host": {
         "id": "wallpaper-42",
@@ -4786,7 +4966,13 @@
         "rightSidebarSquareTL": false,
         "rightSidebarSquareTR": true,
         "rightSidebarSquareBR": true,
-        "rightSidebarSquareBL": false
+        "rightSidebarSquareBL": false,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       }
     },
     {
@@ -4935,7 +5121,13 @@
         "rightSidebarSquareBL": false,
         "layerPositionX": 50,
         "layerPositionY": 50,
-        "layerScale": 100
+        "layerScale": 100,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       },
       "host": {
         "id": "",
@@ -5073,7 +5265,13 @@
         "rightSidebarSquareTL": false,
         "rightSidebarSquareTR": true,
         "rightSidebarSquareBR": true,
-        "rightSidebarSquareBL": false
+        "rightSidebarSquareBL": false,
+        "uiColorCustom": false,
+        "uiColorSend": "",
+        "uiColorLink": "",
+        "uiColorFileIcon": "",
+        "uiColorTab": "",
+        "uiColorDeepDiving": ""
       }
     }
   ]

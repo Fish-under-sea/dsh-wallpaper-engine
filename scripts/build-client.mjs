@@ -160,6 +160,16 @@ const INLINE_MODULES = [
     markers: ['function deleteLabel(row)', 'function renderFontSetEditor(ctx)'],
   },
   {
+    // 面板各节的统一节头构件（2026-10-11 二次修订：**两档都支持隐藏**）。
+    // ⚠️ 必须排在 `src/glass-panel.js` 与 `src/panel-tabs.js` **之前**：那两个模块都按名字
+    //    直接调它（内联后同作用域）。虽然函数声明有提升、顺序其实不致命，但排在调用方前面
+    //    才读得出依赖方向 —— 与 `we-base.js` 排最前是同一条理由。
+    file: 'src/section-head.js',
+    why: '节头构件（可折叠）：panel-tabs 与 glass-panel 共用的那一份，抽出来是为了让挂载台能 import 真实现',
+    markers: ['function sectionHead(label, open, onToggle) {',
+      'className: "we-picker__section-head we-picker__section-head--toggle"'],
+  },
+  {
     // 「玻璃 UI」节的渲染器（wip §10.13）：与其余页签只共享**模块级纯助手**，
     // 所以抽出去不需要 ctx 传参样板。
     file: 'src/glass-panel.js',

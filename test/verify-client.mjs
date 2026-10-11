@@ -682,6 +682,17 @@ setTimeout(async () => {
       localStorage.setItem('dsh-wallpaper-engine:qp-tab', 'appearance');
       localStorage.setItem('dsh-wallpaper-engine:qp-font-open', '1');
       localStorage.setItem('dsh-wallpaper-engine:qp-glass-detail', '1');
+      // 「全局 UI 配色」节（2026-10-11）：第三个折叠块，默认收起 ⇒ 侧栏台也播种展开，
+      // 否则它的色板不进树、那几条断言会空转（"判据空转"比红更糟）。
+      localStorage.setItem('dsh-wallpaper-engine:qp-ui-color-open', '1');
+      // ── 「细节 / 玻璃 UI / 侧边栏圆角」三节整节折叠（2026-10-11「在侧边栏默认收敛」）──
+      //    同一条口径：这三节**默认收起** ⇒ 侧栏台播种展开，让**下面那批"能调到 X"的老断言
+      //    继续在等价前提（展开态）下测它们本来要测的东西（控件在不在、接线通不通）。
+      //    ⚠️ 别把老断言删掉或改成"判不在" —— 那会把"控件坏了"和"默认收起了"混成同一件事；
+      //    新行为（默认收起 / 点节头能展开 / 设置页不受影响）由本文件末尾那一组**新判据**承担。
+      localStorage.setItem('dsh-wallpaper-engine:qp-detail-open', '1');
+      localStorage.setItem('dsh-wallpaper-engine:qp-glass-ui-open', '1');
+      localStorage.setItem('dsh-wallpaper-engine:qp-corners-open', '1');
       const i = registrations.findIndex((r) => r.key === 'sidebar.right.pane.tab');
       assert.ok(i >= 0 && i < pickerRenders.length,
         '侧栏 body 必须已注册（installSidebarRight 真跑 —— ctx.get 桩缺了先红这里）');
@@ -1265,7 +1276,41 @@ setTimeout(async () => {
     tree = renderPicker();
     treeText = JSON.stringify(tree);
     assert.ok(treeText.includes('"we-tabs__tab we-tabs__tab--active"'), 'appearance tab active:');
-    assert.equal((treeText.match(/"aria-label":"配色 /g) || []).length, 6, '配色预设应有 6 个色板');
+    // ── 「全局 UI 配色」节（2026-10-11 用户口径）：配色**迁出「主题」节**、成为独立大项。
+    //    ⚠️ 2026-10-11 **二次修订**：设置页改为一律**默认展开**（用户口径「设置页则是全部
+    //    开启但也支持隐藏」）⇒ 这里不再"播种展开"，而是**直接判默认就是展开的**：
+    //    没表过态的用户打开设置页就该看见色板（这正是"全部开启"的字面含义）。
+    assert.ok(treeText.includes('全局 UI 配色'),
+      '设置页外观必须画「全局 UI 配色」节头');
+    assert.equal((treeText.match(/"aria-label":"全局配色 /g) || []).length, 6,
+      '设置页默认展开 ⇒ 「全局配色」6 个色板必须直接进树（不必先播种）');
+    // 展开态由**节头自身的 aria-expanded** 承载（折叠门是"点得动"的构件，不是隐藏开关）。
+    assert.ok(/"aria-expanded":"true"[^}]*\}[^]{0,400}?全局 UI 配色/.test(treeText)
+      || /全局 UI 配色[\s\S]{0,400}?"aria-expanded":"true"/.test(treeText),
+      '「全局 UI 配色」节头必须报 aria-expanded=true（默认展开）');
+    // 原「输入光标」节已撤销，它唯一那行（光标颜色）并入本节 ⇒ 仍在、仍可调。
+    // ⚠️ 两个细节：① 正则以 `#hex` 收尾 —— 这一行还有个「自动」按钮（aria-label
+    //    「光标颜色 自动」），只写前缀会把它一起数进来；② 必须带 `i` —— 色板里有大写
+    //    十六进制（#67DCE7 / #DD8FAC / #F1717F），不区分大小写才数得全 6 个。
+    assert.equal((treeText.match(/"aria-label":"光标颜色 #[0-9a-f]{6}"/gi) || []).length, 6,
+      '光标颜色预设应有 6 个色板（原「输入光标」节的内容并入本节点亮）');
+    assert.ok(treeText.includes('"aria-label":"光标颜色 自动"'),
+      '光标颜色的「自动」键仍在（= 跟随 dsh 原生，并入后不该消失）');
+    assert.ok(treeText.includes('输入框光标看不清时换个颜色（与上面的总开关无关，始终可调）'),
+      '光标颜色仍在（并入后不该消失）');
+    // ── 反向：显式收起过（localStorage 里是 "0"）⇒ 必须尊重用户选择，色板不进树 ──
+    //    ⚠️ 这条是"改默认值不许覆盖用户选择"的唯一防线：存储语义必须是"只在用户真的点过时
+    //    才写值；读到 0 一定是主动收起"。缺了它，改默认值会把所有老用户的选择悄悄抹掉。
+    localStorage.setItem('dsh-wallpaper-engine:picker-ui-color-open', '0');
+    tree = renderPicker();
+    treeText = JSON.stringify(tree);
+    assert.equal((treeText.match(/"aria-label":"全局配色 /g) || []).length, 0,
+      '★ 用户显式收起过（存的是 "0"）⇒ 色板不许进树（默认值不得覆盖用户选择）');
+    assert.ok(treeText.includes('全局 UI 配色'),
+      '收起态下节头仍必须在（它是重新展开的唯一入口）');
+    localStorage.removeItem('dsh-wallpaper-engine:picker-ui-color-open');
+    tree = renderPicker();
+    treeText = JSON.stringify(tree);
     assert.equal((treeText.match(/"aria-label":"玻璃颜色 /g) || []).length, 6, '玻璃颜色预设应有 6 个色板');
     assert.ok(treeText.includes('自定义玻璃颜色'), 'glass color custom input present:');
     assert.ok(treeText.includes('type":"color"'), 'custom color input present:');
@@ -1331,14 +1376,21 @@ setTimeout(async () => {
     const followSwitch = findCtlInput(tree, '侧栏玻璃跟随全局');
     assert.ok(followSwitch, 'follow-global switch present:');
     assert.equal(bodyEl.attributes['data-we-sidebar-follow'], 'on', '默认跟随 ⇒ body 上有跟随属性');
-    // ── 迁移负断言（真迁移的"设置页那一侧"）：高级行与字体节搬进侧栏折叠块后，设置页
-    //    一个都不许再画 —— 两个方向都钉：这里判"设置页没有"，renderSidePane 那侧判"侧栏有"。 ──
+    // ── 迁移负断言（真迁移的"设置页那一侧"）：**玻璃**高级行搬进侧栏折叠块后，设置页
+    //    一个都不许再画 —— 两个方向都钉：这里判"设置页没有"，renderSidePane 那侧判"侧栏有"。
+    //    ⚠️ **字体节是例外**（2026-10-11 三次修订，用户口径"两边都有"）：它在设置页也在。
+    //    2026-10-11 **二次修订**后设置页**默认展开** ⇒ 「字体自定义」开关直接进树；
+    //    "它是一道折叠门（可收起）"这件事由下面的 aria-expanded 与翻转用例承担，
+    //    不再靠"默认收起所以看不见"来表达。 ──
     assert.equal(findCtlInput(tree, '侧栏玻璃·独立配置'), null, '设置页不画「侧栏玻璃·独立配置」（已迁侧栏折叠块）');
     assert.equal(findCtlInput(tree, '内容面玻璃·独立配置'), null, '设置页不画「内容面玻璃·独立配置」（已迁侧栏折叠块）');
     assert.equal(findSliderRow(tree, '侧栏模糊'), null, '设置页不画「侧栏模糊」（精确标签，防 tooltip 骗过）');
     assert.equal((JSON.stringify(tree).match(/"aria-label":"侧栏玻璃颜色 /g) || []).length, 0,
       '设置页不画侧栏玻璃颜色色板（已迁侧栏折叠块）');
-    assert.equal(findCtlInput(tree, '字体自定义'), null, '设置页不画「字体自定义」（字体节已迁侧栏）');
+    assert.ok(findCtlInput(tree, '字体自定义') !== null,
+      '★ 设置页字体节**默认展开**（二次修订：设置页全部开启）⇒ 「字体自定义」开关直接进树');
+    assert.ok(JSON.stringify(tree).includes('全局字体'),
+      '设置页必须画「全局字体」节头（两档都画 —— 它也是收起的入口）');
     // ── 切侧栏渲染台（外观页 · 字体节与详细玻璃都展开）：从这里起高级行断言。 ──
     tree = renderSidePane();
     treeText = JSON.stringify(tree);
@@ -1517,19 +1569,29 @@ setTimeout(async () => {
     assert.equal(findCtlInput(tree, '侧栏玻璃·独立配置'), null, '重新打开跟随 ⇒ 「独立配置」又收起');
 
     // ── 「字体」已并入「外观」：老的 localStorage 页签值必须迁移过去（不能把用户
-    //    甩回「壁纸」）。2026-10-09 真迁移后**设置页外观不再画字体节** —— 页签迁移行为
-    //    用设置页台钉（玻璃透明度在场 ⇒ 落点对了），字体开关与它的行为用侧栏台钉。 ──
+    //    甩回「壁纸」）。⚠️ 2026-10-11 三次修订后**两档都画字体节**（用户口径"两边都有"）；
+    //    **二次修订**后设置页**默认展开** ⇒ 字体开关直接在树里。──
     setTab('font');
     tree = renderPicker();
     treeText = JSON.stringify(tree);
     assert.ok(treeText.includes('玻璃透明度'),
       'legacy "font" tab value must migrate to 外观 (its own rows must be on screen)');
+    assert.ok(treeText.includes('字体自定义'),
+      '★ 设置页字体节**默认展开**（二次修订：设置页全部开启）⇒ 「字体自定义」直接进树');
+    assert.ok(treeText.includes('全局字体'),
+      '设置页外观必须画出「全局字体」节头（它同时是收起的入口）');
+    // 反向：显式收起（localStorage 里 "0"）⇒ 内容不进树、节头仍在（尊重用户选择）。
+    localStorage.setItem('dsh-wallpaper-engine:picker-font-open', '0');
+    tree = renderPicker();
+    treeText = JSON.stringify(tree);
     assert.ok(!treeText.includes('字体自定义'),
-      '设置页外观不再画「字体自定义」（字体节已迁侧栏 —— 真迁移的另一侧）');
+      '★ 用户显式收起过 ⇒ 字体内容不许进树（默认值不得覆盖用户选择）');
+    assert.ok(treeText.includes('全局字体'), '收起态下节头仍必须在（重新展开的唯一入口）');
+    localStorage.removeItem('dsh-wallpaper-engine:picker-font-open');
     // 侧栏渲染台：字体节默认收起 ⇒ renderSidePane 已播种 qp-font-open=1（展开）。
     tree = renderSidePane();
     treeText = JSON.stringify(tree);
-    assert.ok(treeText.includes('字体自定义'), '侧栏外观必须画「字体自定义」（迁移目的地）');
+    assert.ok(treeText.includes('字体自定义'), '侧栏外观必须画「字体自定义」（展开态）');
     const fontSwitch = findCtlInput(tree, '字体自定义');
     assert.ok(fontSwitch, '侧栏字体自定义开关必须找得到（缺则后面断言零覆盖）');
     if (fontSwitch) {
@@ -1550,10 +1612,11 @@ setTimeout(async () => {
       treeText = JSON.stringify(tree);
     }
 
-    // ── 输入光标（#83）: caret color swatches live alongside the font controls
-    //    (same 外观 tab now) and are INDEPENDENT of the 字体自定义 master switch. ──
-    assert.ok(treeText.includes('输入光标'), '外观 must host the 输入光标 section');
-    assert.ok(treeText.includes('输入光标'), 'appearance tab has 输入光标 section:');
+    // ── 光标颜色（#83）：随「输入光标」节**整节撤销**后并入「全局 UI 配色」节
+    //    （2026-10-11 用户口径：「把输入光标这一栏目取消 …… 光标颜色 …… 并入里面」）。
+    //    它仍然与「UI 配色自定义」总开关**无关**（始终可调）—— 那是并入时明确保留的性质。 ──
+    assert.ok(treeText.includes('全局 UI 配色'), '外观 must host the 全局 UI 配色 section');
+    assert.ok(!treeText.includes('输入光标'), '「输入光标」节已撤销（内容并入「全局 UI 配色」）');
     assert.equal((treeText.match(/"aria-label":"光标颜色 /g) || []).length, 7, '光标颜色应有 7 个色板（自动 + 6 预设）');
     assert.ok(treeText.includes('自定义光标颜色'), 'caret custom color input present:');
     const findSwatch = (root, aria) => {
@@ -1607,41 +1670,526 @@ setTimeout(async () => {
     } else {
       console.log('mascot rope toggle: false (not found)');
     }
-    // Mascot form is now a pair of live-preview cards (aria-pressed = active).
-    const findMascotCards = (root) => {
+    // ── 吉祥物形态 = **横向 3D 轮播（coverflow）**（2026-10-11 用户口径：「把吉祥物选择
+    //    这块做成一个转盘方式选择」）。从"卡片一排"改过来时**必须保留的三条不变量**：
+    //    ① **中心 = 当前生效的那一个**（中心若不是选中项，用户一眼看不出现在用的是哪个）；
+    //    ② 「自定义立绘」排最后 —— 它是**动作**（导入 / 替换）不是"形态"，故不进 ‹ › 循环；
+    //    ③ 内置项在自定义生效时**禁用**（点了不会变 ⇒ 不许做成"点了没反应"）。
+    //    判据一律读 `aria-label`（顺序 + 身份），不读图标索引 —— 轮播的位置是行内
+    //    transform，索引会随选中项漂移，拿 children 下标判会在换顺序时静默失效。
+    const findMascotItems = (root) => {
       const found = [];
       (function walk(node) {
         if (!node || typeof node !== 'object') return;
         if (Array.isArray(node)) { node.forEach(walk); return; }
         const cls = typeof node.props?.className === 'string' ? node.props.className : '';
-        if (cls.includes('we-picker__mascot-card')) found.push(node);
+        if (cls.split(/\s+/).includes('we-picker__mascot-item')) found.push(node);
         if (Array.isArray(node.children)) node.children.forEach(walk);
       })(root);
       return found;
     };
-    const activeForm = (cards) => cards.find((c) => String(c.props.className).includes('--active'));
-    let mascotCards = findMascotCards(tree);
-    // 四张卡：三只内置形态 + 一张**自定义立绘**（用户口径：「导入后显示在最后、
-    // 同样的卡片大小和样式」⇒ 它排在最后、用的是同一个卡片类/同一套尺寸口径）。
-    assert.ok(mascotCards.length === 4, 'mascot cards (expect 4: maid / whale / phoebe / custom):');
-    assert.ok(!!activeForm(mascotCards) && activeForm(mascotCards).props.title === '小女仆', 'default form is maid:');
-    const customCard0 = mascotCards[3];
-    assert.ok(customCard0 && String(customCard0.children?.[1]?.children?.[0] || '') === '自定义',
-      '最后一张卡必须是「自定义」（排在三只内置后面）');
-    assert.ok(customCard0 && customCard0.props["aria-pressed"] === 'false',
-      '没导入自定义立绘时它不是 active 的那张');
-    const whaleCard = mascotCards.find((c) => c.props.title === '鲸御姐');
-    if (whaleCard) { whaleCard.props.onClick(); tree = renderPicker(); }
-    mascotCards = findMascotCards(tree);
-    assert.ok(!!activeForm(mascotCards) && activeForm(mascotCards).props.title === '鲸御姐', 'form switches to whale:');
-    const phoebeCard = mascotCards.find((c) => c.props.title === '菲比啾比');
-    if (phoebeCard) { phoebeCard.props.onClick(); tree = renderPicker(); }
-    mascotCards = findMascotCards(tree);
-    assert.ok(!!activeForm(mascotCards) && activeForm(mascotCards).props.title === '菲比啾比', 'form switches to phoebe:');
-    const maidCard = mascotCards.find((c) => c.props.title === '小女仆');
-    if (maidCard) { maidCard.props.onClick(); tree = renderPicker(); }
-    mascotCards = findMascotCards(tree);
-    assert.ok(!!activeForm(mascotCards) && activeForm(mascotCards).props.title === '小女仆', 'form switches back to maid:');
+    const findMascotStage = (root) => {
+      let hit = null;
+      (function walk(node) {
+        if (hit || !node || typeof node !== 'object') return;
+        if (Array.isArray(node)) { node.forEach(walk); return; }
+        const cls = typeof node.props?.className === 'string' ? node.props.className : '';
+        if (cls.includes('we-picker__mascot-stage')) { hit = node; return; }
+        if (Array.isArray(node.children)) node.children.forEach(walk);
+      })(root);
+      return hit;
+    };
+    const centerOf = (items) => items.find((c) => String(c.props.className).split(/\s+/).includes('we-picker__mascot-item--center'));
+    const itemByLabel = (items, label) => items.find((c) => c.props['aria-label'] === label);
+    let mascotItems = findMascotItems(tree);
+    // 容器与 a11y：容器缺席 ⇒ 后面拿到的项可能来自别处（先钉住这一条）。
+    assert.ok(JSON.stringify(tree).includes('we-picker__mascot-carousel'),
+      '转盘容器必须在场（we-picker__mascot-carousel）');
+    // ⚠️ **项数与序列都不写死**（2026-10-11 加进八只「模型娘」时这里假红过一次）：
+    //    要守的性质是"**每只内置各一项 + 「自定义」排最后**"，与到底有几只内置无关。
+    //    序列从**宿主 schema 的枚举**推（那是单点真源），所以"加了图忘了扩枚举"这条
+    //    会在下面当场红，而不是等宿主把新形态 sanitize 掉才发现。
+    const ringSchemaSrc = readFileSync(new URL('../lib/settings-schema.js', import.meta.url), 'utf8');
+    const ringEnum = ((ringSchemaSrc.match(/const ROPE_FORM_VALUES = \[([^\]]*)\]/) || [])[1] || '')
+      .split(',').map((s) => s.trim().replace(/^'|'$/g, '')).filter(Boolean);
+    const ringLabels = (readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
+      .match(/^\s{2}\w+:\s+\{ get label\(\) \{ return weT\("([^"]+)"\); \}/gm) || [])
+      .map((l) => l.match(/weT\("([^"]+)"\)/)[1]);
+    assert.ok(ringEnum.length >= 3 && ringLabels.length >= 3, '（判据前置）枚举与形态表都要数得到');
+    assert.equal(ringLabels.length, ringEnum.length,
+      '形态表条目数（' + ringLabels.length + '）必须等于 ROPE_FORM_VALUES 项数（' + ringEnum.length + '）');
+    const wantLabels = ringLabels.concat(['自定义']);
+    assert.equal(mascotItems.length, wantLabels.length,
+      '转盘的项数必须 = 内置形态数 + 「自定义」（' + wantLabels.length + ' 项：'
+        + wantLabels.join(' / ') + '）');
+    assert.deepEqual(mascotItems.map((c) => c.props['aria-label']), wantLabels,
+      '项顺序必须是 内置形态（按枚举顺序）+ 自定义（自定义排最后）');
+    // ① 中心 = 默认形态（小女仆）；且选中语义由 aria-pressed 承载（不只靠颜色/位置）
+    assert.ok(!!centerOf(mascotItems) && centerOf(mascotItems).props['aria-label'] === '小女仆',
+      '默认中心项必须是「小女仆」（不变量：中心 = 当前生效的形态）');
+    assert.ok(itemByLabel(mascotItems, '小女仆').props['aria-pressed'] === 'true', '小女仆应是 aria-pressed=true');
+    assert.ok(itemByLabel(mascotItems, '自定义').props['aria-pressed'] === 'false',
+      '没导入自定义立绘时它不是按下的那一项');
+    // ② 点侧项 ⇒ 转到中心并生效（+ 负对照：旧的中心项必须**不再**是中心）
+    itemByLabel(mascotItems, '鲸御姐').props.onClick(); tree = renderPicker();
+    mascotItems = findMascotItems(tree);
+    assert.ok(!!centerOf(mascotItems) && centerOf(mascotItems).props['aria-label'] === '鲸御姐',
+      '点侧项后中心应变成鲸御姐');
+    assert.ok(centerOf(mascotItems) !== itemByLabel(mascotItems, '小女仆'),
+      'negative control: 中心判据读的是位置（旧中心项不该仍是中心）');
+    itemByLabel(mascotItems, '菲比啾比').props.onClick(); tree = renderPicker();
+    mascotItems = findMascotItems(tree);
+    assert.ok(!!centerOf(mascotItems) && centerOf(mascotItems).props['aria-label'] === '菲比啾比',
+      '中心应变成菲比啾比');
+    itemByLabel(mascotItems, '小女仆').props.onClick(); tree = renderPicker();
+    mascotItems = findMascotItems(tree);
+    assert.ok(!!centerOf(mascotItems) && centerOf(mascotItems).props['aria-label'] === '小女仆',
+      '中心应转回小女仆');
+    // ③ ‹ › **两个箭头已按用户口径删掉**（2026-10-11）⇒ 判据反过来钉：**不许**再有它们。
+    //    为什么不是"删掉判据就算了"：这个控件的箭头删过又加回来过一次（第二版为"按钮可点击"
+    //    把它们从禁用改成可用），所以"它们不在了"是一条真实会回退的性质，值得钉住；
+    //    而它们一旦回来就会挤窄舞台、并抢走最外侧那两张卡的点击（这正是历次缺陷的形态）。
+    {
+      let navCount = 0;
+      (function walkNav(node) {
+        if (!node || typeof node !== 'object') return;
+        if (Array.isArray(node)) { node.forEach(walkNav); return; }
+        const cls = typeof node.props?.className === 'string' ? node.props.className : '';
+        if (cls.includes('we-picker__mascot-nav')) navCount++;
+        if (Array.isArray(node.children)) node.children.forEach(walkNav);
+      })(tree);
+      assert.equal(navCount, 0, '★ 转盘**不许**再有 ‹ / › 箭头（用户口径：把左右两个箭头去掉）');
+    }
+    // ④ 键盘：舞台上的 ← / → 是**键盘用户唯一的换形态入口**（箭头删了就剩它），且必须 preventDefault。
+    //    顺带钉住 `cycle` 的循环面：**只在内置之间循环、永远不会停在「自定义」上**
+    //    （自定义是"选文件"这个动作，落在它上面就会弹文件选择框）。
+    {
+      const stage = findMascotStage(tree);
+      assert.ok(stage && typeof stage.props.onKeyDown === 'function', '转盘舞台必须挂 onKeyDown（方向键）');
+      let prevented = 0;
+      stage.props.onKeyDown({ key: 'ArrowRight', preventDefault: () => { prevented++; } });
+      tree = renderPicker();
+      mascotItems = findMascotItems(tree);
+      assert.ok(!!centerOf(mascotItems) && centerOf(mascotItems).props['aria-label'] === '鲸御姐',
+        'ArrowRight 应把中心推到下一个形态');
+      assert.equal(prevented, 1, 'ArrowRight 必须 preventDefault（否则页面跟着横向滚动）');
+      // 反向：ArrowLeft 退回去（同样每轮重取节点）
+      const stage2 = findMascotStage(tree);
+      let prevented2 = 0;
+      stage2.props.onKeyDown({ key: 'ArrowLeft', preventDefault: () => { prevented2++; } });
+      tree = renderPicker();
+      mascotItems = findMascotItems(tree);
+      assert.ok(!!centerOf(mascotItems) && centerOf(mascotItems).props['aria-label'] === '小女仆',
+        'ArrowLeft 应把中心退回上一个形态');
+      assert.equal(prevented2, 1, 'ArrowLeft 也必须 preventDefault');
+      // 循环面：从第一只往左一格 ⇒ 应落到**最后一只内置**（而不是「自定义」）
+      const back = itemByLabel(mascotItems, '小女仆');
+      back.props.onClick(); tree = renderPicker();
+      mascotItems = findMascotItems(tree);
+      const lastBuiltin = ringLabels[ringLabels.length - 1];
+      const s3 = findMascotStage(tree);
+      s3.props.onKeyDown({ key: 'ArrowLeft', preventDefault: () => {} });
+      tree = renderPicker();
+      mascotItems = findMascotItems(tree);
+      assert.equal(centerOf(mascotItems)?.props['aria-label'], lastBuiltin,
+        '★ ← 从第一只退回必须落到**最后一只内置**「' + lastBuiltin + '」—— 不许停在「自定义」上'
+          + '（那会让键盘用户一按键就弹文件选择框）');
+      // 复位到第一只，免得后面那批断言依赖我这里的按键次序
+      itemByLabel(mascotItems, '小女仆').props.onClick(); tree = renderPicker();
+      mascotItems = findMascotItems(tree);
+    }
+    // ── ⑤ **3D 环的几何判据**（2026-10-11 四次返工：控件从"平面轨道"换成**真 3D 圆环**）────
+    //    要守的性质（**都与"有几只形态"无关** ⇒ 判据里不出现硬编码项数）：
+    //      ① **角度等分**：第 i 张卡的角度 = i·360/n —— 不等分就不是闭合的环；
+    //      ② **可点盒宽 = 立绘显示宽**：留透明内边距的话，那圈透明边会盖在邻卡上抢走它的点击
+    //         （前几版"看着能点、点了却是别人"正是这个成因）；
+    //      ③ **邻卡的可点盒在屏幕投影上不得与前排重叠** —— 这一条是**独立复算**出来的
+    //         （四角投影 + 透视），不复述产品里的任何字面量；
+    //      ④ **中心唯一且 = 当前生效的形态**：恰好一张卡的总角度 ≡ 0（mod 360）。
+    //    判据只读渲染树里的行内值（角度 / 盒宽 / 半径 / 环旋转），不去猜 CSS。
+    const tabsForRing = readFileSync(new URL('../src/panel-tabs.js', import.meta.url), 'utf8');
+    const numConst = (re, what) => {
+      const v = Number((tabsForRing.match(re) || [])[1]);
+      assert.ok(Number.isFinite(v), '（几何判据前置）源码里取不到 ' + what);
+      return v;
+    };
+    const RING_BOX_PX = numConst(/const MASCOT_BOX_PX = (\d+);/, 'MASCOT_BOX_PX');
+    const RING_FACTOR = numConst(/const MASCOT_RING_FACTOR = ([\d.]+);/, 'MASCOT_RING_FACTOR');
+    const RING_PERSP = numConst(/const MASCOT_PERSP_PX = (\d+);/, 'MASCOT_PERSP_PX');
+    const RING_PAD = numConst(/const MASCOT_CARD_PAD_PX = (\d+);/, 'MASCOT_CARD_PAD_PX');
+    const RING_DESIGN_W = numConst(/const MASCOT_DESIGN_PANE_PX = (\d+);/, 'MASCOT_DESIGN_PANE_PX');
+    const RING_SCALE_MAX = numConst(/const MASCOT_SCALE_MAX = ([\d.]+);/, 'MASCOT_SCALE_MAX');
+    /**
+     * 按面板宽度算 scale —— **独立复算**（与渲染器同一条算式，但不引用它的任何变量）。
+     * 渲染器是纯函数、拿不到宽度 ⇒ 宽度由两端组件量好经 ctx 的 `paneWidth` 传进来；
+     * 量不到（0 / undefined）时退回 1（设计档）。
+     */
+    const scaleOf = (paneW) => (Number(paneW) > 0
+      ? Math.round(Math.min(RING_SCALE_MAX, Math.max(1, Number(paneW) / RING_DESIGN_W)) * 100) / 100
+      : 1);
+    const itemGeom = (root) => {
+      const out = [];
+      (function walk(node) {
+        if (!node || typeof node !== 'object') return;
+        if (Array.isArray(node)) { node.forEach(walk); return; }
+        const cls = typeof node.props?.className === 'string' ? node.props.className : '';
+        if (cls.split(/\s+/).includes('we-picker__mascot-item')) {
+          const st = node.props?.style || {};
+          const tf = String(st.transform || '');
+          out.push({
+            label: node.props['aria-label'],
+            w: parseFloat(String(st.width || '')),
+            h: parseFloat(String(st.height || '')),
+            ml: parseFloat(String(st.marginLeft || '')),
+            mt: parseFloat(String(st.marginTop || '')),
+            rot: Number((/rotateY\((-?[\d.]+)deg\)/.exec(tf) || [])[1]),
+            z: Number((/translateZ\((-?[\d.]+)px\)/.exec(tf) || [])[1]),
+            disabled: node.props.disabled === true,
+          });
+        }
+        if (Array.isArray(node.children)) node.children.forEach(walk);
+      })(root);
+      return out;
+    };
+    const ringTransformOf = (root) => {
+      let hit = null;
+      (function walk(node) {
+        if (hit || !node || typeof node !== 'object') return;
+        if (Array.isArray(node)) { node.forEach(walk); return; }
+        const cls = typeof node.props?.className === 'string' ? node.props.className : '';
+        if (cls.includes('we-picker__mascot-ring')) { hit = String(node.props?.style?.transform || ''); return; }
+        if (Array.isArray(node.children)) node.children.forEach(walk);
+      })(root);
+      return hit;
+    };
+    // 投影 **四角**（不是"宽度 × cos φ"那种近似）：算出一张卡在屏幕上的左右边界。
+    // 卡片局部 x 轴在 rotateY(φ) 后指向 (cos φ, 0, −sin φ)；相机在 (0,0,P) 看向原点。
+    const projectedBox = (phiDeg, R, W, H, P) => {
+      const phi = (phiDeg * Math.PI) / 180;
+      const cx = R * Math.sin(phi), cz = R * Math.cos(phi);
+      const ux = Math.cos(phi), uz = -Math.sin(phi);
+      const xs = [];
+      for (const sx of [-1, 1]) {
+        for (const sy of [-1, 1]) {
+          // sy 只影响纵坐标（环是绕水平轴转的，纵坐标不参与"会不会横向重叠"），
+          // 所以这里只需把两个 x 方向算出来；保留 sy 循环是为了让"四角投影"名副其实。
+          const x = cx + sx * (W / 2) * ux;
+          const z = cz + sx * (W / 2) * uz;
+          const k = P / (P - z);
+          xs.push(x * k);
+          void sy;
+        }
+      }
+      return { lo: Math.min(...xs), hi: Math.max(...xs) };
+    };
+    /** 相邻卡的可点盒与**前排**可点盒的最大重叠量（≤ 0 = 不重叠 = 不会抢点击）。 */
+    const neighborOverlap = (R, W, H, P, count) => {
+      const step = 360 / count;
+      const front = projectedBox(0, R, W, H, P);
+      let worst = -Infinity;
+      for (const d of [1, -1]) {
+        const b = projectedBox(d * step, R, W, H, P);
+        worst = Math.max(worst, Math.min(b.hi, front.hi) - Math.max(b.lo, front.lo));
+      }
+      return worst;
+    };
+    {
+      const geoms = itemGeom(tree);
+      const count = geoms.length;
+      assert.ok(count >= 3, '几何：应取到全部卡（实测 ' + count + ' 张）');
+      assert.ok(geoms.every((g) => Number.isFinite(g.w) && Number.isFinite(g.rot) && Number.isFinite(g.z)),
+        '几何：每张卡的盒宽 / 角度 / 半径都必须写在**行内**（判据据此对账）');
+      // ① 角度等分
+      const stepDeg = 360 / count;
+      geoms.forEach((g, i) => {
+        assert.ok(Math.abs(g.rot - i * stepDeg) < 0.01,
+          '★ 角度等分：第 ' + i + ' 张应是 ' + (i * stepDeg).toFixed(3) + '°，实测 ' + g.rot);
+      });
+      // ② 可点盒宽统一 = MASCOT_BOX_PX；卡高**统一**且容得下最高的立绘；负 margin 把卡心落在环心
+      assert.ok(geoms.every((g) => g.w === RING_BOX_PX),
+        '★ 可点盒宽必须统一 = MASCOT_BOX_PX（' + RING_BOX_PX + '）；实测 ' + geoms.map((g) => g.w).join('/'));
+      // ⚠️ 卡高不再写死（2026-10-11）：它由「最高的那只立绘 + 排版余量」推出。**写死过 120，
+      //    而最高的立绘是 96 ⇒ 96+12+4+13 = 125 > 120，名字行被挤出卡外** —— 这是用户实测
+      //    「上下有截断」的第二个来源。所以这里必须判"容得下"，而不只是"等于某个数"。
+      const cardH = geoms[0].h;
+      assert.ok(geoms.every((g) => g.h === cardH) && Number.isFinite(cardH) && cardH > 0,
+        '★ 卡高必须统一且为正（实测 ' + geoms.map((g) => g.h).join('/') + '）');
+      assert.ok(cardH >= RING_PAD,
+        '★ 卡高（' + cardH + '）必须 ≥ 排版余量（' + RING_PAD + '）');
+      assert.ok(geoms.every((g) => g.ml === -RING_BOX_PX / 2 && g.mt === -cardH / 2),
+        '★ 负 margin 必须是 −盒宽/2 与 −卡高/2（否则卡不落在"环心为原点"的圆周上）');
+      // ③ 半径 = 公式**独立复算**值（不复述源码字面量）
+      const wantR = Math.round((RING_BOX_PX / 2) / Math.tan(Math.PI / count) * RING_FACTOR);
+      assert.ok(geoms.every((g) => g.z === wantR),
+        '★ 半径必须是 (卡宽/2)/tan(π/n)×系数 = ' + wantR + '，实测 ' + geoms[0].z);
+      // ③′ **不抢点击**（这一条才是选半径系数的真正依据）：邻卡投影盒不得与前排重叠。
+      const overlap = neighborOverlap(wantR, RING_BOX_PX, cardH, RING_PERSP, count);
+      assert.ok(overlap <= 0,
+        '★★ 邻卡的可点盒不得与前排重叠（实测重叠 ' + overlap.toFixed(2) + 'px）—— 重叠了就是'
+          + '"看着能点、点了却是前排"，也就是前几版那个死带的同类缺陷');
+      // 负对照：**用真实的历史数字**（系数 1.0，就是参考实现的公式取 1）必须被**同一个**函数判出重叠。
+      {
+        const R1 = Math.round((RING_BOX_PX / 2) / Math.tan(Math.PI / count) * 1.0);
+        const ov1 = neighborOverlap(R1, RING_BOX_PX, cardH, RING_PERSP, count);
+        assert.ok(ov1 > 0,
+          'negative control: 系数 1.0（= 参考实现的原式）必须被同一条判据判出邻卡与前排重叠，实测 '
+            + ov1.toFixed(2) + 'px');
+        // 再合成一档更小的系数，确认判据不是只在那一组数字上成立
+        const R9 = Math.round((RING_BOX_PX / 2) / Math.tan(Math.PI / count) * 0.9);
+        assert.ok(neighborOverlap(R9, RING_BOX_PX, cardH, RING_PERSP, count) > ov1,
+          'negative control: 半径更小 ⇒ 重叠更多（判据是单调的，不是恒真/恒假）');
+      }
+      // 立绘不得宽于可点盒（宽了会被盒裁掉；"立绘 64 / 盒 80"那类错配正是死带的来源）
+      // ── 等比缩放（2026-10-11 用户口径：「左右也可以拉宽一点，顶格就行」）──────────────
+      // ① 算式本身：**独立复算**（不引用渲染器里的变量），把四种档位的语义钉住。
+      assert.equal(scaleOf(0), 1, '量不到宽度（0）⇒ scale 退回 1 —— 安全兜底：宁可小，也不能画坏');
+      assert.equal(scaleOf(undefined), 1, '量不到宽度（undefined）⇒ 同样退回 1');
+      assert.equal(scaleOf(RING_DESIGN_W), 1, '设计宽度（' + RING_DESIGN_W + '）⇒ scale 恰好 1');
+      assert.equal(scaleOf(900), RING_SCALE_MAX,
+        '宽面板必须被**高度预算**封顶在 ' + RING_SCALE_MAX + '（等比放大同时变高，不封顶会得到一个巨大控件）');
+      assert.ok(scaleOf(500) > 1 && scaleOf(500) < RING_SCALE_MAX, '中间档：线性、未被封顶');
+      {
+        let prev = 0;
+        for (const w of [200, RING_DESIGN_W, 400, 600, 900, 2000]) {
+          const sc = scaleOf(w);
+          assert.ok(sc >= prev, 'scale 必须随宽度单调不减（实测 ' + w + ' ⇒ ' + sc + '）');
+          assert.ok(sc >= 1 && sc <= RING_SCALE_MAX, 'scale 必须落在 [1, ' + RING_SCALE_MAX + ']（实测 ' + sc + '）');
+          prev = sc;
+        }
+      }
+      // ② **每个尺寸都必须走 scale**：漏一处就是"卡变大了、立绘还是 64px"这类半拉子。
+      //    这条比"色值对不对"重要 —— 它是"缩放被接上了一半"的唯一防线。
+      {
+        const sites = [
+          ['卡宽', 'width: BOX_S + "px"'],
+          ['卡高', 'height: CARD_H_PX + "px"'],
+          ['卡心归零（负 margin）', 'marginLeft: (-BOX_S / 2)'],
+          ['半径', 'translateZ(" + RADIUS_PX + "px)"'],
+          ['透视', 'perspective: PERSP_S + "px"'],
+          ['立绘盒宽', 'at(it.form.w)'],
+          ['自定义立绘盒', 'at(previewW)'],
+          ['窗口宽（贴住环）', 'maxWidth: RING_EXTENT_PX * 2'],
+        ];
+        const missingSites = sites.filter(([, needle]) => !tabsForRing.includes(needle));
+        assert.equal(missingSites.length, 0,
+          '这些位置必须吃**缩放后**的尺寸，漏了就是"缩放只接了一半"：'
+            + missingSites.map(([what]) => what).join(' / '));
+        // 负对照：把设计常量直接写回卡宽那一处 ⇒ 同一条判据必须判出（宽面板里卡不会变大）
+        assert.ok(!/width: MASCOT_BOX_PX \+ "px"/.test(tabsForRing),
+          'negative control: 卡宽不许再直接吃设计常量 MASCOT_BOX_PX');
+        assert.ok(!/perspective: MASCOT_PERSP_PX/.test(tabsForRing),
+          'negative control: 透视也不许直接吃设计常量（必须与半径同乘，否则放大率会漂）');
+      }
+      // ── 接线判据（2026-10-11 实测「左右拉宽没生效」的**唯一**防线）────────────────────
+      //    ⚠️ 为什么必须有这一条：上面那些几何判据都在测**渲染器**（隔离测试）。
+      //    而真实链路上，宽度是在**面板组件**里量、经 ctx 的 `paneWidth` 进去的 ——
+      //    我第一版把它加进了**外观**页签的 ctx，可是吉祥物由**系统**页签渲染
+      //    ⇒ 渲染器永远收到 undefined ⇒ scale 恒为 1，而**所有隔离判据照样全绿**。
+      //    隔离测试证明不了"线接上了"，所以这里直接读源码核对这条线。
+      {
+        const cliSrc = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8');
+        // ① 量宽度的 effect 必须在，且量的是环那一行（拿"可用宽度"而不是自我指涉的窗口）
+        assert.ok(/querySelector\("\.we-picker__mascot-carousel"\)/.test(cliSrc),
+          '★ 必须有一个量环那一行宽度的 effect（量不到就永远是设计档尺寸）');
+        assert.ok(/ResizeObserver\(measure\)/.test(cliSrc) && /addEventListener\("resize", measure\)/.test(cliSrc),
+          '★ 量宽度必须同时挂 ResizeObserver 与 window resize（面板被拉宽/窗口缩放都要重量）');
+        // ② `paneW` 必须真的传进 **renderMascotTab** 的 ctx（切到它所在页签的那一处调用）
+        const call = cliSrc.match(/renderMascotTab\(\{([\s\S]*?)\}\)/);
+        assert.ok(call, '（前置）找不到 renderMascotTab 的调用点');
+        assert.ok(/paneWidth:\s*paneW/.test(call[1]),
+          '★★ `renderMascotTab` 的 ctx 必须带 `paneWidth: paneW` —— 这是"量到的宽度真的流到环里"的接线；'
+            + '漏了它，缩放永远是 1 且**任何隔离判据都不会红**（实测踩过）');
+        // ③ 反向：不许把它加在**不渲染吉祥物**的页签的 ctx 里（那是死接线，且会让人以为接好了）
+        const appearanceCall = cliSrc.match(/if \(activeTab === "appearance"\) return renderAppearanceTab\(\{([\s\S]*?)\n {4}\}\)/);
+        assert.ok(appearanceCall, '（前置）找不到 renderAppearanceTab 的调用点');
+        assert.ok(!/paneWidth/.test(appearanceCall[1]),
+          '★ `paneWidth` 不许留在**外观**页签的 ctx 里（外观页签不渲染吉祥物 ⇒ 那是死接线，'
+            + '第一版就是这么错的：看着接好了，其实渲染器收到的是 undefined）');
+      }
+      // ── 指针捕获的**时机**（2026-10-11 实测「自定义那个目前没法点击」的根因）──────────
+      //    `setPointerCapture` 会把 pointerup 重定向到捕获元素，于是浏览器把 `click` 派发给
+      //    「pointerdown 与 pointerup 的最近公共祖先」= **舞台** ⇒ 卡片自己的 onClick 收不到。
+      //    所以：捕获**必须**发生在"越过拖动阈值"之后，**绝不许**在 pointerdown 里。
+      {
+        const startBody = (tabsForRing.match(/const dragStart = \(e\) => \{([\s\S]*?)\n {4}\};/) || [])[1] || '';
+        const moveBody = (tabsForRing.match(/const dragMove = \(e\) => \{([\s\S]*?)\n {4}\};/) || [])[1] || '';
+        assert.ok(startBody && moveBody, '（前置）dragStart / dragMove 都要能解析出函数体');
+        assert.ok(!/setPointerCapture/.test(startBody),
+          '★★ `dragStart`（pointerdown）里**绝不许** setPointerCapture —— 那会让浏览器把 click 派发给舞台，'
+            + '卡片全都点不动（圆点在外面所以还点得动，极易误判成"只有某一项坏了"）');
+        // 顺序判据（而不是"距离阈值多少字符以内"那种脆判据）：捕获必须**晚于**越阈判定。
+        assert.ok(moveBody.indexOf("setPointerCapture") > moveBody.indexOf("MASCOT_DRAG_SLOP_PX"),
+          '★★ `setPointerCapture` 必须在 `dragMove` 里、**越过拖动阈值之后**才调用'
+            + '（捕获只是为了拖出舞台边界后仍收得到 pointermove / pointerup）');
+        assert.ok(moveBody.indexOf("setPointerCapture") > moveBody.indexOf("dragging = true"),
+          '★ 捕获与"进入拖动模式"必须同处一个分支（dragging 置位在前、捕获紧随其后）');
+        assert.ok(/if \(!d\.dragging\) return;/.test(tabsForRing),
+          '★ `dragEnd` 必须对"没越过阈值的点击"提前返回 —— 让浏览器照常把 click 交给卡片');
+      }
+      const formBoxes = [...readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
+        .matchAll(/img: ROPE_IMG\w*,\s+w: (\d+), h: (\d+) \}/g)].map((m) => ({ w: Number(m[1]), h: Number(m[2]) }));
+      assert.ok(formBoxes.length >= 3, '（前置）形态表里的显示盒要数得到（实测 ' + formBoxes.length + ' 个）');
+      assert.ok(formBoxes.every((b) => b.w <= RING_BOX_PX),
+        '★ 每个形态的显示盒宽都不得大于可点盒宽（' + RING_BOX_PX + '）；实测最宽 '
+          + Math.max(...formBoxes.map((b) => b.w)));
+      // ★★ **卡高必须容得下最高的立绘 + 排版余量** —— 这条是"上下有截断"那半个缺陷的判据。
+      //    它之所以必须独立成条：上面那些判据全都只看横向（角度 / 盒宽 / 半径 / 重叠），
+      //    整个横向几何**全对**的时候，纵向照样可以把名字挤出卡外（实测就是这么漏掉的）。
+      const tallest = Math.max(...formBoxes.map((b) => b.h));
+      assert.ok(cardH >= tallest + RING_PAD,
+        '★★ 卡高（' + cardH + '）必须 ≥ 最高立绘（' + tallest + '）+ 排版余量（' + RING_PAD + '）= '
+          + (tallest + RING_PAD) + '；否则名字行会被挤出卡片（实测漏过一次）');
+      // ★★ **窗口高必须容得下 3D 透视放大后的卡片** —— 这是"上下有截断"的另半个缺陷。
+      //    3D 透视会把卡片**整体**放大（前排约 1.2×），按卡高原样写窗口高就会切掉头顶与名字。
+      const windowNode = (function find(root) {
+        let hit = null;
+        (function walk(node) {
+          if (hit || !node || typeof node !== 'object') return;
+          if (Array.isArray(node)) { node.forEach(walk); return; }
+          const cls = typeof node.props?.className === 'string' ? node.props.className : '';
+          if (cls.includes('we-picker__mascot-window')) { hit = node; return; }
+          if (Array.isArray(node.children)) node.children.forEach(walk);
+        })(root);
+        return hit;
+      })(tree);
+      assert.ok(windowNode, '（前置）窗口层必须在场');
+      const windowH = parseFloat(String(windowNode.props?.style?.height || ''));
+      assert.ok(Number.isFinite(windowH) && windowH > 0,
+        '★ 窗口高必须写在**行内**（它由渲染器算出来，判据据此对账）');
+      const frontZoom = RING_PERSP / (RING_PERSP - wantR);
+      const projectedH = cardH * frontZoom;
+      assert.ok(windowH >= projectedH,
+        '★★ 窗口高（' + windowH + '）必须 ≥ 卡片投影高（' + projectedH.toFixed(1) + 'px = 卡高 '
+          + cardH + ' × 前排放大率 ' + frontZoom.toFixed(3) + '）；否则立绘头顶与名字底部会被切掉');
+      // 负对照：**用真实的历史数字**（窗口写死 132、卡高写死 120）必须被**同一组不等式**判出。
+      {
+        const oldCardH = 120, oldWindowH = 132;
+        assert.ok(oldCardH < tallest + RING_PAD,
+          'negative control: 旧卡高 120 必须被"容得下最高立绘"那条判出（最高立绘 ' + tallest
+            + ' + 余量 ' + RING_PAD + ' = ' + (tallest + RING_PAD) + '）');
+        assert.ok(oldWindowH < oldCardH * frontZoom,
+          'negative control: 旧窗口高 132 必须被"容得下投影"那条判出（120 × ' + frontZoom.toFixed(3)
+            + ' = ' + (oldCardH * frontZoom).toFixed(1) + '）');
+      }
+      // ④ 中心唯一，且 = 当前生效的形态
+      const ringRot = Number((/rotateY\((-?[\d.]+)deg\)/.exec(String(ringTransformOf(tree))) || [])[1]);
+      assert.ok(Number.isFinite(ringRot), '★ 环必须带**行内** rotateY（拖动期要被直接改写）');
+      const facing = geoms.map((g, i) => ({ i, a: (((g.rot + ringRot) % 360) + 360) % 360 }));
+      const front = facing.filter((f) => Math.abs(f.a) < 0.01 || Math.abs(f.a - 360) < 0.01);
+      assert.equal(front.length, 1,
+        '★★ 恰好一张卡朝向观众（中心唯一）；实测 ' + front.length + ' 张 —— 朝向 ' + facing.map((f) => f.a.toFixed(1)).join('/'));
+      assert.equal(geoms[front[0].i].label, '小女仆',
+        '★★ 朝向观众的那张必须就是当前生效的形态（不变量：中心 = 选中的那只）');
+      // 每只形态在环上只出现一次（重复了就等于同一只被排了两遍，转一圈会撞见两次）
+      const seen = {};
+      for (const g of geoms) seen[g.label] = (seen[g.label] || 0) + 1;
+      assert.ok(Object.keys(seen).every((k) => seen[k] === 1),
+        '每只形态在环上只许出现一次（重复的：'
+          + Object.keys(seen).filter((k) => seen[k] > 1).join(' / ') + '）');
+    }
+    // ── ⑤′ 圆点：11 只内置时"按 › 十几次"太笨 ⇒ 圆点给直接跳任意一只的路 ──────────────
+    {
+      const dots = [];
+      (function walk(node) {
+        if (!node || typeof node !== 'object') return;
+        if (Array.isArray(node)) { node.forEach(walk); return; }
+        const cls = typeof node.props?.className === 'string' ? node.props.className : '';
+        if (cls.split(/\s+/).includes('we-picker__mascot-dot')) dots.push(node);
+        if (Array.isArray(node.children)) node.children.forEach(walk);
+      })(tree);
+      assert.equal(dots.length, mascotItems.length,
+        '圆点数必须 = 卡数（少一个就等于那只没法直接跳过去）');
+      assert.equal(dots.filter((d) => d.props['aria-current'] === 'true').length, 1,
+        '★ 恰好一个圆点标着 aria-current（"现在第几只"这件事只能有一个答案）');
+      assert.equal(dots.filter((d) => d.props['aria-current'] === 'true')[0].props['aria-label'],
+        '切换到「小女仆」', '当前圆点必须标在生效的那一只上');
+      assert.ok(dots.every((d) => typeof d.props.onClick === 'function' && d.props['aria-label']),
+        '每个圆点都要有 onClick 与 aria-label（7px 的点本体不表意）');
+      // 点某个圆点 ⇒ 那一只转到中心（走近路：这里从第 0 只跳到很靠后的一只，验证它真走通了）
+      const far = dots[mascotItems.length - 2];
+      far.props.onClick(); tree = renderPicker();
+      mascotItems = findMascotItems(tree);
+      const wantFar = wantLabels[mascotItems.length - 2];
+      assert.ok(!!centerOf(mascotItems) && centerOf(mascotItems).props['aria-label'] === wantFar,
+        '点圆点应把那一只转到中心（期望 ' + wantFar + '）');
+      // 复位到第一只
+      itemByLabel(mascotItems, '小女仆').props.onClick(); tree = renderPicker();
+      mascotItems = findMascotItems(tree);
+    }
+    // ── ⑥ **按钮必须可点**（用户口径：「你按钮要可点击」）─────────────────────────
+    //    更早那版在"自定义立绘生效时"把内置项与两个 ‹ › 全禁用了 ⇒ 只剩「自定义」与「清除」
+    //    可点，用户的反馈就是"按钮都没办法点"。判据：**内置项与两个导航键在任何一档都不得
+    //    带 disabled**（唯一允许禁用的是"正在导入"那一瞬时的自定义项）。
+    {
+      const boxes = itemGeom(tree);
+      // ⚠️ 导航键已在 2026-10-11 按用户口径删除 ⇒ 这一组只判**卡本身**：内置项永不禁用。
+      //    （"不许有 nav" 那一条在 ③ 里判过了，这里不重复。）
+      assert.ok(boxes.filter((b) => b.label !== '自定义').every((b) => !b.disabled),
+        '★ 所有内置项**永不禁用**（自定义立绘生效时点它走带确认的切换，而不是"点了没反应"）');
+      assert.ok(!/disabled:\s*Boolean\(customArt\)/.test(tabsForRing),
+        '★ 源码里不许再有 disabled: Boolean(customArt)（这正是"按钮都没办法点"的成因）');
+      // ⚠️ 这条判据第一版我写成了 `assert.ok(!re.test('') || …)` —— 前半句恒真，
+      //    于是整条**永远通过**（恒真的判据比没有判据更糟：它看起来有覆盖）。所以这里
+      //    只留**单条**、可证伪的断言，并把反例写清楚。
+      const stylesForRing = readFileSync(new URL('../src/styles.js', import.meta.url), 'utf8');
+      // nav 的样式规则也必须一起删干净（组件删了、样式留着就是死代码，而且下一个人看到
+      // 规则还在会以为"这个控件本来有箭头"）。
+      assert.ok(!/\.we-picker__mascot-nav\s*[\{:]/.test(stylesForRing),
+        '★ nav 的样式规则也要删干净（组件已删；留着是死代码，还会误导后来人）');
+      assert.ok(/\.we-picker__mascot-carousel\s*\{[^}]*display:\s*flex/.test(stylesForRing),
+        '舞台必须在一条 flex 行里（居中由它负责）');
+    }
+    // ── ⑧ 拖动 / 抛掷 / 播报（3D 环上的实现；物理口径沿自前几版）──────────────────
+    //    这些是**纯逻辑**，挂载台驱动不了 pointer 事件 ⇒ 判据落在源码口径 + 渲染树里的 a11y 节点。
+    {
+      const need = {
+        '拖动期关掉过渡（否则"跟手"变"拖橡皮筋"）': /is-dragging/,
+        '"点"与"拖"的分界': /MASCOT_DRAG_SLOP_PX = 6/,
+        '抛掷投影时长 0.32s（参考实现同值）': /MASCOT_FLING_S = 0\.32/,
+        '取样陈旧阈值（手指已停 ⇒ 速度 0）': /MASCOT_FLING_STALE_MS = 70/,
+        '速度取样只留最近 100ms': /samples\[0\]\.t > 100/,
+        '拖过一个相邻卡的屏幕间距 = 换一档': /const DEG_PER_PX = STEP_DEG \/ ADJACENT_PX;/,
+        '吸附 = round(−rotation / 步进)': /Math\.round\(-projectedRot \/ STEP_DEG\)/,
+        '拖动期直接改写**环**的 transform': /mascotDrag\.ring\.style\.transform/,
+        'Home / End 键位': /e\.key === "Home"/,
+        '走近路（最短有符号步数）': /const shortest = \(from, to\) =>/,
+        // 「自定义立绘」是动作、**不是落点**：拖动碰上它要顺着同方向再走一格，
+        // 否则一拖动就弹文件选择框（纯粹惊吓），或落在它上面变成"转了但没生效"。
+        '拖动跳过动作项（不落在自定义上）': /if \(dir !== 0 && items\[norm\(target\)\]\.kind !== "builtin"\) target \+= dir;/,
+      };
+      const missing = Object.keys(need).filter((k) => !need[k].test(tabsForRing));
+      assert.equal(missing.length, 0, '环交互缺项：' + missing.join(' / '));
+      assert.ok(!/MASCOT_RUBBER|MASCOT_STEP_PX/.test(tabsForRing),
+        '环形布局没有端点 ⇒ 源码里不许再有端点阻尼/线性步长那套（"有界滚动"才需要）');
+      // 拖动期关过渡这条必须落在 **CSS** 上（写在 JS 里没用）。
+      const stylesForDrag = readFileSync(new URL('../src/styles.js', import.meta.url), 'utf8');
+      assert.ok(/\.we-picker__mascot-ring\.is-dragging\s*\{\s*transition:\s*none/.test(stylesForDrag),
+        '★ 拖动期必须由 CSS 关掉**环**的过渡（.is-dragging 那一条）');
+      // 3D 机制必须齐全（缺一个就不是 3D 环了：preserve-3d 缺 ⇒ 压平；backface 缺 ⇒ 后半圈透出来）
+      assert.ok(/\.we-picker__mascot-ring\s*\{[^}]*transform-style:\s*preserve-3d/.test(stylesForDrag),
+        '★ 环必须 transform-style: preserve-3d（否则整圈被压平成 2D）');
+      assert.ok(/\.we-picker__mascot-item\s*\{[^}]*backface-visibility:\s*hidden/.test(stylesForDrag),
+        '★ 卡必须 backface-visibility: hidden（否则环的后半圈会透到中间来）');
+      assert.ok(/\.we-picker__mascot-stage\s*\{[^}]*perspective:\s*\d+px/.test(stylesForDrag),
+        '★ 3D 上下文根必须有 perspective');
+      // ⚠️ 裁剪必须是**祖先**做的：overflow / mask 是"分组属性"，加在 perspective 那一层上
+      //    会把 3D 上下文**压平**。这条是这次改动的关键结构约束，必须钉住。
+      const stageBlock = (/\.we-picker__mascot-stage\s*\{([^}]*)\}/.exec(stylesForDrag) || [])[1] || '';
+      assert.ok(!/overflow\s*:/.test(stageBlock),
+        '★★ perspective 那一层不许写 overflow（分组属性会把 3D 压平）—— 裁剪交给祖先 .mascot-window');
+      assert.ok(!/mask/.test(stageBlock),
+        '★★ perspective 那一层不许写 mask（同上）');
+      assert.ok(/\.we-picker__mascot-window\s*\{[^}]*overflow:\s*hidden/.test(stylesForDrag),
+        '★ 裁剪必须落在祖先 .we-picker__mascot-window 上');
+      // 屏读播报：必须是**留在无障碍树里**的 sr-only（display:none 会把播报一起摘掉）。
+      assert.ok(JSON.stringify(tree).includes('"aria-live":"polite"'),
+        '★ 转盘必须有 aria-live 播报节点（轮播不能只靠视觉）');
+      assert.ok(!/\.we-sr-only\s*\{[^}]*display:\s*none/.test(stylesForDrag),
+        '★ .we-sr-only 不许用 display:none（会连播报一起从无障碍树里摘掉）');
+      assert.ok(/\.we-sr-only\s*\{[^}]*clip:\s*rect\(0, 0, 0, 0\)/.test(stylesForDrag),
+        '.we-sr-only 用 clip 而不是 display:none');
+    }
+    // ── ⑦ 自定义立绘生效时点的"切换"要**先确认**（清除不可恢复）────────────────────
     const ropeScaleSlider = findSliderRow(tree, '吉祥物大小');
     // 前置硬断言（同光标色板那处）：改前这里是 `console.log(… present:, !!x)` + `if (x) { 断言 } else
     // { console.log('… not found') }` —— 那个 else **只打印**，所以是**静默跳过**：滑块一改名，下面三条
@@ -1667,26 +2215,37 @@ setTimeout(async () => {
         if (cls.includes('we-picker__mascot-art')) artsAtScale.push(n);
         if (Array.isArray(n.children)) n.children.forEach(walkArt);
       })(tree);
-      assert.equal(artsAtScale.length, 3, '1.5 倍下形态卡片立绘仍应有 3 个（卡片不消失）');
+      // 项数不写死（同上面两条口径）：要守的是"**每只内置**的立绘卡都在、且尺寸都没跟着
+      // ropeScale 缩放"，与有几只内置无关。数量对齐形态表（加了图忘了渲染就会红）。
+      assert.equal(artsAtScale.length, ringLabels.length,
+        '1.5 倍下形态卡片立绘应有 ' + ringLabels.length + ' 个（= 内置形态数；卡片不消失）');
+      // 前三只（maid / whale / phoebe）的固定基础尺寸逐条钉住 —— 顺序由枚举决定，稳定。
       assert.equal(artsAtScale[0] && artsAtScale[0].props.style?.width, '52px', '小女仆卡片宽度固定 52px（不随滑块缩放）');
       assert.equal(artsAtScale[1] && artsAtScale[1].props.style?.height, '96px', '鲸御姐卡片高度固定 96px（不随滑块缩放）');
       assert.equal(artsAtScale[2] && artsAtScale[2].props.style?.width, '64px', '菲比啾比卡片宽度固定 64px（不随滑块缩放）');
+      // 八只「模型娘」也必须是**固定**尺寸、且各自等于形态表里写的那一对数（不是统一 64×64，
+      // 也不是被 ropeScale 乘过）。这条同时钉住"8 张比例各不同 ⇒ 盒高逐个算"这个决定。
+      for (let i = 3; i < artsAtScale.length; i++) {
+        const w = artsAtScale[i].props.style?.width, h = artsAtScale[i].props.style?.height;
+        assert.ok(/^\d+px$/.test(String(w)) && /^\d+px$/.test(String(h)),
+          '第 ' + (i + 1) + ' 只（模型娘）卡片必须有固定 px 盒，实测 ' + w + ' / ' + h);
+        assert.equal(w, '64px', '模型娘卡片宽度统一 64px（实测 ' + w + '）');
+      }
       // ── 自定义立绘那张卡（用户口径：吉祥物可自定义导入；已导入时下一次导入覆盖上一次）──
       //    没导入过 ⇒ 卡片画「+」占位、标题是导入的 tooltip、**不得**出现「清除」；
       //    内置形态卡照旧可点（没有自定义立绘压着）。
       {
-        const cardsNow = findMascotCards(tree);
-        const custom = cardsNow[3];
-        assert.ok(custom && String(custom.children?.[1]?.children?.[0] || '') === '自定义',
-          '最后一张卡必须是「自定义」（排在三只内置后面）');
-        assert.equal(custom && custom.props.title, '导入图片…', '没导入过 ⇒ 卡片的提示是「导入图片…」');
+        const itemsNow = findMascotItems(tree);
+        const custom = itemByLabel(itemsNow, '自定义');
+        assert.ok(custom, '转盘里必须有「自定义」那一项（缺则后面断言零覆盖）');
+        assert.equal(custom && custom.props.title, '导入图片…', '没导入过 ⇒ 那一项的提示是「导入图片…」');
         assert.ok(!JSON.stringify(tree).includes('清除'),
           '没导入过立绘时不得出现「清除」按钮');
-        assert.ok(cardsNow.every((c) => c.props.disabled !== true), '没有自定义立绘时四张卡都可点');
-        // 卡面舞台与内置卡**同一个盒**（最高的那张 64×96）：占位是该盒，导入后图片等比缩进它。
-        const stageOf = (card) => card && card.children?.[0]?.props?.style;
+        assert.ok(itemsNow.every((c) => c.props.disabled !== true), '没有自定义立绘时四项都可点');
+        // 立绘舞台与内置项**同一个盒**（最高的那张 64×96）：占位是该盒，导入后图片等比缩进它。
+        const stageOf = (item) => item && item.children?.[0]?.props?.style;
         assert.ok(custom && stageOf(custom).width === '64px' && stageOf(custom).height === '96px',
-          '自定义卡的卡面舞台必须与最高的内置卡同一个盒（64×96）');
+          '自定义项的立绘舞台必须与最高的内置项同一个盒（64×96）');
       }
       // 已导入那一档用**源码口径**判（挂载台够不到 store：`selection` 只在 bundle 内部，
       // 而这个测试驱动的都是"控件 → 处理器 → setSetting"那条路；导入是唯一能把
@@ -1701,14 +2260,17 @@ setTimeout(async () => {
         assert.ok(/const previewArt = ropeArtOf\(sel\);/.test(tabsNow)
           && /const customArt = previewArt\.custom;/.test(tabsNow),
           '设置页的自定义立绘那一格必须复用同一条解析（两处各写一遍必然漂）');
-        // 自定义生效时的三件事：明说"主页面用的是这张图"、按钮变「替换图片…」+「清除」、
-        // 形态卡片**禁用**（点了不会变 ⇒ 不许做成"点了没反应"）。
-        assert.ok(tabsNow.includes('自定义立绘生效中：主页面吉祥物用的是这张图；点卡片可换一张')
-          && tabsNow.includes('customArt ? weT("替换图片…（再导入会覆盖上一次）") : weT("导入图片…")')
-          && tabsNow.includes('disabled: customArt,')
-          && tabsNow.includes('customArt && React.createElement("button"')
-          && tabsNow.includes('className: "we-picker__mascot-card" + (customArt ? " we-picker__mascot-card--active" : "")'),
-          '自定义立绘生效时的四个形态（提示 / 卡片 active / 替换提示 / 内置卡禁用）必须在渲染器里逐条在位');
+        // 自定义生效时的三条：按钮变「替换图片…」+「清除」、内置项**仍然可点**（点了走带确认的
+        // 切换 —— 用户口径「按钮要可点击」，旧的 `disabled: Boolean(customArt)` 正是
+        // "按钮都没办法点"的成因）、中心项类名。
+        // ⚠️ 原来还有第四条：渲染器的**提示行**里要写明"主页面用的是这张图"。2026-10-11
+        //    用户口径「上面文案去掉」把整行提示删了 ⇒ 这一条随之删掉。这**不是放宽判据**：
+        //    那条提示已不存在，"它在不在"就没有对象了；剩下三条都仍可在源码里逐字查到。
+        assert.ok(tabsNow.includes('customArt ? weT("替换图片…（再导入会覆盖上一次）") : weT("导入图片…")')
+          && tabsNow.includes('disabled: !isBuiltin && Boolean(sel.mascotBusy),')
+          && tabsNow.includes('className: "we-picker__mascot-item" + (isCenter ? " we-picker__mascot-item--center" : "")')
+          && !tabsNow.includes('disabled: Boolean(customArt)'),
+          '自定义立绘生效时的三条（替换提示 / 只有导入中才禁用 / 中心项类名）必须在渲染器里逐条在位，且不得再按 customArt 禁用');
         // 显示盒的算法在导入处（96×192 等比适配、短边不小于 28），主页面与预览读同一份设置。
         // 上限常量的真源在 schema（MASCOT_BOX_MAX_W/H，verify-contracts 的单源判据盯着）——
         // 这里钉"client 不本地重声明 + 导入记账三件"。
@@ -3663,15 +4225,15 @@ setTimeout(async () => {
         g.consumer + ' 必须是"派生 + 装配"：直接调 ' + h);
     }
   }
-  assert.ok(!bodyOf('renderMascotTab').includes('we-picker__mascot-row')
+  assert.ok(!bodyOf('renderMascotTab').includes('we-picker__mascot-carousel')
     && !bodyOf('renderEffectsPlaybackSection').includes('we-picker__prog-track')
     && !bodyOf('renderAppearanceFontSection').includes('we-picker__font-table'),
     '装配函数体内不得再内联那批子树标记（已移入子渲染器）');
   // 负对照：同一条判据对子渲染器本身必须判得出（标记确实在子渲染器里）——证明判据有牙。
-  assert.ok(bodyOf('renderMascotFormCards').includes('we-picker__mascot-row')
+  assert.ok(bodyOf('renderMascotFormCards').includes('we-picker__mascot-carousel')
     && bodyOf('renderTranscodeProgress').includes('we-picker__prog-track')
     && bodyOf('renderFontTypeRoles').includes('we-picker__font-table'),
-    '负对照：mascot-row / prog-track / font-table 标记必须落在对应的子渲染器体内');
+    '负对照：mascot-carousel / prog-track / font-table 标记必须落在对应的子渲染器体内');
 }
 
 // ── 判据纪律：本文件不许有"log 形式的伪判据" ─────────────────────────────────
