@@ -458,6 +458,8 @@
     return renderAppearanceTab(sidebarRenderCtx({
       setSetting, setTransient, sel,
       onAccent, onBlur, onBorder, onChatGlassFidelity, onGlassAlpha, onGlassColor, onGlassFidelity, onLeftSidebarGlass, onTitlebarGlass, onSidebarGlass, onSidebarFullClear, onToggleThemeFollow,
+      // 侧边栏圆角（外观 → 侧边栏圆角）：侧栏档也画这一节 ⇒ 处理器走真值（不是占位器）
+      onSidebarAllCorners, onSidebarCornerRadius, onSidebarCornerSquare,
       onCaretColor, onSidebarFollowGlobal, onThinkingMode,
       // ── 全局字体节（2026-10-09 迁入侧栏，默认收起；原 setting-only 占位器已摘）──
       fontOpen: ui.fontOpen, onToggleFontSection: ui.onToggleFontSection,
