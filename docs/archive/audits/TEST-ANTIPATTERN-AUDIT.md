@@ -1,7 +1,8 @@
 # test/ 测试框架反模式审计（现存问题清单）
 
-- 审计对象：`test/`（**72 个 `.mjs`** = 顶层 57 + `test/tools/` 15；另 `test/fixtures/` 2 份夹具）。三类问题：**面向结果编程**（A）、**无意义测试**（B）、**自欺欺人**（C）。
+- 审计对象：`test/`（**审计基线 72 个 `.mjs`** = 顶层 57 + `test/tools/` 15；**现树 73 个** —— 多的两个是上游的 `test/verify-presets.mjs` 与本审计新增的 `test/tools/regen-golden.mjs`；另 `test/fixtures/` 2 份夹具）。三类问题：**面向结果编程**（A）、**无意义测试**（B）、**自欺欺人**（C）。
 - 本文件的读法：**只记现在还存在的问题**。每条给：当前 `file:line` → 它该守的不变量 → 现在的形态（已重写 / 已加固 / 已删除 + 覆盖点 / 裁决不改 / 取消）→ 「牙齿」结论。已删除的判据写「原址 `file:line`（已删除）」并给出当下**真的**守着那条契约的判据。
+- 行号基线：本文所有 `file:line` 都在**当前工作树**上现场核对过（基线 = 上游 `93a6ca2` + 未提交的 issue #172 修复）。上游在审计之后又改了 `test/verify-client.mjs`、`test/verify-cache-dir.mjs` 等文件，这些漂移已按现值改正；引用的有效性以**当前树**为准。
 - 计数：**106 条 = 9 high + 37 medium + 60 low**，14 个组（§2–§4 逐条，§7 矩阵校验）。
 - 严重度按 id 族定档：`H1–H7`/`F1–F2` = high，`M1–M33`/`N1–N3`/`F3` = medium，`L1–L55`/`N4–N6`/`F4–F5` = low。个别条目原始标注带中间档（M23/M24 `medium-low`、M25/L25 `low-med`、L7/L8/L41 标 medium），本表统一到所属档，故合计为 9 / 37 / 60。`X1–X3` 与已计数条目**同址**，单列且**不另计入 106**（见 §3.10）。
 
@@ -32,7 +33,7 @@
 ### 结构性观察（现在时）
 
 - **主导失效模式仍是约定 5 的 ② 号写法**：「在对照里另抄一份判据」。106 条里约一半属 C3。仓库**已经知道**这条（`docs/DEV-GUIDE.md` 逐字写着「② 在对照里另抄一份判据（复制正则、复制 `.every(...)`）：生产侧改了它也不会红」），同一份文档点名的规则仍被系统性违反 ⇒ 缺的不是规则，是**可执行的检查**。
-- **A2（夹具从输出抄写）真实存在且已造成过缺陷**：`test/fixtures/settings-sanitize-golden.json:2` 的 `note` 现在**开头就声明自己是漂移棘轮**（只证明"没有无理由地变化"，不证明取值正确），并写明重录脚本 `.test-cache/regen-golden-*.mjs` **不在仓库里**、补键只能人工比对 diff 并确认「除新键外零漂移」；消费点 `test/verify-client.mjs:3123-3141` 的断言文案与段注释同口径。**未做**：把重生成脚本入库（需要每个键的设计意图，属产品知识）。
+- **A2（夹具从输出抄写）真实存在且已造成过缺陷**：`test/fixtures/settings-sanitize-golden.json:2` 的 `note` 现在**开头就声明自己是漂移棘轮**（只证明"没有无理由地变化"，不证明取值正确），并写明重录脚本 `.test-cache/regen-golden-*.mjs` **不在仓库里**、补键只能人工比对 diff 并确认「除新键外零漂移」；消费点 `test/verify-client.mjs:3128-3152` 的断言文案与段注释同口径。**未做**：把重生成脚本入库（需要每个键的设计意图，属产品知识）。
 - **覆盖面地板文化是好的，坏的是"地板位置"**：地板写进被跳过的块里（`test/verify-route-families.mjs`，已修）、空域分支因所有行 `done: true` 而短路（`test/verify-glass-surfaces.mjs:1364`，已加固）、对照只回测抽取器（`test/verify-logging.mjs:158-161`，已修）。写对位置的正面样本很多：`test/verify-json-response.mjs` 的 221/259/260-261、`test/verify-client.mjs` 的 9 条地板、`test/verify-softrender.mjs` 的 E1–E5 六条、`test/verify-glass-surfaces.mjs` 的 `total > 0` / `checked >= 10` / `rules >= 8`。
 - **"恒红"与"静默不可达"是同一个洞的两面**（H7）：一个被静默吞掉的求值错误会把同段判据劈成"永远红"（噪声）和"永不执行"（假保证）两半。这类洞只在**从来不自动跑**的守卫里长期存活 —— `.github/workflows/harness-compat.yml` 的触发面只有 `workflow_dispatch`。
 - **就地无法复核的两处**：`test/compat-harness-surfaces.mjs:207-213` 的覆盖地板（按被豁免项计数）在本机没有 harness 包可实测，只能读代码确认表达式成立；`test/e2e-web-media-origin.mjs` 的浏览器段本机跑不完（中间件产物下载 `fetch failed`），该文件本来也不在 `npm run verify` 门内。
@@ -90,9 +91,9 @@
 
 - **M1** `[A4｜medium｜R]` `:1529` —— 守：字体节必须真的把控件组画出来。现状：**已重写** —— 在渲染树文本上断言「恢复默认 / 文字颜色 / 排版」都在（只 grep 整份构建产物里的 i18n 字面量 ⇒ 字体节不渲染也绿）。牙：**yes**。
 - **M2** `[C4｜medium｜H]` `:1354`（地板）`:1355`（`if (sidebarSwitch)`） —— 守：侧栏主开关一变形状，块内三条断言（关 ⇒ 清 `data-we-sidebar-glass` / 开关仍画出 / 「独立配置」隐藏）不得静默零覆盖。现状：**已加固** —— `assert.ok(sidebarSwitch, '侧栏液态玻璃主开关缺失 ⇒ 下面三条断言零覆盖')` 落在 `if` 外面。牙：**yes**。
-- **M3** `[C4｜medium｜H]` `:1726-1728` —— 守：「壁纸透明度 60% ⇒ `--we-wallpaper-opacity: 0.4`、0% ⇒ 不设」这条契约（全仓唯一覆盖）不得因输入框形状变化而静默跳过。现状：**已加固** —— 行、输入框、reset 各一条地板。牙：**yes**。
-- **F3** `[A1｜medium｜H]` `:3093-3096` —— 守：①i 的期望值来自被测 scanner 自身输出减手写豁免表，scanner 退化时不得恒真。现状：**已加固** —— 加棘轮地板 `handlerDefCount >= 380`（常数 = 实测值，只降不升；补齐 `async function` 等形态前是 377），路径展开行为由正/负对照钉住。牙：**yes**（形态识别一退化 ⇒ 红）。
-- **M32** `[A2｜medium｜不改（声明）]` `test/fixtures/settings-sanitize-golden.json:2` + `test/verify-client.mjs:3123-3147` —— 守：**host 侧**设置规范化的输出不得**无理由**变化（**不是**取值正确性）。现状：**口径已写明，重录有闸门** —— 夹具 `note` 四节（定位 / 哪一侧真被守着 / 怎么重录 / 键的存在性）、③ 段注释 `:3123-3134` 与断言文案 `:3145-3147` 三处同口径；**重录工具已入库** `test/tools/regen-golden.mjs`（默认只报告；`--write --intend <host|client>:<键>` 才写入，除声明键外的漂移被**拒绝写入**，脚本不碰 `note`）⇒ 旧口径「重生成脚本不在仓库里」作废。键的**存在性**由 `test/verify-glass-surfaces.mjs` 的 ⑥ 键集快照管 —— 但那比的是**夹具自身逐用例的自洽**：某用例漏补会红，**一个键在所有用例里都没补则抓不到**。**只有 host 侧的值被棘轮住**：夹具里 `client` 侧的值没有任何判据比对（④ 在活值上钉 client == host、⑥ 只用键集）⇒ client 侧现有 `layerPositionX`/`layerPositionY`/`layerScale` 三键与当前实现不一致（18/18 用例）而守卫全绿，只有重录工具会提示。牙：**yes（对漂移）**；对"取值对不对"这条夹具按设计不作判断。
+- **M3** `[C4｜medium｜H]` `:1728-1739` —— 守：「壁纸透明度 60% ⇒ `--we-wallpaper-opacity: 0.4`、0% ⇒ 不设」这条契约（全仓唯一覆盖）不得因输入框形状变化而静默跳过。现状：**已加固** —— 行、输入框、reset 各一条地板。牙：**yes**。
+- **F3** `[A1｜medium｜H]` `:3093-3101` —— 守：①i 的期望值来自被测 scanner 自身输出减手写豁免表，scanner 退化时不得恒真。现状：**已加固** —— 加棘轮地板 `handlerDefCount >= 380`（常数 = 实测值，只降不升；补齐 `async function` 等形态前是 377），路径展开行为由正/负对照钉住。牙：**yes**（形态识别一退化 ⇒ 红）。
+- **M32** `[A2｜medium｜不改（声明）]` `test/fixtures/settings-sanitize-golden.json:2` + `test/verify-client.mjs:3128-3152` —— 守：**host 侧**设置规范化的输出不得**无理由**变化（**不是**取值正确性）。现状：**口径已写明，重录有闸门** —— 夹具 `note` 四节（定位 / 哪一侧真被守着 / 怎么重录 / 键的存在性）、③ 段注释 `:3128-3139` 与断言文案 `:3149-3152` 三处同口径；**重录工具已入库** `test/tools/regen-golden.mjs`（默认只报告；`--write --intend <host|client>:<键>` 才写入，除声明键外的漂移被**拒绝写入**，脚本不碰 `note`）⇒ 旧口径「重生成脚本不在仓库里」作废。键的**存在性**由 `test/verify-glass-surfaces.mjs` 的 ⑥ 键集快照管 —— 但那比的是**夹具自身逐用例的自洽**：某用例漏补会红，**一个键在所有用例里都没补则抓不到**。**只有 host 侧的值被棘轮住**：夹具里 `client` 侧的值没有任何判据比对（④ 在活值上钉 client == host、⑥ 只用键集）⇒ client 侧现有 `layerPositionX`/`layerPositionY`/`layerScale` 三键与当前实现不一致（18/18 用例）而守卫全绿，只有重录工具会提示。牙：**yes（对漂移）**；对"取值对不对"这条夹具按设计不作判断。
 
 ### 3.2 `test/verify-scene-live.mjs`
 
@@ -163,9 +164,9 @@
 > 一 bullet 可覆盖同形态多处（用「/」枚举）；标「已删除」的条目给出当下守着同一契约的判据。
 
 **`test/verify-client.mjs`**
-- **L1** `[B1｜low｜D]` `:3516`（`:3552`/`:3586` 同形）—— 原址（已删除）`&& src.includes(n + '(')`（被前一合取项蕴含）；覆盖：同一条 `check` 的 `src.includes('function ' + n + '(')`（`:3543`/`:3578`/`:3613`）。牙：**覆盖点 partial**。
-- **L2** `[B1｜low｜H]` `:3290-3292` —— 守：条带 p=0 必须零面积。现状：**已加固** —— 加域非空地板 `assert.ok(xs0.length > 0, 'barsPolygon 未抽出任何值 ⇒ .every() 恒真')`（空匹配集上 `.every()` 恒真）。牙：**yes**。
-- **L3** `[B3｜low｜不改]` `test/verify-client.mjs:3930-3935` —— 断的是装置自己的 `FakeMutationObserver.disconnected` 标志。**保留**（并已就地标注为"装置自检、**不是**产品判据"）：它是上一条 `assert.ok(watch.disconnected, '#159①…')` 的**可假性前提** —— 那条断的是桩的标志位，DEV-GUIDE §4.7 约定 8 要求"判据被中和时必须变红"；同块 `test/verify-client.mjs:3846` 的名字记录器装置断的是另一条失效模式。牙：**partial**。
+- **L1** `[B1｜low｜D]` `:3516`（`:3552`/`:3586` 同形）—— 原址（已删除）`&& src.includes(n + '(')`（被前一合取项蕴含）；覆盖：同一条 `check` 的 `src.includes('function ' + n + '(')`（`:3561`/`:3596`/`:3631`；中间那处形态是 `src.indexOf(...)`）。牙：**覆盖点 partial**。
+- **L2** `[B1｜low｜H]` `:3307-3312` —— 守：条带 p=0 必须零面积。现状：**已加固** —— 加域非空地板 `assert.ok(xs0.length > 0, 'barsPolygon 未抽出任何值 ⇒ .every() 恒真')`（空匹配集上 `.every()` 恒真）。牙：**yes**。
+- **L3** `[B3｜low｜不改]` `test/verify-client.mjs:3944-3949` —— 断的是装置自己的 `FakeMutationObserver.disconnected` 标志。**保留**（并已就地标注为"装置自检、**不是**产品判据"）：它是上一条 `assert.ok(watch.disconnected, '#159①…')` 的**可假性前提** —— 那条断的是桩的标志位，DEV-GUIDE §4.7 约定 8 要求"判据被中和时必须变红"；同块 `test/verify-client.mjs:3860` 的名字记录器装置断的是另一条失效模式。牙：**partial**。
 
 **`test/verify-scene-live.mjs`**
 - **L4** `[B4｜low｜R]` `:2783-2795` —— 守：模块级/组件内界线（`function WallpaperPicker() {` 之后不得再有处理器声明）。现状：**已重写** —— 提成 `strayProcessors(text)`，阳性喂真源码、阴性喂**删掉界标**的源码副本（`-1` 若被当成"都合格"会让所有 `at > boundary` 恒真）。负对照若在同一份真实源码上重打正面判据 ⇒ 零独立信号。牙：**yes**。
@@ -174,7 +175,7 @@
 
 **`test/verify-theme-layer.mjs`**
 - **L7** `[C3+B1｜low｜R]` `:307-310` —— 守：面板里**没有**的占位形态必须靠注入变异被识别。现状：**已重写** —— 提成命名常量喂真实源与变异串两侧（否则退化成"抄一份正则 + 喂自己造的字面量" ⇒ 恒真）。牙：**yes**。
-- **L8** `[C3｜low｜R]` `:292-305` 一带（同形态 5 处：`--dsh-content-font-size` / `role.defaultPx` / `role.prefix` / `--we-font-weight` / `we-font-patch`）—— 现状：**已重写** —— 每处的正则提成命名常量，阴性侧改成"同一常量喂变异文本"（范本 `test/verify-client.mjs:3190-3201` 的 `migrationHasV6` + `assert.notEqual(noV6, schemaSrc)`）。牙：**yes**。
+- **L8** `[C3｜low｜R]` `:292-305` 一带（同形态 5 处：`--dsh-content-font-size` / `role.defaultPx` / `role.prefix` / `--we-font-weight` / `we-font-patch`）—— 现状：**已重写** —— 每处的正则提成命名常量，阴性侧改成"同一常量喂变异文本"（范本 `test/verify-client.mjs:3232-3244` 的 `migrationHasV6` + `assert.notEqual(noV6, schemaSrc)`）。牙：**yes**。
 
 **`test/verify-readability.mjs` / `test/verify-windows-caption.mjs`**
 - **L9** `[B1+A1｜low｜D]` 原址 `:735-737`（已删除：把产品 CSS 的 `max()` 夹逼在测试里重实现一遍，再断 `Math.max` 的数学恒等式）—— 覆盖：`:548-553`（F3 结构性钉住产品 CSS 里真实的夹逼表达式）；现址 `:728-737` 是新的 C4b（断言有效 α 单调递减，**不复刻**产品算术）。牙：**覆盖点 yes**。
@@ -207,8 +208,8 @@
 - **L30** `[C3｜low｜D]` `test/verify-retired-lines.mjs:95-97` —— 原址（已删除）：`RESIDUE_INSPECTORS = []` ⇒ `1 === 1 && 0 === 0`（名字声称的语义正好相反）。覆盖：`:102-110` 消费该名单的主扩散判据。牙：**覆盖点 yes**。
 - **L31** `[B1｜low｜D]` `test/tools/js-text.mjs:236-237` —— 原址（已删除）：JS 字符串语义演示，恒真却计入 `selftest PASSED (N)`。覆盖：`:249` 的其它 selftest 条目。牙：**n/a（演示）**。
 - **L32** `[C6｜low｜H]` `test/tools/audit-import-closure.mjs:117-127` —— 守：导入闭包扫描必须有域地板。现状：**已加固** —— 加 `check('覆盖面：被检查文件数与 lib 枚举非空', checked.size >= 10 && libFiles.length > 0)`（若 `IMPORT_RE` 或 `lib/` 枚举退化 ⇒ `problems` 仍为 0 并 exit 0）。牙：**yes**。
-- **L33** `[A1｜low｜R]` `test/verify-mp4-vfs.mjs:459-468` —— 守：`ok` 与 `info`/`transcode` 各给独立期望。现状：**已重写** —— 不再用 `plain.ok === (plain.info !== null)` 这种自洽恒等式。牙：**yes**。
-- **L34** `[B1｜low｜R]` `test/rotation-prepared-leak-smoke.mjs:2025`（同形 `:2064`） —— 守：媒体层/`<video>` 节点在一次纯主题切换后仍是同一节点。现状：**已重写** —— 把 `mediaLayerSurvives` 提成命名判据并喂**真实的**先前快照（原址 `:2045-2046`/`:1507-1508` 现场新建 `{ layer: {}, video: {} }`，对真节点的同一性永不可能为真）。牙：**yes**；同文件 `:1509`（喂空 src 的负对照）本身是有牙的。
+- **L33** `[A1｜low｜R]` `test/verify-mp4-vfs.mjs:490-495` —— 守：`ok` 与 `info`/`transcode` 各给独立期望。现状：**已重写** —— 不再用 `plain.ok === (plain.info !== null)` 这种自洽恒等式。牙：**yes**。
+- **L34** `[B1｜low｜R]` `test/rotation-prepared-leak-smoke.mjs:2025`（同形 `:2064`） —— 守：媒体层/`<video>` 节点在一次纯主题切换后仍是同一节点。现状：**已重写** —— 把 `mediaLayerSurvives` 提成命名判据并喂**真实的**先前快照（原址 `:2045-2046`/`:1507-1508`（已删除）现场新建 `{ layer: {}, video: {} }`，对真节点的同一性永不可能为真）。牙：**yes**；同文件「喂空 src」那几条负对照（`:1058`/`:1063`/`:1119`）本身是有牙的。
 - **L35** `[C5｜low｜H]` `test/rotation-prepared-leak-smoke.mjs:572` —— 守：插件 disposer 抛异常必须可见，而不是被静默吞掉。现状：**已加固** —— 与兄弟场景一致改用 `t.cleanups.forEach((c) => c())`（`:428` H、`:686` F 同形）。牙：**yes**。
 - **L36** `[B4｜low｜D]` `test/rotation-live-smoke.mjs:306-308` —— 原址（已删除）：断的是装置自己的登记表，而 `fireWin`（`:144`，使用点 `:308`/`:313`）就经它派发。覆盖：`:308-313` 前的实际派发判据。牙：**n/a（冗余）**。
 - **L54** `[C3+B1｜low｜H]` `test/verify-i18n.mjs:1` —— 守：判"守卫没有会红的出口"不得因朴素剥注释产生假阳性。现状：**已加固** —— 工具换用字符串感知剥离器后该假阳性消失（该文件确有失败出口）。牙：**yes**。
@@ -238,7 +239,7 @@
 - **N4** `[B2｜low｜H]` `test/verify-types.mjs:210-212`、`:227-229` —— 守："无幽灵字段"必须有非空域。现状：**已加固** —— 两条 check 表达式改成 `a.declared.length > 0 && a.missingInCode.length === 0`（interface 解析失败时 `declared` 为空 ⇒ `missingInCode` 恒 `[]`，会以"没有幽灵字段"通过 ⇒ 恒真）。牙：**yes**。
 - **N5** `[B4｜low｜D]` `test/verify-types.mjs:219` —— 原址（已删除）：`a.declared.length === INVENTORY_REQUIRED.length` 被同一条里的 `missingDeclared`/`extraDeclared` 逐名蕴含；原地留注释点名分工（现行 `:217`/`:225`/`:243`）。牙：**n/a（冗余）**。
 - **N6** `[A4｜low｜H]` `test/live-frame-async-identity-smoke.mjs:246-263` —— 守：live 层"已挂载"必须是产品行为，而不是"装置自己 `createElement` 推了一个 iframe"。现状：**已加固** —— 新增 `liveUrlOf`/`boundFrame`（`:256-260`），用产品的独立可观测绑定判定（class 含 `we-live-iframe` ∧ URL 含 `/scene-live/` ∧ 含夹具 A 的 `tok-a`），判据 `iframeEls.length >= 1 && !!boundFrame`。牙：**yes**。
-- **F4** `[C5/C6｜low｜不改]` `test/tools/branch-notify.mjs:198-215` —— CLI 分支只打印候选、无断言、恒 exit 0。**不改**（并已在 `docs/DEV-GUIDE.md` §4.6 写明「只印候选、何时跑、看到候选怎么处置」）：文件自述"输出是**候选**、要人读"，被 import 时导出 `pathNotifications`/`definitionsOf`/`DEF`/`defName`，判据在 `test/verify-client.mjs` ①h/①i 那一侧 ⇒ 定位落差而非反模式。`test/tools/` 不在牙齿普查的扫描面内（`test/tools/audit-guard-teeth.mjs` 只枚举 `test/` 顶层的 `verify-*`/`*-smoke`）⇒ 「恒 0 出口」这类形态在那套普查里结构上看不见。牙：**n/a（人读）**。
+- **F4** `[C5/C6｜low｜不改]` `test/tools/branch-notify.mjs:197-211` —— CLI 分支只打印候选、无断言、恒 exit 0。**不改**（并已在 `docs/DEV-GUIDE.md` §4.6 写明「只印候选、何时跑、看到候选怎么处置」）：文件自述"输出是**候选**、要人读"，被 import 时导出 `pathNotifications`/`definitionsOf`/`DEF`/`defName`，判据在 `test/verify-client.mjs` ①h/①i 那一侧 ⇒ 定位落差而非反模式。`test/tools/` 不在牙齿普查的扫描面内（`test/tools/audit-guard-teeth.mjs` 只枚举 `test/` 顶层的 `verify-*`/`*-smoke`）⇒ 「恒 0 出口」这类形态在那套普查里结构上看不见。牙：**n/a（人读）**。
 - **F5** `[A2｜low｜不改（已补对齐判据）]` `test/tools/sync-webwallgl.mjs:41` —— `BASE_PATH` 曾只用于自比（`:63-64`/`:90`/`:155`），与产品真值 `lib/routes/scene-serve.js:55` 无对齐判据。现状：**对齐判据已加** —— `test/verify-logging.mjs` 的 N7③ 把「rig 的 `BASE_PATH` / 产物 `lib/webwallgl/index.html` 的绝对引用 / 宿主注册的 `${BASE}/…` 前缀」三者钉在一起，带 4 条负对照（改 rig base、改产物引用、改宿主 `BASE`、字面量抠不到）；判据只认单引号字面量形态 ⇒ 上游换代（双引号 / 模板串）会以「抠不到」报红，不是漏判。rig 本身仍是纯手动 vendoring（`:11-17` 自述、`package.json` 无任何调用），缺前置时 exit 1，本机跑它仍以「缺上游」文案退出（环境缺失）。牙：**yes（N7③）**；rig 自身 n/a（手动）。
 
 ---
@@ -246,7 +247,7 @@
 ## 5. 系统性模式
 
 1. **约定 5 的 ② 号写法是主导失效模式**（C3 ≈ 一半发现）：判据在**闭包/内联**里定义（不是命名函数或命名正则常量），于是写对照时只能"再抄一遍"。`test/verify-glass-surfaces.mjs` 的过滤器内联、`test/verify-about.mjs` 的正则重打是样本；`test/verify-route-index.mjs:44-46` 的 `sameAsIndex` 与 `test/verify-client.mjs` 的 `migrationHasV6` 是反例。
-2. **`if (x) { …断言… }` 的"软地板"**（C4）：文件里到处有 `assert.ok(x, '缺则后面断言零覆盖')` 这种**正确**约定（`test/verify-client.mjs:1620-1623` 一带），漏掉的恰好是"唯一覆盖某条产品契约"的那几块（已按 §3 逐条加固）。同一形态也出现在**驱动器循环**上：订阅不在时"没有痕迹"恰好能通过 —— 有牙的兄弟是 `test/verify-theme-follow.mjs:213`。
+2. **`if (x) { …断言… }` 的"软地板"**（C4）：文件里到处有 `assert.ok(x, '缺则后面断言零覆盖')` 这种**正确**约定（`test/verify-client.mjs:1620-1624` 一带），漏掉的恰好是"唯一覆盖某条产品契约"的那几块（已按 §3 逐条加固）。同一形态也出现在**驱动器循环**上：订阅不在时"没有痕迹"恰好能通过 —— 有牙的兄弟是 `test/verify-theme-follow.mjs:213`。
 3. **期望值来源漂移**（A1/A2/A4）：`test/verify-readability.mjs` 复刻产品算术、`test/verify-about.mjs` 复刻宿主正则、`test/verify-cache-dir.mjs` 与 `test/verify-logging.mjs` 抄文案 ⇒ 期望值与被测对象同源，均已按"期望值必须来自独立来源"重写。A2 那一类已有落地范式（漂移声明 + 键集快照 + 人工确认零漂移），值得复制到其它夹具。
 4. **空域与自比**（B1/B2）：`{...}.every()` 与字面量自比散落在 8 个文件里 ⇒ 恒真；共同后果是**判据名字声称一个语义、判据体验证另一个语义**（`test/verify-retired-lines.mjs` 那处甚至正好相反）。现在的判据要么有非空域地板、要么已被更早的断言覆盖。
 5. **守卫的"域"退化无人守**（C6）：`src/**` 枚举、`lib/` 枚举、抽取正则都可能静默退化成空。仓库已把"从磁盘枚举 + 地板"写成约定（`docs/DEV-GUIDE.md` 约定 4），剩下的缺口是**地板与被守护的域不在同一作用域** —— §3/§4 里的 6 条已就地补上，机械检查仍值得加（见 §0 末尾）。
@@ -256,7 +257,7 @@
 
 ## 6. 已核查但判定"不算问题"
 
-- **机械审计假阳性**：`test/verify-presets.mjs:55`（`failed++` 先执行，文件在 `failed !== 0` 时 exit 1，那条 `check` 是报告辅助函数而非产品判据）；`test/verify-logging.mjs:134` 的 `const calls = []`（在 `:133` 开的块内，与 `:82` 形参的另一个绑定同名不同物）；`test/verify-scene-live.mjs:1694` 的 `const hits = (text) => …`（是判据函数，被完整求值；另一处 `hits` 在别的函数局部，同名不同物）。
+- **机械审计假阳性**：`test/verify-presets.mjs:64-65`（`failed++` 先执行，文件在 `failed !== 0` 时 exit 1，那条 `check` 是报告辅助函数而非产品判据）；`test/verify-logging.mjs:136` 的 `const calls = []`（在 `:135` 开的块内，与 `:84` 形参的另一个绑定同名不同物）；`test/verify-scene-live.mjs:1694` 的 `const hits = (text) => …`（是判据函数，被完整求值；另一处 `hits` 在别的函数局部，同名不同物）。
 - **假件不是 C1 的地方**：`test/verify-scene-live.mjs` 的 mock Node/HTTP/DOM 装置经 `apply(mockCtx)` 载入**真的** `lib/index.js` 并驱动真注册的 handler；Level D 导入真的 `src/*.js`；`test/verify-windows-caption.mjs` 的假外观观察器**刻意**复刻官方 preload 的"只看 style"约束（建模真实约束，不是复刻产品逻辑）；`test/tools/weT-shim.mjs` 是合法替身（`weT` 是构建期内联的函数声明）。
 - **有牙的 A3 形态**：`test/rotation-prepared-leak-smoke.mjs` 与 `test/rotation-smoke.mjs` 从构建出的 `lib/client.js` 文本读期望（`FADE_GRACE_MS`/`FRAME_BYTES_MAX`），形态像 A3，但每条都在注释里给了理由、漂移时**硬失败**（`Number(code.match(...)[1])` 抛异常/NaN）。
 - **两条 golden 棘轮不算 A2**：`test/verify-picker-props.mjs:420-455`（`EXPECTED_PROPS_GOLDEN` + 长度锚 + 变异对照 + `DSH_MUT_LIB`）与 `test/verify-fontset.mjs:210-257`（`GOLDEN_LINES` + `--record` + 对照 + 差一字符可达性探针）。
@@ -266,7 +267,7 @@
 - **`docs/DEV-GUIDE.md` §4.6 的 `test/tools/` 清单不算自相矛盾**：小标题按"是否被工作流/门调用"读，正文已补一句「其中 `host-route-index.mjs` / `js-text.mjs` / `branch-notify.mjs` **同时是守卫的库** ⇒ 改它们等于改判据，走 `npm run verify:all`」。
 - **明确的干净文件**：`test/verify-body-caps.mjs`、`test/verify-inventory-index.mjs`、`test/verify-json-response.mjs`、`test/verify-picker-upload.mjs`、`test/verify-picker-model.mjs`、`test/fontset-load-smoke.mjs`、`test/verify-package-files.mjs`、`test/verify-adapter.mjs`、`test/verify-reachability.mjs`、`test/verify-module-layout.mjs`、`test/verify-dead-declarations.mjs`、`test/verify-guard-map.mjs`、`test/compat-harness-live.mjs`、`test/tools/token-contract.mjs`、`test/tools/i18n-scan.mjs`、`test/tools/host-route-index.mjs`、`test/tools/guard-targets.mjs`、`test/tools/analyze-host-apply.mjs`、`test/tools/audit-fixture-coverage.mjs`。
 - **`test/compat-harness-live.mjs` —— 真 harness 集成探针，两侧判据齐**：隔离 HOME/USERPROFILE + 钉住 `DSH_WE_DATA_DIR`、`DSH_WE_MEDIA_LEGACY=1`，由 `.github/workflows/harness-compat.yml` 的 `--channel tarball --fresh` 调用。有牙判据包括：隔离家目录探针（失败也记 `false` ⇒ 整轮红）、`npm pack` 恰好一个 tarball 且 > 200 KiB、按 realpath 自证通道（`isSameFile` 抛错返回 null ⇒ 红）、真安装器 stdout 上的 peer 校验失败与闭包解析失败、profile 登记、token URL、就绪探针 token→303+Set-Cookie→`GET /`→200、`GET /wallpaper-engine/diag?msg=<marker>` → 204（带无 token 重试腿）、从 `<DATA_DIR>/diag/http.jsonl` 重读标记并要求 `kind === 'renderer'`、`/diag-log` 环形缓冲含标记、进程存活、日志无插件树加载失败。
-- **机械 grep 假阳性（不要当缺陷报）**：`test/e2e-web-media-origin.mjs` 只在诊断信息里写错文件名（实际读 `src/styles.js`；CSS 为空时布局判据仍会红）、`:507` 的 `try { mine.push(JSON.parse(line)); } catch { /* ignore */ }`（丢一行 ⇒ beacon 判据红）；`test/compat-harness-pages.mjs` 的 `|| await evS(…)` 是**重查**而非重言式（`false || null` 仍然红）、右栏缺席只报 info（判据自称"在场才判"，包源侧另有覆盖）；`test/verify-softrender.mjs:366` 的未守卫下标是 `check()` 的**实参**（空表会抛 TypeError 并被捕获 ⇒ exit 1 的响亮失败）；`test/verify-theme-follow.mjs` 用同一输入调产品两次是**确定性**判据（对有状态/记忆化实现可证伪）；`test/verify-theme-follow.mjs` 的 `px` 参数名 `b2` 只是避免遮蔽外层 `Buffer` 的 `b`。
+- **机械 grep 假阳性（不要当缺陷报）**：`test/e2e-web-media-origin.mjs` 只在诊断信息里写错文件名（实际读 `src/styles.js`；CSS 为空时布局判据仍会红）、`test/e2e-web-media-origin.mjs:669` 的 `try { mine.push(JSON.parse(line)); } catch { /* ignore */ }`（丢一行 ⇒ beacon 判据红）；`test/compat-harness-pages.mjs` 的 `|| await evS(…)` 是**重查**而非重言式（`false || null` 仍然红）、右栏缺席只报 info（判据自称"在场才判"，包源侧另有覆盖）；`test/verify-softrender.mjs:376` 的未守卫下标是 `check()` 的**实参**（空表会抛 TypeError 并被捕获 ⇒ exit 1 的响亮失败）；`test/verify-theme-follow.mjs` 用同一输入调产品两次是**确定性**判据（对有状态/记忆化实现可证伪）；`test/verify-theme-follow.mjs` 的 `px` 参数名 `b2` 只是避免遮蔽外层 `Buffer` 的 `b`。
 - **"注释已承认"档里仍成立的两条范本**：`test/verify-softrender.mjs` 的运行时场景把**变异的** renderer/vendor 串推进唯一可观测的 `hook()`，且每条集合类判据都有显式地板（E1–E5 各一条）；`test/verify-theme-follow.mjs` 的 `themeMovesUnderSwitch`、`restoreCase`、命名正则常量 `releaseThenEmitRe` 都被正负两侧共用。
 - **`test/e2e-web-media-origin.mjs` 的定位**：它**不是守卫**，是手动浏览器 rig（文件头声明不属于 `npm run verify`）。按这个自称衡量，它的 beacon 类判据确实在驱动真中间件与真渲染器；§4 里报的只是"不能失败"或"静默不跑"的那几条。
 - **手动 rig 的退出码语义正确**：`test/tools/underlay-pixel-rig.mjs` / `sidebar-props-scroll-rig.mjs` / `diagnose-web-blank.mjs` 缺前置时 `exit 2`；`analyze-host-apply.mjs` 自述"退出码恒为 0（这是度量工具，不是守卫）"。

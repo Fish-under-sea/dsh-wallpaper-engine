@@ -2,35 +2,41 @@
 
 > 本文只记**尚未解决、仍有风险、需要人决定**的事：不记过程，也不重复逐条改法。
 > 106 条发现的逐条现状（每条现在守什么、牙齿如何、`file:line` 证据）见 `docs/archive/audits/TEST-ANTIPATTERN-AUDIT.md`。
-> 本文出现的 `file:line` 都在最终工作树上现场核对过。
+> 本文出现的 `file:line` 都在**当前工作树**上现场核对过（基线 = 上游 `93a6ca2` + 工作树里未提交的 issue #172 修复）。
 
 ## 0. 现状一句话
 
-- 审计覆盖的 `test/` 全量（72 个 `.mjs` + 2 份夹具）共 **106 条**发现（95 条本体 + 11 条来自其余 6 个文件）**已全部定案并实施**：
+- 审计覆盖的 `test/` 全量（72 个 `.mjs` + 2 份夹具 —— 72 是**审计基线**的数字：上游合并后新增 `test/verify-presets.mjs`，现树 73 个，见 §1.6）共 **106 条**发现（95 条本体 + 11 条来自其余 6 个文件）**已全部定案并实施**：
   **R（重写）47 · H（加固）33 · D（删除）19 · 不改（裁决）/声明 5（L3、F4、F5、L52、M32）· 取消（未找到）2（L53、L55）**；待议（P）为 **0**。
 - 5 处「不改·声明」的**声明的准确性**都做了处理：**L3** 就地标明"装置自检、不是产品判据"（`test/verify-client.mjs` 里 `neverDisconnected` 那两行之上）·
   **L52** 复核为**已是解决态**（`test/verify-softrender.mjs:214-220` 的 `provideURLSearchParams` 场景开关被 I1/I2/I3 真用 ⇒ 不动）·
   **M32** 重录工具入库 `test/tools/regen-golden.mjs`（写入必须先 `--intend` 声明意图）+ 夹具 `note` 与段注释按"哪一侧真被守着"改写 ·
   **F4** 只在 `docs/DEV-GUIDE.md` §4.6 写明"只印候选、何时跑、看到候选怎么处置"（**仍不加棘轮、仍不进 CI**）·
   **F5** 补了对齐判据（`test/verify-logging.mjs` 的 N7③，含 4 条负对照：`test/tools/sync-webwallgl.mjs` 的 `BASE_PATH`、产物绝对引用、宿主注册前缀三者必须一致）。
-- 守卫全绿（在最终工作树上重跑实测）：`npm run verify` exit 0（44 个守卫）· `npm run verify:docs` exit 0（末尾 `ALL GUARD MAP CHECKS PASSED`）· `npm run smoke` exit 0。
+- 守卫全绿（在**当前**工作树上重跑实测，含未提交的 issue #172 修复）：`npm run verify` exit 0（**45 个守卫** = 主链 40 + `verify:docs` 5）· `npm run verify:docs` exit 0（末尾 `ALL GUARD MAP CHECKS PASSED`）· `npm run smoke` exit 0。
 - 改动面：`test/`（含 `test/fixtures/settings-sanitize-golden.json`）+ 两个生成物 `docs/GUARD-MAP.md`、`docs/ROUTE-INDEX.md`
   + 文档 `docs/README.md`、`docs/en/README.md`（登记这两份审计文档）、`docs/DEV-GUIDE.md`（§4.5 / §4.7 判定与写作约定）、
-  `docs/CHANGELOG.md`、`docs/en/CHANGELOG.md`（v1.3.1 段各一条）；`src/`、`lib/`、`scripts/`、`package.json` **零改动**。
+  `docs/CHANGELOG.md`、`docs/en/CHANGELOG.md`（v1.3.1 段各一条）；**就审计批次而言** `src/`、`lib/`、`scripts/`、`package.json` 零改动
+  （工作树里另有 issue #172 的修复批次改了 `lib/`，那是与本审计无关的独立批次，见下面的提交状态）。
 - 本批（5 处声明的**准确性**）另动：新增 `test/tools/regen-golden.mjs`（夹具重录闸门）、`test/verify-logging.mjs`（N7③ 前缀对齐判据 + 4 条负对照）、
   `test/fixtures/settings-sanitize-golden.json`（`note` 改写）、`test/verify-client.mjs`（③ 段注释 + L3 装置自检标注）、
   `docs/DEV-GUIDE.md` §4.6（`regen-golden.mjs` 新增行、`branch-notify.mjs` 行改写）、`docs/ROUTE-INDEX.md`（重算）、
   `docs/CHANGELOG.md` 与 `docs/en/CHANGELOG.md`（那条审计 bullet 补 ④「声明的准确性」）与这两份审计文档。
-- 本地 CI（即 `.github/workflows/verify.yml` 的步骤序列）在最终工作树上实跑过一遍，逐步实测：
+- 本地 CI（即 `.github/workflows/verify.yml` 的步骤序列）在**审计批次**的工作树上实跑过一遍，逐步实测：
   `platform=0` · `build=0` · `verify=0` · **`verify:bridge=1`** · `smoke=0` · `verify:docs=0` ·
   `git diff --exit-code -- lib/client.js`=0（`npm run build` 幂等，跑完 `lib/client.js` 仍与 HEAD 逐字节一致）·
   `git diff --check`=0。**唯一非 0 的 `verify:bridge`（`node test/verify-media-bridge.mjs --provision`）是本机环境限制**，见 §1.2。
-- **提交状态**：上一批（106 条定案）已提交为 `62a5dfc` 并推送 `fork/main`；fork 上的 `verify` run **38026813312** 两条腿（windows-latest / ubuntu-latest）
-  **11 步全 success**，其中就含本机跑不了的 `verify:bridge` ⇒ 本机那次 exit 1 确认是沙箱限制而非回归。
-  **本批（5 处声明的准确性）的改动尚未提交**：HEAD 仍是 `62a5dfc`，`git status --short` **10 项** —— 9 个已改（本文件、`TEST-ANTIPATTERN-AUDIT.md`、
-  `docs/DEV-GUIDE.md`、`docs/ROUTE-INDEX.md`、`docs/CHANGELOG.md`、`docs/en/CHANGELOG.md`、`test/verify-client.mjs`、`test/verify-logging.mjs`、
-  `test/fixtures/settings-sanitize-golden.json`）+ 1 个新增（`test/tools/regen-golden.mjs`）。`src/`、`lib/`、`scripts/`、`package.json` 仍**零内容改动**：`lib/client.js` 与 HEAD 逐字节一致
-  （`git hash-object --no-filters` == `05870c0d4d56ba3819f43ccdbcaea1cf8b2d681c`）。
+- **提交状态（历史 + 现状）**：
+  - 审计本体（106 条定案）→ `62a5dfc` → 推送 `fork/main`；fork 上的 `verify` run **38026813312** 两条腿（windows-latest / ubuntu-latest）
+    **11 步全 success**，其中就含本机跑不了的 `verify:bridge` ⇒ 本机那次 exit 1 确认是沙箱限制而非回归。
+  - 声明类收口（5 处声明的准确性）→ `76ccd0f` → 推送 `fork/main`；fork run **38028172020** 两条腿全 success。
+  - 两者合为一个 PR **#170**，已被上游 **MERGED**（2026-10-10T20:47:30Z）⇒ 这两份文档描述的成果现在就在 `origin/main` 上。
+    本地 `main` 已快进到上游 **`93a6ca2`**，本文件的所有 `file:line` 与次数都在**这条基线**上重新核对过。
+  - **当前工作树里未提交的是另一个批次**：issue #172 的修复 —— `lib/faststart.js`、`lib/index.js`、`test/verify-mp4-vfs.mjs`、
+    `docs/CHANGELOG.md`、`docs/en/CHANGELOG.md`、`docs/ROUTE-INDEX.md`（6 项，HEAD 仍是 `93a6ca2`）。它替上游补上了「≤ v1.3.1 的
+    faststart 副本写在数据目录、搬过缓存根的用户那几 GB 永远搁浅」这个洞（`lib/faststart.js` 的清扫改扫两个根 + 3 条新判据）。
+    审计批次自身仍然只动 `test/` 与 `docs/`；`lib/client.js` 与 HEAD 逐字节一致（`npm run build` 幂等，`git diff --exit-code -- lib/client.js` = 0）。
+    另外，**这两份审计文档本身**（本文件与 `TEST-ANTIPATTERN-AUDIT.md`）也会因为本次回填/行号核对而出现在 `git status` 里 —— 它们属审计产物，不算上面那个批次。
 
 ---
 
@@ -95,11 +101,23 @@
 
 - 严重度以报告为准：**9 high / 37 medium / 60 low = 106**（逐条标签累加与报告 §7 的分组累加两处都成立）。
 
+### 1.6 上游合并后新增的测试面（本审计没有逐条审过）
+
+- 上游在审计之后、PR #170 合并之前加了新判据：**`test/verify-presets.mjs`（已进 `npm run verify` 主链）**、
+  `test/verify-cache-dir.mjs`、`test/verify-client.mjs` 的新增段等 ⇒ §0 的"覆盖 `test/` 全量"只对**审计基线**成立，这批新判据**没有**逐条过这份文档的 rubric。
+- 这三份文件此后仍被上游持续扩写（出厂预设治理一批就在改 `test/verify-presets.mjs`），所以**规模一律不写死**：行数与判据数以各自当前自述为准
+  —— `test/verify-presets.mjs` 跑完打印 `ALL PRESET SNAPSHOT CHECKS PASSED (<已通过条数>)`，行数直接数该文件；写死会被下一次上游改动带漂。
+- 对它们只做过机械普查：牙齿普查 `A2 / B1 / C0 / D0 / E0 / F27`，其中唯一的 B 候选 `test/verify-presets.mjs:65` 是**假阳性**
+  （那是 `check()` 的失败打印行；`:1420-1423` 有真出口 `if (failed) { … process.exit(1); }`）。
+- 风险：机械普查只看出口形态与"判据被关进 `if` 里"这类**形状**，A/B/C 三类里靠语义识别的那部分（期望值与被测对象同源、无意义断言、自欺式对照）它抓不到。
+- 建议：若要维持"全量无 A/B/C"的口径，就对这批新面（`verify-presets.mjs`、`verify-cache-dir.mjs` 与 `verify-client.mjs` 的新增段）按同一 rubric 再跑一轮。
+
 ---
 
 ## 2. 需要你决定 / 环境限制
 
-1. **是否提交**：上一批（106 条定案）已提交并推送（`62a5dfc` → `fork/main`，fork CI 全绿）；**本批 10 项**（见 §0 的提交状态）尚未提交 —— 要不要提交由你定。
+1. **是否提交**：审计本体与声明类收口**都已提交并推送**（`62a5dfc`、`76ccd0f` → `fork/main`），并已随 PR **#170** 合入上游；
+   当前工作树里未提交的 **6 项**是 issue #172 的修复（见 §0 的提交状态），**与本审计无关** —— 要不要提交由你定。
 2. ~~是否补 `docs/CHANGELOG.md` 条目~~ **已补**：`docs/CHANGELOG.md` 与 `docs/en/CHANGELOG.md` 的 `### v1.3.1（未发布）` / `### v1.3.1 (unreleased)`
    段各加一条（测试框架反模式审计与加固），并已按"改动一处同步另一处"的口径对齐；两份审计文档也已登记进 `docs/README.md` 与 `docs/en/README.md`。
 3. **本机跑不了 CI 的一步**：`npm run verify:bridge` 在本沙箱恒 exit 1（`spawn EPERM`，见 §1.2）；GitHub runner 上**已实测通过**（fork 的 run 38026813312 第 7 步 success）。
@@ -114,13 +132,14 @@
 ## 3. 怎么复核现状
 
 ```powershell
-npm run verify                       # 期望 exit 0（44 个守卫）
+npm run verify                       # 期望 exit 0（主链 40 个守卫；加 verify:docs 的 5 个 = 45）
 npm run verify:docs                  # 期望 exit 0，末尾 ALL GUARD MAP CHECKS PASSED
 npm run smoke                        # 期望 exit 0
 npm run build                        # 期望 exit 0；跑完 lib/client.js 内容仍与 HEAD 一致（只是 stat 变新）
 npm run verify:bridge                # 本机期望 exit 1（spawn EPERM）—— 环境缺口，不是回归
-git status --short                   # 期望 10 项（见 §0 的提交状态）；src/ lib/ scripts/ package.json 不应出现内容改动
+git status --short                   # 期望：只有 issue #172 的 6 项（见 §0）+ 这两份审计文档（若刚回填过）
 node test/verify-media-bridge.mjs    # 本机期望 exit 1（缺中间件产物）—— 环境缺口，不是回归
+node test/verify-mp4-vfs.mjs         # 期望 exit 0（47 条；含 issue #172 那个修复的 D3/D4/D5）
 node test/verify-fontset.mjs         # 期望 ALL FONTSET CHECKS PASSED (157)
 node test/verify-logging.mjs         # 期望 exit 0；含 N7③ 的 rig/产物/宿主前缀对齐判据与 4 条负对照
 node test/tools/regen-golden.mjs     # 期望 exit 0；会报 client 侧 3 个键漂移（提示，不影响红绿，见 §1.4）
