@@ -458,7 +458,7 @@ const WE_I18N_EN = {
   //    词表判据（零孤儿键）会立刻抓出留着不删的：实测留下时一次红 4 条。
   "改用「{name}」（会先清除自定义立绘）": "Switch to “{name}” (clears the custom artwork first)",
   "改用「{name}」需要先清除自定义立绘（清除不可恢复），继续吗？": "Switching to “{name}” requires clearing the custom artwork first (clearing cannot be undone). Continue?",
-  // 圆点（3D 环）：11 只内置时一只一只翻太笨，圆点给直接跳任意一只的路。
+  // 圆点（3D 环）：10 只内置时一只一只翻太笨，圆点给直接跳任意一只的路。
   "切换到「{name}」": "Switch to “{name}”",
   // 屏读播报（转盘）：形态一变就念一次。轮播控件不能只靠视觉。
   "{name}，第 {n} 个，共 {m} 个": "{name}, {n} of {m}",

@@ -2264,7 +2264,7 @@ const CSS = `
   .we-picker__mascot-art { display: flex; align-items: flex-end; justify-content: center; }
   .we-picker__mascot-art img { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
   .we-picker__mascot-name { font-size: 0.78em; color: var(--we-ink, inherit); white-space: nowrap; }
-  /* ── 圆点（11 只内置时"按 › 十几次"太笨 ⇒ 给直接跳任意一只的路，并回答"一共几只"）── */
+  /* ── 圆点（10 只内置时"按 › 十几次"太笨 ⇒ 给直接跳任意一只的路，并回答"一共几只"）── */
   .we-picker__mascot-dots {
     display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px;
     margin-top: 8px;

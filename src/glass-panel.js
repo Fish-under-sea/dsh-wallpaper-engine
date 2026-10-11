@@ -138,7 +138,7 @@ function renderGlassPresetsBlock(gp) {
         ? weT("「本机现状」= 把这台的自定义立绘带进预设；选一只出厂自带 = 只存「指向它」（不占体积），套用它的人换回那一只")
         : weT("本机没有自定义立绘 —— 「本机现状」会存成「无」；也可以直接选一只出厂自带，让套用它的人换回那一只")),
       React.createElement("div", { className: "we-picker__seg", role: "group", "aria-label": weT("吉祥物 · 指向"),
-        // 2026-10-13（并入 #180，形态 3 → 12）：这一行现在最多 1 + 12 = 13 个键，而 `.we-picker__seg`
+        // 2026-10-13（并入 #180 后形态 3 → 11，同日「小女仆」除名后为 10）：这一行现在最多 1 + 10 = 11 个键，而 `.we-picker__seg`
         // 是不换行的 flex 行、每个键 `flex: 1` ⇒ 不换行就会被压成同样窄的一格、标签互相截断。
         // 用**行内** `flexWrap` 就地解决（不动 styles.js 的规则行数 —— 那份文件的注释行数被打红过
         // `verify-token-contract`，它记的是 styles.js 的行锚点）。
