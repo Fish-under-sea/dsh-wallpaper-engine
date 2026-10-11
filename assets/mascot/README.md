@@ -13,7 +13,7 @@
 
 | 文件 | 尺寸 | 用途 / 判定依据 |
 |---|---|---|
-| `rope-maid-source-1192x1320.png` | 1192×1320 | **形态 `maid`（小女仆）源图**。`ROPE_IMG` 注释写"缩小到 256×283"，而 1192∶1320 与 256∶283 长宽比一致（0.903 vs 0.905） |
+| `rope-maid-source-1192x1320.png` | 1192×1320 | **原形态 `maid`（小女仆）源图**（该形态 2026-10-13 已从出厂列表除名、见下文；派生图 256×283 现在只作「作者自用」预设的彩蛋素材，内联常量 `ROPE_IMG` 已删）。1192∶1320 与 256∶283 长宽比一致（0.903 vs 0.905） |
 | `rope-whale-source-1024x1536.png` | 1024×1536 | **形态 `whale`（鲸御姐）源图**。`ROPE_IMG_WHALE` 注释明确写 *source 1024×1536*，缩小到 384×576（2:3 精确对应） |
 | `alternate-portrait-937x1679.png` | 937×1679 | **未被代码引用**的另一版竖幅立绘（疑为早期迭代或候选稿）。保留待作者认领 |
 | `vector-960x1024.svg` | 960×1024（14 条 path，纯矢量） | **未被代码引用**的矢量素材（无内嵌位图、无文字）。保留待作者认领 |
@@ -87,20 +87,42 @@
 > 分不开同画与异画（同画被判成异画）。换成**白底 alpha 合成 + 宽高比对齐**后，同画 4.22 /
 > 异画 79–80 一目了然。下次比图先用这条。
 
+## 2026-10-13（其二）：`maid`（小女仆）从出厂形态除名 → 改当「作者自用」的彩蛋
+
+上游口径（群里定，用户转达）：**「烧香的」（= `maid` 那张）默认不可见，塞进「作者自用」里当彩蛋；
+其它预设一律改指 `DeepSeek`，刚下载未改配置的用户看到的也是 `DeepSeek`。**
+
+因此：
+
+| 项 | 改动 |
+|---|---|
+| `lib/settings-schema.js` | `ROPE_FORM_VALUES` 由 11 只 → **10 只**（`maid` 除名）；`DEFAULTS.ropeForm` 由 `"maid"` → **`"deepseek"`** |
+| `src/client.js` | 删掉内联常量 `ROPE_IMG`（113,771 B / 256×283 / base64 151,696 chars）与 `ROPE_FORMS.maid` 条目；`ropeArtOf` 的兜底改为 `ROPE_FORMS.deepseek` |
+| `lib/glass-presets/factory-author.json` | `assets.mascot` = **对象**（`file: mascot-maidart001.png`、`box: 52x57`、`data: <那张 256×283 的 base64>`）⇒ 立绘随预设走，出厂列表里不再有它 |
+| 其余五套预设 | `assets.mascot` / `values.ropeForm` 一律 → `"deepseek"`（`purple-mood` 仍携带自定义图片、指向 `phoebe`） |
+| `src/i18n-copy.js` | 删掉「小女仆」词条（`maid` 除名后成孤儿） |
+
+> 老配置里存着 `ropeForm: "maid"` 的机器会被 sanitize **折成新默认 `deepseek`**（不是崩、也不是留空）；
+> 这条被 `test/fixtures/settings-sanitize-golden.json` 的 `defaults-echo` 用例钉住。
+> 被判为「出厂形态」的立绘必须能在 `ROPE_FORMS` 里找到 —— 这正是为什么彩蛋要**随预设携带**而不是
+> 悄悄留在出厂列表里。
+
 ## 替换素材时怎么重新生成内联派生版本
 
 1. 把新立绘处理成**透明背景 PNG**（实测四角 alpha=0，别只看文件名）。
 2. 按形态缩放到既有目标尺寸（`object-fit: contain` 依赖它与渲染盒同比例）：
-   - `maid` → **256×283**，写入 `ROPE_IMG`
    - `whale` → **384×576**，写入 `ROPE_IMG_WHALE`
    - 其余形态 → **高 384**（宽度按各自裁边后的比例），见上表
-3. 转 base64 data URI 替换对应常量，然后 `npm run build` 重建 `lib/client.js`
+   - 已除名的 `maid` → **256×283**；它现在**不在 `src/client.js` 里**，而是作为「作者自用」预设
+     `lib/glass-presets/factory-author.json` 的 `assets.mascot.data`（键序 `file` → `box` → `data`，
+     `box` = `52x57`）
+3. 转 base64 data URI 替换对应常量（`maid` 则替换预设里的 `data`），然后 `npm run build` 重建 `lib/client.js`
    （两者必须一起提交，CI 会断言产物与源码同步）。
 4. 新增形态时同步三处：`ROPE_FORMS`（`img` + 显示名 + 基准盒 `w/h`）、
    `lib/settings-schema.js` 的 `ROPE_FORM_VALUES`（**单点真源**，`src/client.js` 只用不声明）、
    以及 `lib/client.js` 的重建。并遵守既有不变量：常量必须在 `readPersisted()` 之前声明（`const` TDZ）。
 5. ⚠️ **改了 `lib/settings-schema.js` 要重启 DSH**：它在宿主启动时加载一次，客户端刷新拿不到新的
-   校验表（症状：面板里选了新形态、重启前被 sanitize 回 `maid`）。
+   校验表（症状：面板里选了新形态、重启前被 sanitize 回默认 `deepseek`）。
 
 ## 相关但不同的一处
 

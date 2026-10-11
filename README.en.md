@@ -215,12 +215,14 @@ The **System → 吉祥物** controls the chat **pull-cord** — a draggable rop
 | Control | What it does | Default |
 |---|---|---|
 | **显示吉祥物** | Whether the pull-cord mascot and its wallpaper-library drawer render | on |
-| **吉祥物形态** | Pick the artwork on a **3D ring dial**: the 11 artworks sit at equal angles on a circle and the whole ring rotates (the ones facing away hide themselves), with **the centre being the one in use**; **drag** the ring, press ← / →, click a dot below, or **click any artwork** to bring it to the centre. Holds **11 built-ins + custom**: **小女仆** (near-square chibi) / **鲸御姐** (portrait 2:3 full-body) / **菲比啾比** (portrait), plus eight **model girls** — **Claude · DeepSeek · Gemini · GPT · GLM · Grok · Kimi · Qwen** (each box height follows its own source ratio); the last item imports a **custom picture** (clicking another artwork while a custom one is active asks for confirmation first) | 小女仆 |
+| **吉祥物形态** | Pick the artwork on a **3D ring dial**: the 10 artworks sit at equal angles on a circle and the whole ring rotates (the ones facing away hide themselves), with **the centre being the one in use**; **drag** the ring, press ← / →, click a dot below, or **click any artwork** to bring it to the centre. Holds **10 built-ins + custom**: **鲸御姐** (portrait 2:3 full-body) / **菲比啾比** (portrait), plus eight **model girls** — **Claude · DeepSeek · Gemini · GPT · GLM · Grok · Kimi · Qwen** (each box height follows its own source ratio); the last item imports a **custom picture** (clicking another artwork while a custom one is active asks for confirmation first) | **DeepSeek** |
 | **吉祥物大小** | Scales the mascot (the rope box follows the ratio; drag / snap geometry adapts automatically) | see the control |
 
 ![Mascot quick-adjustment drawer](docs/images/mascot-drawer.png)
 
-> Pull the top rope mascot to slide out the wallpaper-library drawer. Both artworks are inlined as base64 (transparent background) at build time, so the single-file client bundle stays self-contained; **size** changes only the rope's own box, never the drawer below.
+> Pull the top rope mascot to slide out the wallpaper-library drawer. All artworks are inlined as base64 (transparent background) at build time, so the single-file client bundle stays self-contained; **size** changes only the rope's own box, never the drawer below.
+>
+> One former built-in, the near-square chibi maid (小女仆), was **retired** on 2026-10-13 — its artwork now ships inside the 「作者自用」 preset as an easter egg, and the factory default form is **DeepSeek**.
 
 ### Global UI colors · typography · caret
 

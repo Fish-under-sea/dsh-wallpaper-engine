@@ -114,7 +114,6 @@ const WE_I18N_EN = {
   "壁纸引擎": "Wallpaper Engine",
   "本地 Wallpaper Engine 壁纸 · 液态玻璃主题": "Local Wallpaper Engine wallpapers · liquid glass theme",
   "壁纸引擎设置分区": "Wallpaper Engine settings sections",
-  "小女仆": "Chibi maid",
   "鲸御姐": "Whale onee-san",
   "菲比啾比": "Phoebe Jiubi",
   // ⚠️ **八只「模型娘」的名字刻意不进词表**（2026-10-11）。原因不是"忘了翻"，而是本仓 i18n 的
@@ -945,7 +944,7 @@ const WE_I18N_EN = {
   "本机现状": "This machine",
   "按本机现状存这一族：有自定义立绘就连图带显示盒一起存，没有就声明「无」（套用的人回到内置立绘）": "Save this family as this machine has it: with custom artwork, save the picture and its display box together; without it, declare \"none\" (anyone applying it returns to the built-in artwork)",
   "预设里只存「指向出厂自带的「{name}」」（不内嵌图片；套用它的人换回那一只，本机自己的立绘不动）": "Store only a \"points to the factory form {name}\" reference in the preset (no picture embedded; anyone applying it switches back to that one and this machine's own artwork is untouched)",
-  "本机没有自定义立绘 —— 勾着存 = 声明「无」，套用它的人回到内置立绘（小女仆 / 鲸御姐 / 菲比啾比）；不勾 = 不动对方的立绘": "No custom artwork on this machine — checked saves it as \"none\", so anyone applying it returns to the built-in artwork (chibi maid / whale onee-san / Phoebe Jiubi); unchecked: leaves their artwork untouched",
+  "本机没有自定义立绘 —— 勾着存 = 声明「无」，套用它的人回到内置立绘（鲸御姐 / 菲比啾比）；不勾 = 不动对方的立绘": "No custom artwork on this machine — checked saves it as \"none\", so anyone applying it returns to the built-in artwork (whale onee-san / Phoebe Jiubi); unchecked: leaves their artwork untouched",
   "把自定义吉祥物立绘的图片与显示盒一并存进预设（默认勾选）": "Store the custom mascot artwork image and its display box in the preset (checked by default)",
   "会话头像": "Chat avatars",
   "勾上：把两张自定义头像带进预设（不勾 = 不动对方的头像；头像体积翻倍，默认不勾）": "Checked: carries both custom avatars into the preset (unchecked: leaves the receiving side's avatars untouched; avatar images roughly double the file size, so this is unchecked by default)",

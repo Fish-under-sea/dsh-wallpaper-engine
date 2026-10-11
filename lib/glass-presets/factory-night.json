@@ -88,7 +88,7 @@
     "sidebarContentAlpha": 38,
     "sidebarContentColor": "",
     "ropeShown": true,
-    "ropeForm": "maid",
+    "ropeForm": "deepseek",
     "ropeScale": 1,
     "fontCustom": false,
     "caretColor": "",
@@ -143,6 +143,6 @@
         "componentFonts": {}
       }
     },
-    "mascot": "maid"
+    "mascot": "deepseek"
   }
 }

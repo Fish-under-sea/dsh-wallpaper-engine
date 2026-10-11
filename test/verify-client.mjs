@@ -1718,33 +1718,42 @@ setTimeout(async () => {
     assert.ok(ringEnum.length >= 3 && ringLabels.length >= 3, '（判据前置）枚举与形态表都要数得到');
     assert.equal(ringLabels.length, ringEnum.length,
       '形态表条目数（' + ringLabels.length + '）必须等于 ROPE_FORM_VALUES 项数（' + ringEnum.length + '）');
+    // 默认形态也**从真源推**（`DEFAULTS.ropeForm`）：2026-10-13「小女仆」除名、默认改 `deepseek`
+    //   之后，"默认 = 枚举第一只"这条假设不再成立（第一只现在是「鲸御姐」）⇒ 写死会假红。
+    //   注意锚点：注释里也会出现 `ropeForm: "maid"` 这种字样 ⇒ 只认 `DEFAULTS` 那一行（缩进两格 + 行尾逗号）。
+    const ringDefaultForm = ((ringSchemaSrc.match(/^  ropeForm: "([a-z]+)",$/m) || [])[1] || '');
+    const defaultLabel = ringLabels[ringEnum.indexOf(ringDefaultForm)] || '';
+    assert.ok(!!defaultLabel,
+      '（判据前置）能从真源推出发默认形态的显示名（DEFAULTS.ropeForm=' + ringDefaultForm + '）');
+    const firstLabel = ringLabels[0], secondLabel = ringLabels[1], thirdLabel = ringLabels[2];
     const wantLabels = ringLabels.concat(['自定义']);
     assert.equal(mascotItems.length, wantLabels.length,
       '转盘的项数必须 = 内置形态数 + 「自定义」（' + wantLabels.length + ' 项：'
         + wantLabels.join(' / ') + '）');
     assert.deepEqual(mascotItems.map((c) => c.props['aria-label']), wantLabels,
       '项顺序必须是 内置形态（按枚举顺序）+ 自定义（自定义排最后）');
-    // ① 中心 = 默认形态（小女仆）；且选中语义由 aria-pressed 承载（不只靠颜色/位置）
-    assert.ok(!!centerOf(mascotItems) && centerOf(mascotItems).props['aria-label'] === '小女仆',
-      '默认中心项必须是「小女仆」（不变量：中心 = 当前生效的形态）');
-    assert.ok(itemByLabel(mascotItems, '小女仆').props['aria-pressed'] === 'true', '小女仆应是 aria-pressed=true');
+    // ① 中心 = 默认形态（真源里的 `DEFAULTS.ropeForm`）；且选中语义由 aria-pressed 承载（不只靠颜色/位置）
+    assert.ok(!!centerOf(mascotItems) && centerOf(mascotItems).props['aria-label'] === defaultLabel,
+      '默认中心项必须是「' + defaultLabel + '」（不变量：中心 = 当前生效的形态）');
+    assert.ok(itemByLabel(mascotItems, defaultLabel).props['aria-pressed'] === 'true',
+      defaultLabel + ' 应是 aria-pressed=true');
     assert.ok(itemByLabel(mascotItems, '自定义').props['aria-pressed'] === 'false',
       '没导入自定义立绘时它不是按下的那一项');
     // ② 点侧项 ⇒ 转到中心并生效（+ 负对照：旧的中心项必须**不再**是中心）
-    itemByLabel(mascotItems, '鲸御姐').props.onClick(); tree = renderPicker();
+    itemByLabel(mascotItems, secondLabel).props.onClick(); tree = renderPicker();
     mascotItems = findMascotItems(tree);
-    assert.ok(!!centerOf(mascotItems) && centerOf(mascotItems).props['aria-label'] === '鲸御姐',
-      '点侧项后中心应变成鲸御姐');
-    assert.ok(centerOf(mascotItems) !== itemByLabel(mascotItems, '小女仆'),
+    assert.ok(!!centerOf(mascotItems) && centerOf(mascotItems).props['aria-label'] === secondLabel,
+      '点侧项后中心应变成' + secondLabel);
+    assert.ok(centerOf(mascotItems) !== itemByLabel(mascotItems, defaultLabel),
       'negative control: 中心判据读的是位置（旧中心项不该仍是中心）');
-    itemByLabel(mascotItems, '菲比啾比').props.onClick(); tree = renderPicker();
+    itemByLabel(mascotItems, thirdLabel).props.onClick(); tree = renderPicker();
     mascotItems = findMascotItems(tree);
-    assert.ok(!!centerOf(mascotItems) && centerOf(mascotItems).props['aria-label'] === '菲比啾比',
-      '中心应变成菲比啾比');
-    itemByLabel(mascotItems, '小女仆').props.onClick(); tree = renderPicker();
+    assert.ok(!!centerOf(mascotItems) && centerOf(mascotItems).props['aria-label'] === thirdLabel,
+      '中心应变成' + thirdLabel);
+    itemByLabel(mascotItems, firstLabel).props.onClick(); tree = renderPicker();
     mascotItems = findMascotItems(tree);
-    assert.ok(!!centerOf(mascotItems) && centerOf(mascotItems).props['aria-label'] === '小女仆',
-      '中心应转回小女仆');
+    assert.ok(!!centerOf(mascotItems) && centerOf(mascotItems).props['aria-label'] === firstLabel,
+      '中心应转回' + firstLabel);
     // ③ ‹ › **两个箭头已按用户口径删掉**（2026-10-11）⇒ 判据反过来钉：**不许**再有它们。
     //    为什么不是"删掉判据就算了"：这个控件的箭头删过又加回来过一次（第二版为"按钮可点击"
     //    把它们从禁用改成可用），所以"它们不在了"是一条真实会回退的性质，值得钉住；
@@ -1770,7 +1779,7 @@ setTimeout(async () => {
       stage.props.onKeyDown({ key: 'ArrowRight', preventDefault: () => { prevented++; } });
       tree = renderPicker();
       mascotItems = findMascotItems(tree);
-      assert.ok(!!centerOf(mascotItems) && centerOf(mascotItems).props['aria-label'] === '鲸御姐',
+      assert.ok(!!centerOf(mascotItems) && centerOf(mascotItems).props['aria-label'] === secondLabel,
         'ArrowRight 应把中心推到下一个形态');
       assert.equal(prevented, 1, 'ArrowRight 必须 preventDefault（否则页面跟着横向滚动）');
       // 反向：ArrowLeft 退回去（同样每轮重取节点）
@@ -1779,11 +1788,11 @@ setTimeout(async () => {
       stage2.props.onKeyDown({ key: 'ArrowLeft', preventDefault: () => { prevented2++; } });
       tree = renderPicker();
       mascotItems = findMascotItems(tree);
-      assert.ok(!!centerOf(mascotItems) && centerOf(mascotItems).props['aria-label'] === '小女仆',
+      assert.ok(!!centerOf(mascotItems) && centerOf(mascotItems).props['aria-label'] === firstLabel,
         'ArrowLeft 应把中心退回上一个形态');
       assert.equal(prevented2, 1, 'ArrowLeft 也必须 preventDefault');
       // 循环面：从第一只往左一格 ⇒ 应落到**最后一只内置**（而不是「自定义」）
-      const back = itemByLabel(mascotItems, '小女仆');
+      const back = itemByLabel(mascotItems, firstLabel);
       back.props.onClick(); tree = renderPicker();
       mascotItems = findMascotItems(tree);
       const lastBuiltin = ringLabels[ringLabels.length - 1];
@@ -1795,7 +1804,7 @@ setTimeout(async () => {
         '★ ← 从第一只退回必须落到**最后一只内置**「' + lastBuiltin + '」—— 不许停在「自定义」上'
           + '（那会让键盘用户一按键就弹文件选择框）');
       // 复位到第一只，免得后面那批断言依赖我这里的按键次序
-      itemByLabel(mascotItems, '小女仆').props.onClick(); tree = renderPicker();
+      itemByLabel(mascotItems, firstLabel).props.onClick(); tree = renderPicker();
       mascotItems = findMascotItems(tree);
     }
     // ── ⑤ **3D 环的几何判据**（2026-10-11 四次返工：控件从"平面轨道"换成**真 3D 圆环**）────
@@ -2085,7 +2094,7 @@ setTimeout(async () => {
       const front = facing.filter((f) => Math.abs(f.a) < 0.01 || Math.abs(f.a - 360) < 0.01);
       assert.equal(front.length, 1,
         '★★ 恰好一张卡朝向观众（中心唯一）；实测 ' + front.length + ' 张 —— 朝向 ' + facing.map((f) => f.a.toFixed(1)).join('/'));
-      assert.equal(geoms[front[0].i].label, '小女仆',
+      assert.equal(geoms[front[0].i].label, firstLabel,
         '★★ 朝向观众的那张必须就是当前生效的形态（不变量：中心 = 选中的那只）');
       // 每只形态在环上只出现一次（重复了就等于同一只被排了两遍，转一圈会撞见两次）
       const seen = {};
@@ -2109,7 +2118,7 @@ setTimeout(async () => {
       assert.equal(dots.filter((d) => d.props['aria-current'] === 'true').length, 1,
         '★ 恰好一个圆点标着 aria-current（"现在第几只"这件事只能有一个答案）');
       assert.equal(dots.filter((d) => d.props['aria-current'] === 'true')[0].props['aria-label'],
-        '切换到「小女仆」', '当前圆点必须标在生效的那一只上');
+        '切换到「' + firstLabel + '」', '当前圆点必须标在生效的那一只上');
       assert.ok(dots.every((d) => typeof d.props.onClick === 'function' && d.props['aria-label']),
         '每个圆点都要有 onClick 与 aria-label（7px 的点本体不表意）');
       // 点某个圆点 ⇒ 那一只转到中心（走近路：这里从第 0 只跳到很靠后的一只，验证它真走通了）
@@ -2120,7 +2129,7 @@ setTimeout(async () => {
       assert.ok(!!centerOf(mascotItems) && centerOf(mascotItems).props['aria-label'] === wantFar,
         '点圆点应把那一只转到中心（期望 ' + wantFar + '）');
       // 复位到第一只
-      itemByLabel(mascotItems, '小女仆').props.onClick(); tree = renderPicker();
+      itemByLabel(mascotItems, firstLabel).props.onClick(); tree = renderPicker();
       mascotItems = findMascotItems(tree);
     }
     // ── ⑥ **按钮必须可点**（用户口径：「你按钮要可点击」）─────────────────────────
@@ -2226,13 +2235,14 @@ setTimeout(async () => {
       // ropeScale 缩放"，与有几只内置无关。数量对齐形态表（加了图忘了渲染就会红）。
       assert.equal(artsAtScale.length, ringLabels.length,
         '1.5 倍下形态卡片立绘应有 ' + ringLabels.length + ' 个（= 内置形态数；卡片不消失）');
-      // 前三只（maid / whale / phoebe）的固定基础尺寸逐条钉住 —— 顺序由枚举决定，稳定。
-      assert.equal(artsAtScale[0] && artsAtScale[0].props.style?.width, '52px', '小女仆卡片宽度固定 52px（不随滑块缩放）');
-      assert.equal(artsAtScale[1] && artsAtScale[1].props.style?.height, '96px', '鲸御姐卡片高度固定 96px（不随滑块缩放）');
-      assert.equal(artsAtScale[2] && artsAtScale[2].props.style?.width, '64px', '菲比啾比卡片宽度固定 64px（不随滑块缩放）');
+      // 前两只（鲸御姐 / 菲比啾比）与第一只「模型娘」的固定基础尺寸逐条钉住 —— 顺序由枚举决定。
+      //   ⚠️ 2026-10-13「小女仆」从出厂形态除名（那只图改由「作者自用」预设携带）⇒ 这里从
+      //      "maid / whale / phoebe" 改成 "whale / phoebe / 第一只模型娘"，索引与数字同步前移。
+      assert.equal(artsAtScale[0] && artsAtScale[0].props.style?.height, '96px', '鲸御姐卡片高度固定 96px（不随滑块缩放）');
+      assert.equal(artsAtScale[1] && artsAtScale[1].props.style?.height, '87px', '菲比啾比卡片高度固定 87px（不随滑块缩放）');
       // 八只「模型娘」也必须是**固定**尺寸、且各自等于形态表里写的那一对数（不是统一 64×64，
       // 也不是被 ropeScale 乘过）。这条同时钉住"8 张比例各不同 ⇒ 盒高逐个算"这个决定。
-      for (let i = 3; i < artsAtScale.length; i++) {
+      for (let i = 2; i < artsAtScale.length; i++) {
         const w = artsAtScale[i].props.style?.width, h = artsAtScale[i].props.style?.height;
         assert.ok(/^\d+px$/.test(String(w)) && /^\d+px$/.test(String(h)),
           '第 ' + (i + 1) + ' 只（模型娘）卡片必须有固定 px 盒，实测 ' + w + ' / ' + h);
@@ -2248,7 +2258,7 @@ setTimeout(async () => {
         assert.equal(custom && custom.props.title, '导入图片…', '没导入过 ⇒ 那一项的提示是「导入图片…」');
         assert.ok(!JSON.stringify(tree).includes('清除'),
           '没导入过立绘时不得出现「清除」按钮');
-        assert.ok(itemsNow.every((c) => c.props.disabled !== true), '没有自定义立绘时四项都可点');
+        assert.ok(itemsNow.every((c) => c.props.disabled !== true), '没有自定义立绘时所有项都可点');
         // 立绘舞台与内置项**同一个盒**（最高的那张 64×96）：占位是该盒，导入后图片等比缩进它。
         const stageOf = (item) => item && item.children?.[0]?.props?.style;
         assert.ok(custom && stageOf(custom).width === '64px' && stageOf(custom).height === '96px',

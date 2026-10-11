@@ -51,7 +51,7 @@
  *
  * 保存 / 导出的**资产勾选对话框**（ADR-0011 D4，非模态）：三个勾选项各带一行
  * **不勾的后果**说明 —— 不勾字体 ⇒ 回落接收方当前那份；不勾吉祥物 ⇒ 回落内置
- * maid/whale/phoebe；不勾头像 ⇒ 回落内置默认头像。数值键（开关/尺寸/圆角）恒在 settings 段，
+ * whale/phoebe/DeepSeek；不勾头像 ⇒ 回落内置默认头像。数值键（开关/尺寸/圆角）恒在 settings 段，
  * 不受勾选影响。默认值：字体 ✅ / 吉祥物 ✅ / 头像 ❌（D4：头像体积翻倍、与"分享一份
  * 外观配置"关系最弱）。勾选状态是视图态（ctx.assetChecks + onAssetToggle）。
  * **保存与导出都先过这道对话框**（ADR 修订版第③条）：保存 = 名字行 → 勾选 → 「保存预设」；
@@ -108,7 +108,7 @@ function renderGlassPresetsBlock(gp) {
   const mascotAvailable = checks.mascotAvailable === true;
   const avatarAvailable = checks.avatarAvailable === true;
   // 吉祥物族的**指向**（第四态，2026-10-12 用户口径）：`""` = 按本机现状（老行为），任一形态
-  // id（`ROPE_FORM_VALUES`，2026-10-13 起 12 只）= 这一段只存"指向出厂自带的那一只"（零字节）。
+  // id（`ROPE_FORM_VALUES`，2026-10-13 起 10 只）= 这一段只存"指向出厂自带的那一只"（零字节）。
   const mascotPoint = typeof checks.mascotPoint === "string" ? checks.mascotPoint : "";
   const assetRows = React.createElement(React.Fragment, null,
     switchRow(weT("字体"), has("font"), (e) => onAssetToggle("font", e.target.checked), {
@@ -122,7 +122,7 @@ function renderGlassPresetsBlock(gp) {
       key: "pa-mascot",
       hint: mascotAvailable
         ? weT("勾上：把自定义立绘带进预设（不勾 = 不动对方的立绘，保持它当前那张）")
-        : weT("本机没有自定义立绘 —— 勾着存 = 声明「无」，套用它的人回到内置立绘（小女仆 / 鲸御姐 / 菲比啾比）；不勾 = 不动对方的立绘"),
+        : weT("本机没有自定义立绘 —— 勾着存 = 声明「无」，套用它的人回到内置立绘（鲸御姐 / 菲比啾比）；不勾 = 不动对方的立绘"),
       tooltip: weT("把自定义吉祥物立绘的图片与显示盒一并存进预设（默认勾选）"),
     }),
     // ── 吉祥物族的**指向**（ADR-0011 D4 第四态，用户口径 2026-10-12）──────────────────
