@@ -272,6 +272,20 @@ assert.ok(code.includes('body[data-we-sidebar-glass] [data-dsh-better-sidebar] .
 );
 assert.ok(code.includes('body[data-we-wallpaper] {') && code.includes('body[data-we-wallpaper]:not([data-ds-dark-theme])'),
   'wallpaper-only effects (base let-through, light-scheme text boost) must remain wallpaper-gated');
+// ── 主容器兜底清底（原生浏览器形态）：token 清底盖不住不再消费 token 的宿主 ──────────
+// 口径：清 --dsw-alias-bg-base 只对「读该 token 的宿主构建」有效；宿主新构建的主容器
+// （[*_frame] / [*_root] / body）自带实心底 ⇒ 壁纸层被整片盖死。兜底规则必须
+// ① 三条选择器齐（body / _frame / _root）；② 双门齐（壁纸在台 + 原生浏览器 ——
+// 无壁纸时页面基色不许被清、桌面壳形态由壳层材质自理）；③ 声明 background:
+// transparent !important（要压过宿主自己的实心底）。负对照：删任一门的变异体命中不到
+// 下面的选择器字面量 ⇒ 判红。
+const clearGated = (suffix) => 'body[data-we-wallpaper][data-we-adapter="browser"]' + suffix;
+assert.ok(code.includes(clearGated(',')),
+  'the container fallback must clear the host page canvas (body) itself, wallpaper+browser gated');
+assert.ok(code.includes(clearGated(' [class*="_frame"]')) && code.includes(clearGated(' [class*="_root"]')),
+  'the container fallback must clear the host _frame and _root containers too (both gates included)');
+assert.ok((blockBodyOf(clearGated(' [class*="_root"] {')) || '').includes('background: transparent !important'),
+  'the container fallback needs background: transparent !important (host canvas paints an opaque base)');
 console.log('sidebar glass selectors are wallpaper-independent: true · page glass is anchored on data-we-glass-page: true');
 const cap = { handoff: null };
 const sandbox = {
