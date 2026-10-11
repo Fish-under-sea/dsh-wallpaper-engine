@@ -209,6 +209,12 @@
   **判据**：`test/verify-client.mjs` 新增三条（body / _frame / _root 三条选择器齐 + 双门 + `transparent !important`；删任一门的变异体命中不到选择器字面量 ⇒ 判红）。
   **验证**：`npm run build` + `npm run verify` / `verify:docs` / `smoke` 全绿；Chromium 实机（社区 dsh-web 0.4.5，1280×720）修复前三层 computed `rgb(10,10,10)` 壁纸不可见、修复后 `rgba(0,0,0,0)` 视频壁纸完整露出（选择器强清透明为对照复现同一效果）。**纯客户端改动 ⇒ 刷新页面即可**。
 
+- **新能力：侧边栏圆角 —— 左右侧栏四角各自圆角 / 直角（PR [#177](https://github.com/elysia395/dsh-wallpaper-engine/pull/177) 的取值，含右栏左边缘那道 0.5px 竖线的收口）**。
+  **设置真源**：`lib/settings-schema.js` 每侧 1 个统一档枚举（`'native'` | 6 | 12 | 20）+ 4 个「这一角强制直角」布尔，共 **10 新键**；出厂默认两侧 20px、左栏「外直内圆」（左上 / 左下直角）、右栏「外圆内直」（右上 / 右下直角）—— 默认即直角的四个角必须走布尔真值（缺省只表达"不强制"，表达不了"就是直角"）。
+  **接线**：`src/panel-tabs.js` 外观页新增「侧边栏圆角」节（排在「细节」之后、「玻璃 UI」之前），四角按几何排（左上 / 右上 / 右下 / 左下）+「四角全直角 / 四角全圆角」两个批量键；`src/client.js` 3 个处理器 + **唯一一份**键名表（面板按 (side, corner) 调，批量键也读它）；`src/quick-panel.js` 侧栏档同批提供；`src/glass.js` 写 `data-we-{left,right}-sidebar-radius` / `-square` 与 2 个按面变量（默认档 `native`、四角都不直角时**一个属性都不挂**）；`src/styles.js` 统一值走 `border-radius` **简写**、四角走 `border-*-radius` **长属性且排在简写之后**（顺序即语义 —— 简写会一次设四个角），右栏锚点必须带 `[data-sidebar-right-open]`（容器收起时仍挂在布局里，#107 护栏），左栏锚点取座位出口的**父元素**（出口 `display:contents` 不生成盒子）；`src/effects.js` 的 `clearEffects` 成对清理那 4 个属性 + 2 个变量（卸载 / 禁用不留残角）；`src/i18n-copy.js` 22 条中英对照（含带占位符的 aria 文案）。用户实测的右栏左边缘 0.5px 竖线有两处来源（dockkit 拖拽手柄的 `::before` 与第一列 dock tab host 上的 `border-left`），两处都按圆角缩进 / 去掉，手柄本体的拖拽能力不动。
+  **判据**：`test/verify-scene-live.mjs` 的「外观页节顺序 / 控件标签序列」期望同步（含一条负对照：节数 5 → **6**）；`test/fixtures/settings-sanitize-golden.json` 重录（host 侧新增 10 键及其默认值；client 侧顺带重录 3 个与本次无关的历史陈旧键 `layerPositionX` / `layerPositionY` / `layerScale` —— 那三个键本就没有值判据比对，只作提示）；`docs/TOKEN-CONTRACT.md` 重算（新增 2 个按面变量）。
+  **影响面**：没设过的用户一个属性都不挂 ⇒ 默认视觉与旧版一致；7 套出厂预设同步补齐这 10 键（含本批新造的「紫色心情」，见上一条）—— 否则套用任何一个出厂预设都会把角改回去。**纯客户端 + 随包文件 ⇒ 刷新页面即生效**。
+
 ### v1.3.0-r2（未发布）
 
 > v1.3.0 之后的增量（GitHub Release v1.3.0 附件发出后、npm 渠道发布前修掉的三件事）；`package.json` 版本号同步 `1.3.0-r2`。
