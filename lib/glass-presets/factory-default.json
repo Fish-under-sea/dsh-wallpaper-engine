@@ -38,8 +38,8 @@
     "accent": "#8cff00",
     "glassAlpha": 80,
     "glassColor": {
-      "light": "#0d1524",
-      "dark": "#0d1524"
+      "light": "#258349",
+      "dark": "#258349"
     },
     "glassDarkSeparate": false,
     "glassFidelity": 35,
