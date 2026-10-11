@@ -113,5 +113,19 @@
     "avatarEnabled": false,
     "avatarSize": 40,
     "avatarRadius": 100
+  },
+  "assets": {
+    "font": {
+      "name": "默认",
+      "values": {
+        "themeColors": {},
+        "themeDarkSeparate": false,
+        "themeSize": {},
+        "themeWeight": {},
+        "themeFamily": {},
+        "globalFamily": "",
+        "componentFonts": {}
+      }
+    }
   }
 }

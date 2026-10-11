@@ -24,7 +24,7 @@
  *   hostFailureReason                            ← src/client.js（失败原因的唯一翻译出口）
  *   setTransient                                 ← src/client.js（瞬态字段的唯一写入口）
  *   setSetting                                   ← src/client.js（持久化设置的唯一写入口）
- *   setFontValues                                ← src/fontset-store.js（字体值的唯一写入口 + 落盘）
+ *   landPresetFontSet                             ← src/fontset-store.js（预设字体落位：专用槽 preset-font，不写用户活动集）
  *   persistSelection                             ← src/persistence.js（应用预设 = 走设置通道落盘）
  *   syncLayers / syncRotationTimer / syncSceneAudio ← src/client.js / src/live-layer.js（reapplyAll 编排）
  *   emit                                         ← 单向重渲染
@@ -152,15 +152,20 @@ async function refreshGlassPresets() { return loadGlassPresets(); }
  * "缺席 = 保持现值"的语义；正文没有 assets 时调用方根本不会进来（见 applyPreset）。
  * 返回 "" = 全部落位；非空 = 可判定的失败原因（形状不对 = 宿主契约被破坏，要说出来）。
  */
-function applyPresetAssets(applied) {
+async function applyPresetAssets(applied) {
   if (!applied || typeof applied !== "object" || Array.isArray(applied)) {
     return weT("预设的资产应用失败：{reason}", { reason: weT("宿主回包里没有 applied 形状") });
   }
   const font = applied.font;
   if (font && typeof font === "object" && font.values && typeof font.values === "object") {
-    // 字体值走**字体集通道**：setFontValues 写进 selection 并安排落盘（真源 =
-    // fontsets/<活动 id>.json）。直接塞 selection 会"屏上变了、重启被回滚"。
-    setFontValues(sanitizeFontset(font.values));
+    // 字体值走**字体集通道**，落进**预设专用字体集**（固定 id `preset-font`，见
+    // fontset-store.js 的 landPresetFontSet）—— **绝不写用户当前的活动字体集**：那是
+    // 用户自己的设计（实测教训：黑客绿的字体段落进活动集后把它整个染绿，之后任何
+    // 预设下手动开自定义都见绿）。activateFontSet 会把槽里的值读回采用；槽的显示名
+    // 用预设自带的 font.name。失败走 applyPreset 的整批滚回。
+    if (!(await landPresetFontSet(sanitizeFontset(font.values), font.name))) {
+      return weT(selection.fontSetError || "宿主不可达（请求未完成）");
+    }
   }
   const mascot = applied.mascot;
   if (mascot && typeof mascot === "object" && !Array.isArray(mascot)) {
@@ -225,7 +230,7 @@ async function applyPreset(id) {
     if (rawAssets && typeof rawAssets === "object" && !Array.isArray(rawAssets)) {
       const assetRes = await gpFetch(glassPresetUrl(id) + "/install-assets", { method: "POST" });
       const applied = assetRes.ok && !assetRes.error ? assetRes.data && assetRes.data.applied : null;
-      const why = applied ? applyPresetAssets(applied) : glassPresetFailureReason(assetRes);
+      const why = applied ? (await applyPresetAssets(applied)) : glassPresetFailureReason(assetRes);
       if (why) {
         // 资产落不下：整批放弃 —— settings 段按快照滚回（此刻还没有任何落盘）。
         for (const key of PROFILE_PRESET_KEYS) selection[key] = before[key];

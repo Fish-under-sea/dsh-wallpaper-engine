@@ -432,6 +432,10 @@ const OLD_TAG = 'dsh-we/glass-preset@1';
     builtinRows.map((r) => r.id).join(','));
 
   // 出厂预设正文本身必须是新契约的产物（t1 交付物的独立复核，不看自述）。
+  // 资产段（2026-10-11 维护者口径）：出厂预设**允许携带**（「黑客绿(Fish)」带字体主题与
+  // 吉祥物立绘）—— 但必须是 `sanitizePresetAssets` 的**规范形**（round-trip 逐字节相等），
+  // 随包文件里不许有消毒会改写/丢弃的形状；`data` 由应用路径的 `installAssets` 落盘，
+  // 清单端点只回 {id,name,origin} 不会把它漏出去。
   {
     const files = readdirSync(BUILTIN).filter((f) => f.endsWith('.json')).sort();
     const bad = [];
@@ -439,9 +443,10 @@ const OLD_TAG = 'dsh-we/glass-preset@1';
       const d = JSON.parse(readFileSync(join(BUILTIN, f), 'utf8'));
       if (d.$schema !== schema.PROFILE_PRESET_SCHEMA_TAG) bad.push(f + ':tag');
       else if (Object.keys(d.values || {}).length !== schema.PROFILE_PRESET_KEYS.length) bad.push(f + ':values=' + Object.keys(d.values || {}).length);
-      else if ('assets' in d) bad.push(f + ':带assets');
+      else if ('assets' in d
+        && JSON.stringify(schema.sanitizePresetAssets(d.assets)) !== JSON.stringify(d.assets)) bad.push(f + ':assets非规范形');
     }
-    check('七套出厂正文都是新 tag + 完整 settings 段 + 不带资产段',
+    check('七套出厂正文都是新 tag + 完整 settings 段（资产段允许，须为消毒后规范形）',
       files.length === 7 && bad.length === 0, files.length + ' 套' + (bad.length ? ' 不合格:' + bad.join(',') : ''));
     const author = JSON.parse(readFileSync(join(BUILTIN, 'factory-default.json'), 'utf8'));
     check('「黑客绿(Fish)」按本机现配置抄写（glassColor 摊成一对且两侧同值，非默认白釉）',
@@ -450,6 +455,11 @@ const OLD_TAG = 'dsh-we/glass-preset@1';
       && author.values.glassColor.light === author.values.glassColor.dark
       && author.values.glassColor.light.toLowerCase() !== '#ffffff',
       JSON.stringify(author.values.glassColor));
+    check('「黑客绿(Fish)」携带 font + mascot 资产段（mascot 带内嵌字节与显示盒 —— 应用时经 installAssets 落盘）',
+      author.assets && 'font' in author.assets && 'mascot' in author.assets
+      && typeof author.assets.mascot.data === 'string' && author.assets.mascot.data.length > 0
+      && typeof author.assets.mascot.box === 'string' && /^\d+x\d+$/.test(author.assets.mascot.box),
+      JSON.stringify(author.assets ? Object.keys(author.assets) : null));
   }
 
   // 创建用户预设：settings 段补齐成完整快照（100 键）
@@ -576,7 +586,7 @@ section('③b 旧 tag 作废：422 + reason 点明版本作废、清单标 broke
     && !(await getList()).presets.some((r) => r.id === 'factory-frosted'),
     'status=' + tomb.__state.status + ' reason=' + ((bodyJson(tomb) || {}).reason || '-'));
   // 用户层坏文件遮住随包层同名（同 id 时用户层胜 —— 不能静默回落到出厂那份）。
-  const shadowId = 'factory-clear';
+  const shadowId = 'purple-mood';
   writeUserFile(shadowId, { $schema: OLD_TAG, id: shadowId, name: '遮住的', values: {} });
   const sh = await get1(shadowId);
   const shd = bodyJson(sh) || {};
@@ -1102,8 +1112,10 @@ section('④ 客户端形态棘轮：新编排链（合并→落盘→reapplyAll
     && applyBody.indexOf('selection[key] = before[key]') < applyBody.indexOf('persistSelection()'));
   check('正文带资产段才调 install-assets（缺席 = 一个键都不碰，不是回落默认）',
     /rawAssets && typeof rawAssets === "object"[\s\S]{0,200}\/install-assets/.test(applyBody));
-  check('字体值走字体集通道 setFontValues（不塞进 settings blob —— 塞了会"屏上变了重启回滚"）',
-    /setFontValues\(sanitizeFontset\(font\.values\)\);/.test(storeCode));
+  check('字体值走字体集通道，落进**预设专用槽** landPresetFontSet（不写用户活动集 —— 写活动集会把用户自己的设计整个染绿，实测教训）',
+    /landPresetFontSet\(sanitizeFontset\(font\.values\), font\.name\)/.test(storeCode));
+  check('negative control: 旧的 setFontValues 直写形态必须从 preset-store 消失（落到专用槽是唯一路径）',
+    !/setFontValues\(sanitizeFontset/.test(storeCode));
   check('预设通道不直接写 localStorage（缓存归 settings 通道管）',
     !/localStorage/.test(storeCode));
   // ★ 写请求集合按**语义**判，不按字面顺序判（旧判据把 `join(',')` 的字符串当等式钉死 ⇒
