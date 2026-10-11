@@ -884,7 +884,7 @@ const WE_I18N_EN = {
   "行内代码胶囊、新会话按钮、导航按钮与聊天滚动条拇指的雾底色相 —— 默认白（原观感）。只在这些胶囊吃玻璃（思考块液态玻璃开着）时生效；浓度档不变（10%）。": "Tint of the inline-code capsules, new-session button, navigation buttons and chat scrollbar thumb — white by default (the original look). Only takes effect while those capsules are glassed (thinking-block liquid glass is on); the opacity step stays at 10%.",
   "正文里行内代码胶囊、新会话按钮、导航按钮的模糊半径 —— 越大越像磨砂玻璃。只在这些胶囊吃玻璃（思考块液态玻璃开着）时生效；0 = 关掉雾化。": "Blur radius of the inline-code capsules, new-session button and navigation buttons in the message body — the higher, the more frosted. Only takes effect while those capsules are glassed (thinking-block liquid glass is on); 0 disables the frost.",
   "黑客绿(Fish)": "Hacker Green (Fish)",
-  "清透速览": "Clear & light",
+  "紫色心情": "Purple Mood",
   "重磨砂": "Heavy frost",
   "暗夜釉色": "Night glaze",
   "原色直出": "True color",

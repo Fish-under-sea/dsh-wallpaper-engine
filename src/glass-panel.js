@@ -86,7 +86,7 @@ function renderGlassPresetsBlock(gp) {
   // 两侧靠 id 对齐；漏了的出厂 id 回落显示文件里的原名（渐进式，不炸）。
   const FACTORY_PRESET_CN = {
     "factory-default": weT("黑客绿(Fish)"),
-    "factory-clear": weT("清透速览"),
+    "purple-mood": weT("紫色心情"),
     "factory-frosted": weT("重磨砂"),
     "factory-night": weT("暗夜釉色"),
     "factory-vivid": weT("原色直出"),

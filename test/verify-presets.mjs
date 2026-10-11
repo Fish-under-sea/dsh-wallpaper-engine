@@ -586,7 +586,7 @@ section('③b 旧 tag 作废：422 + reason 点明版本作废、清单标 broke
     && !(await getList()).presets.some((r) => r.id === 'factory-frosted'),
     'status=' + tomb.__state.status + ' reason=' + ((bodyJson(tomb) || {}).reason || '-'));
   // 用户层坏文件遮住随包层同名（同 id 时用户层胜 —— 不能静默回落到出厂那份）。
-  const shadowId = 'factory-clear';
+  const shadowId = 'purple-mood';
   writeUserFile(shadowId, { $schema: OLD_TAG, id: shadowId, name: '遮住的', values: {} });
   const sh = await get1(shadowId);
   const shd = bodyJson(sh) || {};
