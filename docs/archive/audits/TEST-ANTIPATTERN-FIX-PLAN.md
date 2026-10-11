@@ -120,7 +120,8 @@
 ## 2. 需要你决定 / 环境限制
 
 1. **是否提交**：审计本体与声明类收口**都已提交并推送**（`62a5dfc`、`76ccd0f` → `fork/main`），并已随 PR **#170** 合入上游；
-   issue #172 的修复也已提交并推送（`e64207d` → `fork/main`，fork CI run **38120644633** 双平台全绿）—— 它与本审计无关，现作为一个独立 PR 提给上游。
+   issue #172 的修复也已提交并推送（`e64207d` → `fork/main`，fork CI run **38120644633** 双平台全绿）—— 它与本审计无关，已作为**独立 PR [#178](https://github.com/elysia395/dsh-wallpaper-engine/pull/178)**（分支 `fix/172-legacy-faststart-sweep`）提给上游；
+   本批收尾的三笔（`f4471a7` M16 负对照、`055aedf` 夹具重录、`5250bbd` 文档回填）也一并挂在这条 PR 上。
 2. ~~是否补 `docs/CHANGELOG.md` 条目~~ **已补**：`docs/CHANGELOG.md` 与 `docs/en/CHANGELOG.md` 的 `### v1.3.1（未发布）` / `### v1.3.1 (unreleased)`
    段各加一条（测试框架反模式审计与加固），并已按"改动一处同步另一处"的口径对齐；两份审计文档也已登记进 `docs/README.md` 与 `docs/en/README.md`。
 3. **本机跑不了 CI 的一步**：`npm run verify:bridge` 在本沙箱恒 exit 1（`spawn EPERM`，见 §1.2）；GitHub runner 上**已实测通过**（fork 的 run 38026813312 第 7 步 success）。
