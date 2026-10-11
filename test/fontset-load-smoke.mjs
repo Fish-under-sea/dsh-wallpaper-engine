@@ -379,12 +379,30 @@ const waitBoot = () => new Promise((r) => setTimeout(r, 50));
   const editorTree = () => {
     const all = e.renderPanel().flatMap((t) => collectTree(t));
     const isJsonInput = (n) => n.type === 'input' && String((n.props || {}).accept || '').includes('.json');
-    // 定位字体集编辑器的导入行：含「导入字体集…」按钮的那个**容器**。
-    const fontsetCtl = all.find((n) => collectTree(n).some((x) => x.type === 'button'
-      && Array.isArray(x.children) && x.children.join('') === '导入字体集…'));
+    const hasImportBtn = (n) => collectTree(n).some((x) => x.type === 'button'
+      && Array.isArray(x.children) && x.children.join('') === '导入字体集…');
+    // ⚠️⚠️ **不许**取"第一个子树含『导入字体集…』按钮的节点** —— 那个"第一个"就是**整棵树的
+    //    根**，而根的子村里，**玻璃预设**那一枚 `.json` input（`gp-import-input`，`accept`
+    //    逐字相同）排在字体节**之前** ⇒ 拿到的是预设那枚：喂进去的文件走预设导入，
+    //    `/fontsets/import` 永远收不到 POST，而失败**看起来像"导入功能坏了"**。
+    //    本档原文就想避开这个陷阱，但"取第一个"恰好**没有**避开它（第一个 = 根）。
+    //
+    //    2026-10-11 实测暴露：把设置页的字体节改成**默认展开**之后，设置页树里也出现了那枚
+    //    按钮，"第一个"由**侧栏树**变成**设置页树的根** ⇒ 这个潜伏的定位错误当场现形
+    //    （4 条判据红：POST 没发出、版本不符没文案）。**产品是好的，坏的是这个定位器。**
+    //    ⇒ 取**最小**的候选容器：在"子树里既有那枚按钮、又有 .json input"的节点中，取子树
+    //      **最小**的那个 —— 那就是编辑器自己那一行（按钮与 input 的最近公共祖先），
+    //      与页面上另有几枚 .json input、谁先谁后**都无关**。
+    const cands = all.filter((n) => hasImportBtn(n) && collectTree(n).some(isJsonInput));
+    cands.sort((a, b) => collectTree(a).length - collectTree(b).length);
+    const fontsetCtl = cands[0];
+    // 兜底只在**全树恰好一枚** .json input 时才敢用（唯一 ⇒ 不可能是"拿错了"）；
+    // 多于一枚又找不到容器时返回 undefined，让上面那条判据带着"缺 input"红掉 ——
+    // 那比"随便挑一枚去喂"诚实：后者会把定位错误伪装成功能故障。
+    const allJson = all.filter(isJsonInput);
     const fileInput = fontsetCtl
       ? collectTree(fontsetCtl).find(isJsonInput)
-      : all.find(isJsonInput);
+      : (allJson.length === 1 ? allJson[0] : undefined);
     return {
       all,
       text: panelText(e),
@@ -395,6 +413,25 @@ const waitBoot = () => new Promise((r) => setTimeout(r, 50));
   await new Promise((r) => setTimeout(r, 20)); // 打开会拉一次清单
   const opened = editorTree();
   check('点开后编辑器与导入入口都出现', Boolean(opened.fileInput) && opened.text.includes('导入字体集…'));
+  // ⚠️ **定位自证**：拿到的那一枚必须是**字体集编辑器**的 input，不是页面上另一枚 .json input
+  //    （玻璃预设那一枚 accept 逐字相同）。判据：它所在那一行里同时有「新建（以当前外观）」——
+  //    那是字体集编辑器独有的按钮，预设行没有。缺了这条，"拿错了 input"会伪装成功能故障
+  //    （喂进去的是预设导入 ⇒ `/fontsets/import` 收不到 POST ⇒ 看起来像"导入坏了"，
+  //    2026-10-11 实测就这么红过 4 条）。
+  if (opened.fileInput) {
+    // ⚠️ 必须**同时**要求"含这枚 input"**且**"含至少一个按钮" —— 只要求含 input 的话，
+    //    最小的那个节点就是 **input 自己**（它的子树当然含它），于是同行按钮恒为空
+    //    （实测踩过：判据红在"同行按钮="，而不是红在真正的定位错误上）。
+    const rowOf = opened.all.filter((n) => collectTree(n).some((x) => x === opened.fileInput)
+      && collectTree(n).some((x) => x.type === 'button'));
+    rowOf.sort((a, b) => collectTree(a).length - collectTree(b).length);
+    const row = rowOf[0];
+    check('定位自证：拿到的 .json input 属于**字体集编辑器**那一行（不是玻璃预设那枚）',
+      Boolean(row) && collectTree(row).some((x) => x.type === 'button'
+        && Array.isArray(x.children) && x.children.join('') === '新建（以当前外观）'),
+      '同行按钮=' + (row ? collectTree(row).filter((x) => x.type === 'button')
+        .map((x) => (Array.isArray(x.children) ? x.children.join('') : '')).filter(Boolean).join(' / ') : '找不到行'));
+  }
 
   const EXPORTED = JSON.stringify({
     $schema: 'dsh-we/fontset@1', id: 'compact', name: '紧凑', values: HOST_VALUES,
