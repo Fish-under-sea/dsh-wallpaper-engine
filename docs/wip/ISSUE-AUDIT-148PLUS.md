@@ -216,7 +216,40 @@ assert.ok(wallpaperBlock.includes('--dsw-alias-bg-base: transparent') && !wallpa
 - **事件循环**：enumerate 期间最大间隔 **5.1–5.3 ms**（= 5 ms 探测周期，确实在让出）；**13.7–42 ms** 出现在 `lib/inventory.js:146` 那个**无上限**的 `Promise.all(all.map(...))`；全局最坏 42 ms。**没有秒级阻塞**。路径上唯一同步 fs 是 `statSync` `lib/inventory.js:94`（每 scene.pkg 一次）。
 - **⚠️ 报告者的绝对耗时不成立**：报告者是 Windows 11，其 1,625 / 1,980 ms 在本机**复现不出来**（本机低约 10 倍）。**可确认的是"冷调用全量重扫"这个机制与随规模增长的趋势，不是那个绝对值。** 另外：报告者的冷调用是否包含冷 OS 文件缓存，也无法确认。
 
+-
+#### 2026-10-12 复核（本机实测 + 两处更正 + 本轮改动）
+
+**更正 ①：`immediately` 不是杠杆（(a) 的建议作废）。** 宿主 `@deepseek-ai/dsh-client-modules@0.2.0-rc.2` 的 `ClientEntries.start()`（`lib/client.js:254-270`）是：
+
+```js
+await Promise.all(this.desired.plugins.map(async ({ id }) => { await this.create(loader, id); }));  // 每个插件都建（拉模块 + 激活）
+await loader.await();                                                                                // 等全部激活
+```
+
+而 `immediately` 在**整个宿主产物里只有一处消费**：web 前端的 `prefetchImmediateTier()`（`filter(e => e.immediately).map(e => this.modules.prefetch(e.id))`）—— 它只决定**何时开始下载**（与 ctx 构建并行）。
+⇒ 摘掉 `immediately` **不会**把插件移出关键路径，只会让 2.53 MB **晚开始**下载（挂载只可能更晚）；`test/verify-package-publish.mjs:229` 那条断言也就**不必动**。要动「必须等插件加载完」这件事，只能在上游（挂载 UI 不 await 全部 entry，或加懒加载档）。
+
+**更正 ②：压缩不是插件层独有。** 宿主 webserver **自带** gzip 中间件（`@deepseek-ai/dsh-host-webserver` 的 `createGzipMiddleware`：`compression: "none" | "gzip"` 默认 **none**、阈值 1024、级别 1），`createServer` 里**所有路由都过它**（`if (this.gzip === void 0) next(); else this.gzip(req, res, next)`）。是否生效取决于 profile 的 `compression` 配置（本机 `~/.dsh/profiles/web/cordis.patch.yml` 就设了 `compression: gzip`）。
+⚠️ 但 `compression` 见到响应上已有 `Content-Encoding` 会走 already-encoded 分支不再压（实测其 `index.js:196-202`）⇒ **插件侧再压一层不会双重压缩**，两处可以并存。
+
+**本机实测（Linux / NVMe，N=2600 合成 video 项目，字段按真实形状造）**：
+
+| 项 | 实测 |
+|---|---|
+| 枚举（readdir + 逐目录 stat + readFile(project.json)，24 一批） | **63 ms** |
+| 冷建（无索引） | **75 ms** · fs 探测 exists=5200 / stat=2600 |
+| 温建（索引命中） | **23 ms** · **零 fs** |
+| 载荷 | **1,092,662 B**（≈ 420 B/条目） |
+
+**本轮改动（#158 的压缩那一半）**：`lib/json-response.js` 加**协商式 gzip** —— 请求从 `res.req` 取（**不改 `sendJson` 签名**，几十个薄别名零改动）、阈值 1 KB、级别 1（与宿主默认同口径）、HEAD 不压、`gzip;q=0` 不压、无 `accept-encoding` 的假 res 逐字节旧行为。实测真实形状载荷 **1,048,263 B → 39,676 B（省 96.2%）· 压缩耗时 2.2 ms**。
+守卫：`test/verify-json-response.mjs` 新增形态三条（协商式 / 签名未变 / 阈值与 Vary）+ 行为七条（无 req / 大载荷 / 小载荷 / q=0 / HEAD / identity 负对照 / gunzip 回读逐字节相等）。
+
+**时效**：报告者的 8 s / 40 s 是**评论 3 自己写明的「(b) 落盘索引之前那版」** ⇒ 不能代表 HEAD。
+
+**剩余候选（按预期收益，都还没做）**：① 启动不再依赖**全量清单**（boot 路由：只带当前壁纸条目 + 计数，全量清单改为打开选择器 / 空闲时拉）—— 只在**首次**或**库变更后**的冷扫上省 1–2 s（报告者机器）／~75 ms（本机）；② `apply()` 里 t+3 s 的**同步清扫**改让出式（它正好落在 UI 起来那一刻）；③ 上游侧：挂载 UI 不 await 全部插件。
+
 ---
+--
 
 ### #159 主题跟随 + 分主题玻璃色 —— ①缺陷 CONFIRMED ②能力缺口 CONFIRMED（等级 A + C）
 
