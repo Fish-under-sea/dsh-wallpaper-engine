@@ -31,7 +31,7 @@
     "pauseOnBattery": false,
     "flip": false,
     "objectFit": "cover",
-    "contentRatingFilter": "everyone",
+    "contentRatingFilter": "all",
     "typeFilter": "all",
     "pickerLayout": "fixed",
     "edgeCompat": true,
