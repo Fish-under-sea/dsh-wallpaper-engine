@@ -35,6 +35,8 @@
  *   · 正对照（合成）：`const json = (…) => sendJson(res, …)` 必须放行；
  *   · 负对照（扰动真实输入）：把某个**真实**的薄别名在内存里换回内联形态，判据必须报出它
  *     —— 证明真实文本确实流过了判据，而不只是合成数据能过。
+ *   · 行为级（⑤，压缩）：**协商式**才合格 —— 无 req / 小载荷 / `q=0` / HEAD / identity 都不压，
+ *     声明 gzip 且载荷 ≥ 1 KB 才压，且 gunzip 回来逐字节等于 JSON。
  *
  * 剥注释与配花括号都走共享的**字符串感知**实现（`tools/js-text.mjs` 的 `stripComments`；
  * 配对见下方 `matchBrace`）：朴素正则会被注释/字符串里的花括号带跑 ⇒ 判据静默失效。
@@ -44,7 +46,8 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { gunzipSync } from 'node:zlib';
 import { stripComments } from './tools/js-text.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -229,9 +232,16 @@ check(`唯一实现：${SOLE_IMPLEMENTATION} 之外**零**份内联 JSON 应答�
   if (existsSync(abs)) {
     const src = readFileSync(abs, 'utf8');
     check('共享实现导出 `sendJson`', /export\s+function\s+sendJson\s*\(/.test(src));
-    check('共享实现真的发 JSON（`Content-Type` + `end(JSON.stringify(`）',
+    check('共享实现真的发 JSON（`Content-Type` + `JSON.stringify(payload)` + `res.end(`）',
       /'Content-Type',\s*'application\/json; charset=utf-8'/.test(src)
-      && /res\.end\(\s*JSON\.stringify\(/.test(src));
+      && /JSON\.stringify\(payload\)/.test(src) && /res\.end\(/.test(src));
+    // 压缩的三条不变量（#158）：有阈值、请求从 `res.req` 取（**不改签名**）、只在大载荷上
+    // 声明 `Vary` / `Content-Encoding`。
+    check('共享实现的压缩是协商式的（阈值 + `res.req` 协商 + `Vary`）',
+      /GZIP_MIN_BYTES\s*=\s*\d+/.test(src) && /res\.req/.test(src)
+      && /'Vary',\s*'Accept-Encoding'/.test(src) && /'Content-Encoding',\s*'gzip'/.test(src));
+    check('压缩没有改签名（仍是 4 个形参：res / code / payload / cacheControl）',
+      /export\s+function\s+sendJson\s*\(\s*res\s*,\s*code\s*,\s*payload\s*,\s*cacheControl\s*=\s*'no-store'\s*\)/.test(src));
     // 缓存头口径：默认 no-store，且**保留**"不写该头"的出口（行为不改的搬运依据）。
     check('共享实现默认 `no-store`，并保留 `null` = 不写该头的出口',
       /no-store/.test(src) && /cacheControl !== null/.test(src));
@@ -280,6 +290,52 @@ check(`唯一实现：${SOLE_IMPLEMENTATION} 之外**零**份内联 JSON 应答�
   } else {
     check('负对照：找到一个真实薄别名做扰动', false, '没有形如 `const X = (…) => sendJson(…)` 的别名');
   }
+}
+
+// ── ⑤ 压缩是**协商式**的（行为级：同一个函数喂五种请求头）────────────────────
+{
+  const { sendJson } = await import(pathToFileURL(join(ROOT, SOLE_IMPLEMENTATION)).href);
+  const call = (payload, accept, method = 'GET') => {
+    const headers = {};
+    let body = null;
+    const res = {
+      setHeader(k, v) { headers[k.toLowerCase()] = v; },
+      end(b) { body = b; },
+    };
+    if (accept !== undefined) res.req = { method, headers: accept === null ? {} : { 'accept-encoding': accept } };
+    sendJson(res, 200, payload);
+    return { headers, body };
+  };
+  const big = { wallpapers: Array.from({ length: 300 }, (_, i) => ({ id: 'p' + i, title: 'x'.repeat(32) })) };
+  const bigJson = JSON.stringify(big);
+  const small = { ok: true };
+
+  const plain = call(big, undefined);   // 台架形态：假 res 没有 req
+  check('假 res（无 req）⇒ 不压缩，body 就是 JSON 字节（旧行为逐字节不变）',
+    plain.headers['content-encoding'] === undefined && plain.body.toString('utf8') === bigJson);
+
+  const gz = call(big, 'gzip, deflate, br');
+  check('accept-encoding: gzip + 大载荷 ⇒ Content-Encoding: gzip，gunzip 后逐字节等于 JSON',
+    gz.headers['content-encoding'] === 'gzip' && gz.headers.vary === 'Accept-Encoding'
+    && gunzipSync(gz.body).toString('utf8') === bigJson,
+    '压缩后 ' + gz.body.length + ' B / 原始 ' + Buffer.byteLength(bigJson) + ' B');
+  check('压缩确实变小了（不是"压了但更大"）', gz.body.length < Buffer.byteLength(bigJson));
+
+  const tiny = call(small, 'gzip');
+  check('小载荷（< 1 KB）不压：省不下 1 KB 却要多两个头',
+    tiny.headers['content-encoding'] === undefined && tiny.body.toString('utf8') === JSON.stringify(small));
+
+  const q0 = call(big, 'gzip;q=0');
+  check('`gzip;q=0` = 客户端明确不要 ⇒ 不压（协商不是"看见 gzip 字样就压"）',
+    q0.headers['content-encoding'] === undefined);
+
+  const head = call(big, 'gzip', 'HEAD');
+  check('HEAD ⇒ 不压（与宿主 compression 中间件同口径：只回头、不回体）',
+    head.headers['content-encoding'] === undefined);
+
+  const identity = call(big, 'identity');
+  check('负对照：只声明 identity ⇒ 不压（证明上面那条不是恒真）',
+    identity.headers['content-encoding'] === undefined);
 }
 
 console.log('');
