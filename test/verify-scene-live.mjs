@@ -1888,7 +1888,8 @@ for (const [name, ok] of clientChecks) check(name, ok);
   //    ⚠️ 为什么不能靠渲染用例：那些用例是**直接调渲染器**（隔离测试），默认值住在**面板组件**
   //    里（`readQpOpen` / `readSavedPickerOpen` 的default 参数）—— 隔离测试**看不见默认值**。
   //    这正是上一轮"拉宽没生效"那类错误的同一形状（隔离绿、真实链路断），所以这里读源码钉住。
-  //    顺序与设置页同序：细节 / 玻璃 UI / 侧边栏圆角 / 全局 UI 配色 / 全局字体。
+  //    顺序与设置页同序：细节 / 主题预设 / 玻璃 UI / 侧边栏圆角 / 全局 UI 配色 / 全局字体
+  //    （「主题预设」只在设置页画 ⇒ 只有设置页这半边判据，没有侧栏的 QP 键）。
   {
     // 某一档里某个键的**实际默认值**：看它的读调用写的是 `true` 还是 `false`。
     // ⚠️ 不要去猜调用形态（第一版用"调用点后 200 字符内找 return true"—— 而设置页的
@@ -1915,10 +1916,11 @@ for (const [name, ok] of clientChecks) check(name, ok);
     // 「详细玻璃调节」是**子门**（管玻璃节内部的高级行），与整节门不是一回事 ⇒ 默认仍收起。
     check('侧边栏「详细玻璃调节」子门默认收起（它与整节门不是一回事）',
       qpDefault('QP_GLASS_DETAIL_KEY') === false, '默认 ' + (qpDefault('QP_GLASS_DETAIL_KEY') ? '展开' : '收起'));
-    // 设置页：三个门共用 `readSavedPickerOpen`（无默认值参数 ⇒ 默认值写在那条读函数里），
+    // 设置页：四个门共用 `readSavedPickerOpen`（无默认值参数 ⇒ 默认值写在那条读函数里），
     // 另两个各有自己的读函数。所以这里验"**读函数在 null 分支返回 true**"。
     const pickerReads = [
       ['细节', 'readSavedPickerOpen', 'PICKER_DETAIL_OPEN_KEY'],
+      ['主题预设', 'readSavedPickerOpen', 'PICKER_PRESETS_OPEN_KEY'],
       ['玻璃 UI', 'readSavedPickerOpen', 'PICKER_GLASS_UI_OPEN_KEY'],
       ['侧边栏圆角', 'readSavedPickerOpen', 'PICKER_CORNERS_OPEN_KEY'],
       ['全局 UI 配色', 'readSavedPickerUiColorOpen', null],
@@ -5353,15 +5355,24 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       // 渲染期就存在的构件，其余处理器只在点击时才用（本用例不点）。
       // ⚠️ 2026-10-11 **二次修订**：五个整节门在**两档都能折叠** ⇒ 用例必须**显式**给出
       //    "这一档要展开哪几节"（`ctxFrom` 会把没给的字段填成 `noop` ⇒ `noop === true` 为假
-      //    ⇒ 被当成"收起"）。本用例 = 设置页的**默认形态**：细节 / 玻璃 UI / 侧边栏圆角都展开；
-      //    字体与配色那两节在本台按"收起"跑（它们各自有专门用例）。
-      //    「主题预设」并入本序列（main 480830b）：独立节、普通节头不折叠，只此一节无旗标。
-      ctxOver: { glassPresets: { presets: [] }, detailOpen: true, glassUiOpen: true, cornersOpen: true },
+      //    ⇒ 被当成"收起"）。本用例 = 设置页的**默认形态**：细节 / 主题预设 / 玻璃 UI /
+      //    侧边栏圆角都展开；字体与配色那两节在本台按"收起"跑（它们各自有专门用例）。
+      //    「主题预设」并入本序列（main 480830b）：独立节；2026-10-12 起与其他节同口径
+      //    可折叠（presetsOpen）。
+      ctxOver: { glassPresets: { presets: [] }, detailOpen: true, glassUiOpen: true, cornersOpen: true, presetsOpen: true },
       want: ['主题', '细节', '主题预设', '玻璃 UI', '侧边栏圆角', '全局 UI 配色', '全局字体'],
       // ⚠️ 本档打开 `thinkingGlass`（上游 #134 的「思考块液态玻璃」，默认关）：原属本档的
       //    「胶囊雾化」与「思考触发条玻璃·独立配置」都迁进侧栏折叠块了（本档不再画它们 ——
       //    这正是"真迁移"的字面含义；侧栏展开档在下面钉它们）。
       wantLabels: ['主题随壁纸', '边框', '预设方案', '深色单独设置', '玻璃透明度', '雾化', '玻璃保真度', '思考块液态玻璃', '左侧栏液态玻璃', '标题栏液态玻璃', '侧栏液态玻璃', '侧栏全透明', '侧栏玻璃跟随全局', '左侧栏 · 统一圆角', '左侧栏 · 四角单独', '右侧栏 · 统一圆角', '右侧栏 · 四角单独'] },
+    // 设置页 · 主题预设**收起**档：不给 `presetsOpen`（ctxFrom 填 noop ⇒ 被当成收起）。
+    // 节头必须仍在（它是重新展开的唯一入口），预设网格一行都不画 —— 判据形状与「全局 UI 配色」
+    // 收起档同款（verify-client 里那条"存 0 ⇒ 色板不进树、节头仍在"的渲染侧镜像）。
+    { fn: 'renderAppearanceTab', label: '（设置页 · 主题预设收起：只画节头）', surface: 'settings',
+      selOver: { sidebarPresent: true, sidebarGlass: true, thinkingGlass: true },
+      ctxOver: { glassPresets: { presets: [] }, detailOpen: true, glassUiOpen: true, cornersOpen: true },
+      want: ['主题', '细节', '主题预设', '玻璃 UI', '侧边栏圆角', '全局 UI 配色', '全局字体'],
+      wantLabels: ['主题随壁纸', '边框', '深色单独设置', '玻璃透明度', '雾化', '玻璃保真度', '思考块液态玻璃', '左侧栏液态玻璃', '标题栏液态玻璃', '侧栏液态玻璃', '侧栏全透明', '侧栏玻璃跟随全局', '左侧栏 · 统一圆角', '左侧栏 · 四角单独', '右侧栏 · 统一圆角', '右侧栏 · 四角单独'] },
     // 侧栏档（默认收起）：**简化配置 + 两块折叠块的头**（ADR-0008 D4，2026-10-09）——
     // 「详细玻璃调节」开关在（收起 ⇒ 它后面的独立配置层一行都不画）；「全局字体」节头在
     // （收起 ⇒ 字体内容不画）。`selOver` 与设置页用例同位 ⇒ 侧栏家族开关同样画得出来。
@@ -5416,8 +5427,9 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
     //    那条收起档判据下**照样全绿**。两档同 sel 同 ctxOver，差异只该来自玻璃行（预设方案）。
     { fn: 'renderAppearanceTab', label: '（设置页 · 字体节展开 · 字体自定义开）', surface: 'settings',
       selOver: { fontCustom: true, sidebarPresent: true, sidebarGlass: true },
-      // ⚠️ 前三个门同样要显式给（二次修订后两档都可折叠；不给会被当成收起）。
-      ctxOver: { fontOpen: true, glassPresets: { presets: [] }, detailOpen: true, glassUiOpen: true, cornersOpen: true },
+      // ⚠️ 前三个门同样要显式给（二次修订后两档都可折叠；不给会被当成收起）；
+      //    「主题预设」的门（presetsOpen，2026-10-12）同口径。
+      ctxOver: { fontOpen: true, glassPresets: { presets: [] }, detailOpen: true, glassUiOpen: true, cornersOpen: true, presetsOpen: true },
       want: ['主题', '细节', '主题预设', '玻璃 UI', '侧边栏圆角', '全局 UI 配色', '全局字体'],
       // ⚠️ 这条序列 = 上面设置档（收起）那 17 项玻璃标签 + 侧栏字体展开那 14 项字体标签，
       //    **按序拼接** —— 两个来源各自都被别的用例钉住了，这里是它们的交叉验证：拼接后
@@ -5712,10 +5724,19 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
           check(t.fn + t.label + ' 设置档不许出现「详细玻璃调节」开关（那是侧栏折叠块的入口）',
             !labels.includes('详细玻璃调节'), '泄漏：' + labels.filter((l) => l === '详细玻璃调节').join(''));
           // 门的另一侧：能画出来的时候才判（用例给了 `presets` 替身）—— 否则这条会恒假。
+          // 2026-10-12 起「主题预设」与其他节同口径可折叠：ctxOver 给了 `presetsOpen: true`
+          // 的用例判**整块在**（网格 + 保存行）；没给（= 收起档）的用例反过来判**网格不许在**
+          // —— 节头本身由 want 的节序列钉住（'主题预设' 一直在，它是重新展开的唯一入口）。
           if (t.ctxOver && t.ctxOver.glassPresets) {
-            check(t.fn + t.label + ' 设置档必须画预设块（预设仍住设置页，D4）',
-              labels.includes('预设方案') && flat.includes(PRESET_MARK),
-              labels.includes('预设方案') ? '标签与按钮都在' : '缺：预设方案 / ' + PRESET_MARK);
+            if (t.ctxOver.presetsOpen === true) {
+              check(t.fn + t.label + ' 设置档必须画预设块（预设仍住设置页，D4）',
+                labels.includes('预设方案') && flat.includes(PRESET_MARK),
+                labels.includes('预设方案') ? '标签与按钮都在' : '缺：预设方案 / ' + PRESET_MARK);
+            } else {
+              check(t.fn + t.label + ' 设置档 · 主题预设收起 ⇒ 预设网格不画（折叠门）',
+                !labels.includes('预设方案') && !flat.includes(PRESET_MARK),
+                '泄漏：' + (labels.includes('预设方案') ? '预设方案 ' : '') + (flat.includes(PRESET_MARK) ? PRESET_MARK : ''));
+            }
           }
         }
       }

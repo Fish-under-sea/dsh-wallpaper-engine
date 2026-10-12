@@ -405,6 +405,7 @@ function renderAppearanceGlassSection(ctx) {
     onSidebarContentAlpha, onSidebarContentColor, onSidebarGlass,
     onSidebarFollowGlobal, onSidebarFullClear,
     onThinkingMode, glassDetailOpen, onToggleGlassDetail, glassUiOpen, onToggleGlassUiSection,
+    presetsOpen, onTogglePresetsSection,
   } = ctx;
   // ── 简化配置 vs 高级配置（ADR-0008 **D4**，2026-10-09 用户口径修订）────────────
   //   · **简化配置**（侧栏档 + 设置页都画）：全局四件套（玻璃颜色 / 玻璃透明度 / 雾化 /
@@ -658,18 +659,20 @@ function renderAppearanceGlassSection(ctx) {
   //    分栏，升为自己的栏目且排在玻璃节之前）。只在设置页画（!sidebarSurface 门不变）；
   //    侧栏档连节头都不画 —— 空节头是噪音。
   // ctx 成员由 client.js 的 glassPresetCtx 提供（清单/错误是宿主投影；应用走 settings 通道）。
-  // ⚠️ 这道门是**显式**的，三处对齐：① 门在这里；② `glassPresets` 已进 quick-panel 的
+  // ⚠️ 这道门是**显式**的，四处对齐：① 门在这里；② `glassPresets` 已进 quick-panel 的
   //    setting-only 占位器（误补 ⇒ 当场炸）；③ verify-scene-live 两档都钉住预设块
-  //    （节序列 + 标签序列 + 整树文本锚：侧栏档不许有、设置档必须有）。
+  //    （节序列 + 标签序列 + 整树文本锚：侧栏档不许有、设置档必须有）；④ 侧栏 ctx **不给**
+  //    onTogglePresetsSection（verify-presets 的 SETTING_ONLY 豁免同此理由）。
   //    分类理由：它不是"总开关"也不是"逐面覆盖"，而是**跨面批量覆盖**（一份预设 = 整机配置
   //    完整快照，应用即 Object.assign 整套覆盖、**无确认无撤销**），且出厂预设**删除即永久** ——
   //    这类动作按 D4 的取向属高阶；侧栏是窄面板 + 随手调的场合。
+  // 折叠（2026-10-12）：与其他节同口径升 sectionHead —— 两档都可折叠的统一构件；本节只在
+  // 设置页渲染 ⇒ 折叠态只有设置页一份（picker-presets-open，默认展开，经 usePickerSectionOpen）。
+  const presetSectionOpen = presetsOpen === true;
   const presetSection = (!sidebarSurface && ctx.glassPresets)
     ? React.createElement("div", { className: "we-picker__section", key: "gp-section" },
-        React.createElement("div", { className: "we-picker__section-head" },
-          React.createElement("span", { className: "we-picker__section-label" }, weT("主题预设")),
-        ),
-        renderGlassPresetsBlock(ctx.glassPresets),
+        sectionHead(weT("主题预设"), presetSectionOpen, onTogglePresetsSection),
+        presetSectionOpen && renderGlassPresetsBlock(ctx.glassPresets),
       )
     : null;
   return React.createElement(React.Fragment, null,

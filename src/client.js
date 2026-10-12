@@ -2811,13 +2811,15 @@ function writeSavedPickerUiColorOpen(on) {
   try { localStorage.setItem(PICKER_UI_COLOR_OPEN_KEY, on ? "1" : "0"); } catch { /* ignore */ }
 }
 
-// ── 设置页「细节 / 玻璃 UI / 侧边栏圆角」三节的折叠态（2026-10-11 二次修订）──────────
+// ── 设置页「细节 / 玻璃 UI / 侧边栏圆角 / 主题预设」四节的折叠态（2026-10-11 二次修订）──────────
 // 用户口径：「侧边栏保证后面三个默认隐藏；设置页全部开启但也支持隐藏」⇒
-// 这三节在**设置页**默认展开（侧边栏那侧由 quick-panel 的 readQpOpen 给各自的默认值）。
+// 这几节在**设置页**默认展开（侧边栏那侧由 quick-panel 的 readQpOpen 给各自的默认值）。
+// 「主题预设」只在设置页画（侧栏档整节不渲染 ⇒ 没有 QP 侧的孪生键），并入本组共用一条读法。
 // 与上面两个键同一条存储语义（没表过态才吃默认值）。
 const PICKER_DETAIL_OPEN_KEY = "dsh-wallpaper-engine:picker-detail-open";
 const PICKER_GLASS_UI_OPEN_KEY = "dsh-wallpaper-engine:picker-glass-ui-open";
 const PICKER_CORNERS_OPEN_KEY = "dsh-wallpaper-engine:picker-corners-open";
+const PICKER_PRESETS_OPEN_KEY = "dsh-wallpaper-engine:picker-presets-open";
 /** 设置页这三个门共用一条读法（都默认展开）；写各用各的键。 */
 function readSavedPickerOpen(key) {
   try {
@@ -4795,6 +4797,7 @@ function WallpaperPicker() {
   const [pickerDetailOpen, togglePickerDetailSection] = usePickerSectionOpen(PICKER_DETAIL_OPEN_KEY);
   const [pickerGlassUiOpen, togglePickerGlassUiSection] = usePickerSectionOpen(PICKER_GLASS_UI_OPEN_KEY);
   const [pickerCornersOpen, togglePickerCornersSection] = usePickerSectionOpen(PICKER_CORNERS_OPEN_KEY);
+  const [pickerPresetsOpen, togglePickerPresetsSection] = usePickerSectionOpen(PICKER_PRESETS_OPEN_KEY);
 
   // 本机字体清单的触发点**两处都有**（2026-10-11 三次修订）：字体节回到设置页之后，
   // 这里也要一份 —— 否则「全局字族」那排下拉在本档是空的死旋钮（清单由宿主现扫描）。
@@ -4944,12 +4947,14 @@ function WallpaperPicker() {
       officialColorOf, onAccent, onCapsuleBlur, onCapsuleColor, onBlur, onBorder, onCaretColor, onChatGlassFidelity, onComponentFamily, onComponentFont, onFontAdvanced, onFontResetAll, onGlassAlpha, onGlassColor, onGlassDarkSeparate, onGlassFidelity, onGlobalFamily, onLeftSidebarGlass, onTitlebarGlass, onRefreshSystemFonts, onSidebarAllCorners, onSidebarAlpha, onSidebarBlur, onSidebarColor, onSidebarContentAlpha, onSidebarContentColor, onSidebarCornerRadius, onSidebarCornerSquare, onSidebarFollowGlobal, onSidebarGlass, onSidebarFullClear, onThemeColor, onThemeColorClear, onThemeDarkSeparate, onThemeFamily, onThemeSize, onThemeTypeOnly, onThemeWeight, onThinkingMode, onToggleFontCustom, onToggleThemeFollow, sel,
       // 玻璃 UI 子项开关 + 独立配置 + 独立参数（见 onToggleChildIndependent 那段注释）
       onToggleChildIndependent, onGlassChildParam, childIndependentOn,
-      // 2026-10-11 二次修订：设置页也**支持隐藏**这五节（默认全展开）——
+      // 2026-10-11 二次修订：设置页也**支持隐藏**这几节（默认全展开）——
       // 「细节 / 玻璃 UI / 侧边栏圆角」三个门是本档新增的，与「全局 UI 配色 / 全局字体」
       // 那两个同形。顺序与侧边栏同序（两侧都走 renderAppearanceTab 这一处装配）。
+      // 「主题预设」（2026-10-12）：与其他节同口径升折叠节 —— 只在设置页画 ⇒ 没有侧栏半边。
       detailOpen: pickerDetailOpen, onToggleDetailSection: togglePickerDetailSection,
       glassUiOpen: pickerGlassUiOpen, onToggleGlassUiSection: togglePickerGlassUiSection,
       cornersOpen: pickerCornersOpen, onToggleCornersSection: togglePickerCornersSection,
+      presetsOpen: pickerPresetsOpen, onTogglePresetsSection: togglePickerPresetsSection,
     });
     if (activeTab === "playback") return React.createElement(React.Fragment, null,
       renderEffectsTab({
@@ -5349,10 +5354,12 @@ function RopeDock() {
   }, [hidden]);
 
   // Hidden: render nothing (rope + drawer), but keep the one-time update
-  // notice — it is independent of the mascot and must still surface.
+  // notice — it is independent of the mascot and must still surface. The
+  // preset intro dialog rides the same rule (independent of mascot too).
   if (hidden) {
     return React.createElement(React.Fragment, null,
       React.createElement(UpdateNotice, null),
+      React.createElement(PresetIntroDialog, null),
     );
   }
 
@@ -5412,6 +5419,7 @@ function RopeDock() {
       ),
     ),
     React.createElement(UpdateNotice, null),
+    React.createElement(PresetIntroDialog, null),
   );
 }
 
@@ -5441,7 +5449,10 @@ function RopeDock() {
 // 都从磁盘现读，而后端路由只在 DSH 重启时换血 —— 更新后未重启的窗口期里，旧后端
 // 的 /about-qr 白名单还没有 update-notice.jpg ⇒ 图 404。若照旧立刻弹窗，用户看到
 // 裂图，而「知道了」一关整版公告永久退场，配图等于永远没人看到。
-const NOTICE_VERSION = "1.3.2";
+// ⚠️ 2026-10-12 公告整体改版（简洁大字三条 + 配图换「星来」）。1.3.2 尚未对外发布
+//（无人看过旧 1.3.2 正文，仅开发机看过）⇒ 按内容修订惯例用 **r2 后缀**：
+// 看过旧 1.3.2 的机器重弹一次，没看过的当全新公告，效果等价。
+const NOTICE_VERSION = "1.3.2-r2";
 // 公告内容改版（新增「侧边栏只是简略版」大字说明 + 配图缩小）必须升哨兵：
 // 否则看过旧版的用户永远看不到新说明，改了等于没改 ⇒ 重弹一次是设计意图。
 // 配图就绪探针的节奏：HEAD 轮询到新白名单在场（= 后端已重启）才弹；旧后端一直
@@ -5535,59 +5546,85 @@ function UpdateNotice() {
   };
   if (!show) return null;
   return React.createElement("div", { className: "we-update-notice", role: "alert" },
-    React.createElement("div", { className: "we-update-notice__title" }, weT("🎉 v1.3.2 更新：视频秒开 · 壁纸取景 · 缓存搬家")),
-    // 只有 ready 才渲染配图与配图说明（timeout 降级态连说明一起藏 —— 那行字在
-    // 说"这张图"，图缺席时它就是无源之水）。
-    art === "ready" ? React.createElement("img", { className: "we-update-notice__art", src: apiUrl(NOTICE_ART_PATH), alt: weT("求个 star 喵！—— GitHub 求星插画") }) : null,
+    React.createElement("div", { className: "we-update-notice__title" }, weT("🎉 更新：吉祥物新朋友 · 一键预设 · 缓存路径自选")),
+    // 只有 ready 才渲染配图与说明行（timeout 降级态无图弹出，正文信息自足）。
+    // 2026-10-12 配图换「星来」，但**求星路径指引保留**（用户口径）：图下那行
+    // 「关于页一键直达」是用户找到点星入口的唯一指引，不随配图换血退场。
+    art === "ready" ? React.createElement("img", { className: "we-update-notice__art", src: apiUrl(NOTICE_ART_PATH), alt: weT("新朋友「星来」登场") }) : null,
     art === "ready" ? React.createElement("div", { className: "we-update-notice__art-cap" },
       React.createElement("strong", null, weT("在设置中的壁纸引擎页面中的关于中可一键直达，谢谢喵！"))) : null,
     React.createElement("div", { className: "we-update-notice__body" },
-      // 大字说明（.we-update-notice__callout，16pt）放在**正文第一段**（用户口径：
-      // 别让它在文末被忽略）：用户总在侧边栏调完就走、不知道
-      // 设置页还有全套 ⇒ 用公告里最大的一号字把这句话喊出来（允许夸张 —— 夸张的就是
-      // 字号与感叹号，不夸大事实）。
+      // 2026-10-12 用户口径：摒弃以往「字小条多」的清单式公告，改**简洁 + 大字** ——
+      // 只讲三件事，全部走 16pt callout（.we-update-notice__callout），每条一句不加尾巴长文。
       React.createElement("p", { className: "we-update-notice__callout" },
-        noticeEx(3), React.createElement("strong", null, weT("侧边栏的调节只是「简略版」！")),
-        weT("细致的调节都在「设置 → 壁纸引擎」里！")),
-      // ① 同样用 16pt 大字（用户口径）：新下载的壁纸要点「刷新」才会进库
-      // —— 被问得最多的一件事，而刷新键正是本次版本刚加在顶栏的。
+        "① ", noticeEx(2), React.createElement("strong", null, weT("我们的吉祥物系统来了很多新朋友！")),
+        weT("都在本插件设置里。")),
       React.createElement("p", { className: "we-update-notice__callout" },
-        "① ", noticeEx(3), React.createElement("strong", null, weT("下载了新壁纸后要点「刷新」！")),
-        weT("新壁纸要点「刷新」才会出现在壁纸库里——刷新键就在顶栏「暂停」旁。")),
-      React.createElement("p", null,
-        weT("自 1.3.1 以来的全部更新：")),
-      // ①–⑦ 每条压成一两句：保留 ❗ 强调层级、
-      // 破坏性操作的警示与 oneincase 归属；被删细节在设置页与 CHANGELOG 里都有。
-      React.createElement("p", null,
-        "① ", noticeEx(3), React.createElement("strong", null, weT("视频壁纸秒开")),
-        weT("：大体积视频不再等整份文件读完才出首帧（实测 765MB 的壁纸从 1.8 秒缩到 0.2 秒级）；缓存里那 1.5GB 的整片副本也清掉了，磁盘零占用。")),
-      React.createElement("p", null,
-        "② ", noticeEx(3), React.createElement("strong", null, weT("壁纸取景三件套")),
-        weT("：「播放 → 效果」新增 水平 / 垂直 / 缩放 —— 对齐 Wallpaper Engine 壁纸属性面板的同名滑条，右侧数值可直接键入，双击标签回默认。")),
-      React.createElement("p", null,
-        "③ ", noticeEx(3), React.createElement("strong", null, weT("缓存位置可自定义")),
-        weT("：「高级」页签新增「缓存位置」—— 几 GB 的视频缓存可一键搬到别的盘，不再挤占系统盘。")),
-      React.createElement("p", null,
-        "④ ", React.createElement("strong", null, weT("新版 Wallpaper Engine 不再被判「未安装」")),
-        weT("：当前版本 WE 把可执行文件挪进了 distribution/ 子目录，旧判据认不出——现已两种布局都认，非默认 Steam 盘的安装恢复正常。")),
-      React.createElement("p", null,
-        "⑤ ", noticeEx(3), React.createElement("strong", null, weT("打开「会话头像」后思考行不再消失")),
-        weT("：#154——收起的思考行宽度塌成 0、连「思考」入口一起不见，现已修复。")),
-      React.createElement("p", null,
-        "⑥ ", React.createElement("strong", null, weT("界面细节一批")),
-        weT("：侧栏开始页「壁纸引擎」入口图标换成官方 artwork 家族同款彩色（不再显灰）；原生下拉弹层在深色主题下「底色与字同色」整列不可读的问题已修。")),
-      React.createElement("p", null,
-        "⑦ ", React.createElement("strong", null, weT("内部重构（零行为改动）")),
-        weT("：宿主上帝函数与客户端深嵌套收官——纯搬移，无新增依赖、无设置项与协议变化。")),
-      React.createElement("p", null,
-        React.createElement("strong", null, weT("💡 使用提示："))),
-      React.createElement("p", null,
-        noticeEx(3), React.createElement("strong", null, weT("升级后建议重启一次 DSH")),
-        weT("——视频起播与缓存路径的改动要重启 dsh web 后完整生效。")),
+        "② ", noticeEx(2), React.createElement("strong", null, weT("新的预设系统给你带来更一键式的操作")),
+        weT("：「作者自用」「黑客绿」「紫色心情」都可尝试！")),
+      React.createElement("p", { className: "we-update-notice__callout" },
+        "③ ", noticeEx(2), React.createElement("strong", null, weT("可以选择壁纸的缓存路径")),
+        weT("：在本插件设置中的「系统」分页，避免占用 C 盘。")),
+      React.createElement("p", { className: "we-update-notice__callout" },
+        "④ ", noticeEx(2), React.createElement("strong", null, weT("圆角效果也可以调了")),
+        weT("：在本插件设置的「外观」分页。")),
       React.createElement("p", { className: "we-update-notice__hint" },
-        weT("本提示每个新版本只出现一次，点下方按钮关闭后不再弹出。")),
+        weT("升级后建议重启一次 DSH，改动才完整生效；本提示每个新版本只出现一次，点下方按钮关闭后不再弹出。")),
     ),
     React.createElement("button", { className: "we-update-notice__btn we-picker__btn", type: "button", onClick: dismiss }, weT("知道了")),
+  );
+}
+
+// ── One-time preset intro dialog（「作者自用」推广弹窗，2026-10-12 用户口径）──────────
+// 方案：更新后弹**一次性**对话框，由用户自选 —— A：采用「作者自用」（作者日常在用、
+// 兼顾美观与可读性，降低新用户上手难度）；B：保持当前设置不变。不强制：老调参用户选
+// B 即可，答过就不再问。哨兵住 **localStorage**（与折叠态同一条"每机 UI 状态"口径；
+// 不进 settings ⇒ 不进任何预设快照，也不动 schema / sanitize golden）。
+// ⚠️ 排在公告**之后**：门控借用 NOTICE_VERSION 本尊（noticeSeen 已写 = 公告已处理）
+// —— 同一次更新先读"有什么新"，再答"要不要换外观"，两个弹窗不同屏。
+const PRESET_INTRO_VERSION = "1";
+const PRESET_INTRO_SEEN_KEY = "dsh-wallpaper-engine:preset-intro-seen";
+function PresetIntroDialog() {
+  useWeLocale(); // 与公告同一条口径：文案跟随语言切换
+  const sel = useStore();
+  // 已读标记同步读（localStorage 可同步拿）：不需要等 hostLoaded 才知道"答没答过"。
+  const [seen, setSeen] = React.useState(() => {
+    try { return localStorage.getItem(PRESET_INTRO_SEEN_KEY) === PRESET_INTRO_VERSION; } catch { return false; }
+  });
+  const [applying, setApplying] = React.useState(false);
+  const [failed, setFailed] = React.useState(false);
+  const markSeen = () => {
+    try { localStorage.setItem(PRESET_INTRO_SEEN_KEY, PRESET_INTRO_VERSION); } catch { /* ignore */ }
+    setSeen(true);
+  };
+  // A 键 = 与预设卡片同一条 applyPreset 整快照链（settings 合并 + 资产落位 + 失败滚回）。
+  // 失败**不**记已读：弹窗留在原地，错误文案读 glassPresetError 现值（与卡片同一通道，
+  // emit 后重渲染拿到的就是本次失败的 freshly 值 —— 本地 state 只记"要不要显示错误行"）。
+  const accept = () => {
+    if (applying) return;
+    setApplying(true);
+    setFailed(false);
+    setTransient("glassPresetError", ""); // 清掉面板里可能挂着的旧错，别让它串场
+    emit();
+    applyPreset("factory-author").then((ok) => {
+      setApplying(false);
+      if (ok) markSeen(); else setFailed(true);
+    });
+  };
+  const eligible = sel.hostLoaded && !seen && sel.noticeSeen === NOTICE_VERSION;
+  if (!eligible) return null;
+  return React.createElement("div", { className: "we-preset-intro", role: "alertdialog", "aria-label": weT("试试「作者自用」外观预设？") },
+    React.createElement("div", { className: "we-preset-intro__title" }, weT("试试「作者自用」外观预设？")),
+    React.createElement("div", { className: "we-preset-intro__body" },
+      React.createElement("p", null, weT("「作者自用」是作者日常在用的整机外观方案：兼顾美观与可读性，一键套用、不用逐项调。")),
+      React.createElement("p", null, weT("采用后当前外观设置会被整份替换（不能一键撤销）；选择保持的话，随时可在「设置 → 壁纸引擎 → 主题预设」里再套用。")),
+      failed && sel.glassPresetError ? React.createElement("p", { className: "we-preset-intro__err" }, sel.glassPresetError) : null,
+    ),
+    React.createElement("div", { className: "we-preset-intro__actions" },
+      React.createElement("button", { className: "we-preset-intro__btn we-preset-intro__btn--primary", type: "button", disabled: applying,
+        onClick: accept }, applying ? weT("正在应用…") : weT("采用「作者自用」")),
+      React.createElement("button", { className: "we-preset-intro__btn", type: "button", onClick: markSeen }, weT("保持我的设置")),
+    ),
   );
 }
 

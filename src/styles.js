@@ -659,22 +659,26 @@ const CSS = `
        var(--dsw-alias-scrollbar-bg-l2) 这一层间接（自定义属性按元素解析，不是按
        声明处解析），所以一次覆盖全应用，不需要逐个锚点补，也不碰任何类名哈希。
        色阶仍沿用宿主那一级（可视性不变），只把中性色的**色相**换成用户选的玻璃
-       底色；浅色下取更暗一级的静态中性色，抵掉混色带来的提亮。 */
-    --dsw-alias-scrollbar-bg-l1: color-mix(in srgb, var(--we-surface-tint-light, #ffffff) 40%, var(--dsw-static-neutral-300, #d4d4d4));
-    --dsw-alias-scrollbar-bg-l2: color-mix(in srgb, var(--we-surface-tint-light, #ffffff) 40%, var(--dsw-static-neutral-300, #d4d4d4));
-    --dsw-alias-scrollbar-hover-l1: color-mix(in srgb, var(--we-surface-tint-light, #ffffff) 40%, var(--dsw-static-neutral-400, #a2a4a6));
-    --dsw-alias-scrollbar-hover-l2: color-mix(in srgb, var(--we-surface-tint-light, #ffffff) 40%, var(--dsw-static-neutral-400, #a2a4a6));
+       底色；浅色下取更暗一级的静态中性色，抵掉混色带来的提亮。
+       ⚠️ 权重 40% → 65%（2026-10-12）：40% 玻璃色 + 60% 灰阶在**深色低饱和**玻璃色
+       （如藏青 #0d1524）下色相被灰阶洗光 —— 拇指复算 ≈#525659，与宿主原生灰
+       （neutral-600 #545557）不可分，观感等于退回 #157 修复前（用户实测报回归）。
+       65% 让色相在任何玻璃色下都存活；亮度台阶仍由中性色锚定档决定，锚不变。 */
+    --dsw-alias-scrollbar-bg-l1: color-mix(in srgb, var(--we-surface-tint-light, #ffffff) 65%, var(--dsw-static-neutral-300, #d4d4d4));
+    --dsw-alias-scrollbar-bg-l2: color-mix(in srgb, var(--we-surface-tint-light, #ffffff) 65%, var(--dsw-static-neutral-300, #d4d4d4));
+    --dsw-alias-scrollbar-hover-l1: color-mix(in srgb, var(--we-surface-tint-light, #ffffff) 65%, var(--dsw-static-neutral-400, #a2a4a6));
+    --dsw-alias-scrollbar-hover-l2: color-mix(in srgb, var(--we-surface-tint-light, #ffffff) 65%, var(--dsw-static-neutral-400, #a2a4a6));
   }
   body[data-ds-dark-theme][data-we-glass-page] {
     --we-chat-glass-fill: rgba(var(--we-surface-tint-rgb-dark, 13, 21, 36), var(--we-glass-alpha, 0.15));
     --we-tool-glass-fill: rgba(var(--we-surface-tint-rgb-dark, 13, 21, 36), calc(var(--we-glass-alpha, 0.15) + 0.06));
     /* 滚动条（#157）：暗主题宿主取 neutral-700/600（静态）与 600/550（悬停），混色会把整体
        压暗，所以每档都往亮一级取，混完仍落在宿主原来的亮度台阶上（宿主 l2 与 hover-l1 同值，
-       这里同样同值）。 */
-    --dsw-alias-scrollbar-bg-l1: color-mix(in srgb, var(--we-surface-tint-dark, #0d1524) 40%, var(--dsw-static-neutral-600, #545557));
-    --dsw-alias-scrollbar-bg-l2: color-mix(in srgb, var(--we-surface-tint-dark, #0d1524) 40%, var(--dsw-static-neutral-500, #7f8287));
-    --dsw-alias-scrollbar-hover-l1: color-mix(in srgb, var(--we-surface-tint-dark, #0d1524) 40%, var(--dsw-static-neutral-500, #7f8287));
-    --dsw-alias-scrollbar-hover-l2: color-mix(in srgb, var(--we-surface-tint-dark, #0d1524) 40%, var(--dsw-static-neutral-400, #a2a4a6));
+       这里同样同值）。权重 65% 同浅色档（见上：深色低饱和玻璃色的色相存活）。 */
+    --dsw-alias-scrollbar-bg-l1: color-mix(in srgb, var(--we-surface-tint-dark, #0d1524) 65%, var(--dsw-static-neutral-600, #545557));
+    --dsw-alias-scrollbar-bg-l2: color-mix(in srgb, var(--we-surface-tint-dark, #0d1524) 65%, var(--dsw-static-neutral-500, #7f8287));
+    --dsw-alias-scrollbar-hover-l1: color-mix(in srgb, var(--we-surface-tint-dark, #0d1524) 65%, var(--dsw-static-neutral-500, #7f8287));
+    --dsw-alias-scrollbar-hover-l2: color-mix(in srgb, var(--we-surface-tint-dark, #0d1524) 65%, var(--dsw-static-neutral-400, #a2a4a6));
   }
   /* ⚠️ 这组「气泡直接读 --we-chat-glass-fill」是**思考玻璃功能的一部分**，必须挂
      [data-we-thinking-glass] 门 —— 否则默认态会改掉气泡的底色、并绕开「对话栏玻璃保真度」
@@ -3002,6 +3006,42 @@ body[data-we-glass-floaters] .we-update-notice {
      免得大字挤成一团。 */
   .we-update-notice__callout { font-size: 16pt; line-height: 1.45; }
   @media (prefers-reduced-motion: reduce) { .we-update-notice { animation: none !important; } }
+
+  /* 「主题预设」一次性弹窗（PresetIntroDialog）：**屏幕正中**的模态小卡（用户口径：
+     居中 + 白色字体）。底色**恒定深色玻璃**、不跟主题 —— 白字要在浅色主题下也 ≥ 可读，
+     就不能让底色随主题翻成浅色；z 高公告一档（1120 > 1100）。入场动画自带（公告那条
+     keyframes 的位移是按底部锚定的 translate(-50%, 12px) 写的，居中锚不能用）。 */
+  .we-preset-intro {
+    position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    z-index: 1120; width: min(480px, 92vw); box-sizing: border-box;
+    display: flex; flex-direction: column; gap: 10px;
+    padding: 18px 20px; border-radius: 14px;
+    background-color: rgba(18, 20, 26, 0.82);
+    -webkit-backdrop-filter: blur(18px) saturate(1.2);
+    backdrop-filter: blur(18px) saturate(1.2);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+    color: #fff;
+    animation: we-preset-intro-in 220ms var(--we-ease, cubic-bezier(0.16, 1, 0.3, 1));
+  }
+  @keyframes we-preset-intro-in { from { opacity: 0; transform: translate(-50%, -46%); } to { opacity: 1; transform: translate(-50%, -50%); } }
+  .we-preset-intro__title { font-weight: 600; font-size: 0.95em; }
+  .we-preset-intro__body { font-size: 0.82em; line-height: 1.5; opacity: 0.94; }
+  .we-preset-intro__body p { margin: 0 0 6px; }
+  .we-preset-intro__err { color: #ff9b9b; font-size: 0.9em; }
+  .we-preset-intro__actions { display: flex; gap: 10px; justify-content: flex-end; align-items: center; }
+  .we-preset-intro__btn {
+    padding: 7px 14px; border-radius: 9px; cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.10);
+    color: #fff; font-size: 0.85em; font-family: inherit;
+  }
+  .we-preset-intro__btn--primary {
+    background: rgba(255, 255, 255, 0.92); color: #101318;
+    border-color: transparent; font-weight: 600;
+  }
+  .we-preset-intro__btn[disabled] { opacity: 0.55; cursor: default; }
+  @media (prefers-reduced-motion: reduce) { .we-preset-intro { animation: none !important; } }
 
   /* Glass library side drawer — docked right, 360px (capped at 92vw), full
      height, slides in from the right edge, inner body scrolls. Same liquid-glass

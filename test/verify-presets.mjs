@@ -1422,18 +1422,52 @@ section('④ 客户端形态棘轮：新编排链（合并→落盘→reapplyAll
     // 侧栏专属处理器（设置页 ctx 里**故意**没有）：设置页那一档不需要它们，硬塞一个死处理器
     // 反而会把"这一档根本不会调它"这件事藏起来。
     //   · `onToggleGlassDetail` —— 「详细玻璃调节」子门（只有侧栏有折叠块）；
-    //   · `onToggleGlassUiSection` —— 「玻璃 UI」**整节**折叠门（2026-10-11：只在侧边栏收敛）；
+    //   · `onToggleGlassUiSection` —— 「玻璃 UI」**整节**折叠门（2026-10-11 二次修订后设置页
+    //     也传了 ⇒ 本豁免对它已无实际作用，保留作兜底）；
     //   · 同批的 `onToggleDetailSection` / `onToggleCornersSection` 是另外两节的整节门，
     //     同样只在侧栏（那两节的渲染器在 panel-tabs.js，不在这段扫描范围里）。
     const SIDEBAR_ONLY = ['onToggleGlassDetail', 'onToggleGlassUiSection'];
+    // 设置页专属处理器（侧栏 ctx 里**故意**没有）—— 与上面同一原理的镜像：
+    //   · `onTogglePresetsSection` —— 「主题预设」整节折叠门（2026-10-12）。该节 `!sidebarSurface`
+    //     门控**只在设置页渲染** ⇒ 侧栏档根本不会调它，硬塞进侧栏 ctx 反而是死处理器。
+    const SETTING_ONLY = ['onTogglePresetsSection'];
     const missingClient = handlers.filter((h) => !SIDEBAR_ONLY.includes(h)
       && !new RegExp('\\b' + h + '\\b').test(clientAll));
-    const missingQp = handlers.filter((h) => !new RegExp('\\b' + h + '\\b').test(qpAll));
+    const missingQp = handlers.filter((h) => !SETTING_ONLY.includes(h)
+      && !new RegExp('\\b' + h + '\\b').test(qpAll));
     check('每个玻璃节处理器都在设置页 ctx 里（侧栏专属豁免）', missingClient.length === 0, missingClient.join(',') || '全在');
     check('每个玻璃节处理器都在侧栏快捷面板 ctx 里（漏接 = 该档滑杆全死）',
       missingQp.length === 0, missingQp.join(',') || '全在');
     check('negative control: 解构里造一个不存在的处理器会被判出',
       handlers.concat('onNoSuchHandler').some((h) => !new RegExp('\\b' + h + '\\b').test(qpAll)));
+  }
+
+  // ── 「作者自用」推广弹窗（PresetIntroDialog，2026-10-12 用户口径：更新后一次性二选一）──
+  // 组件挂在 RopeDock 根上（渲染台够不到）⇒ 源码级判据，与 verify-about ⑤ 公告守卫同思路。
+  {
+    const introSrc = stripComments(readFileSync(join(root, 'src', 'client.js'), 'utf8'));
+    check('弹窗组件存在，且在 RopeDock 两处挂载（隐藏分支 + 主返回树，与公告同位）',
+      /function PresetIntroDialog\(\)/.test(introSrc)
+      && (introSrc.match(/React\.createElement\(PresetIntroDialog, null\)/g) || []).length === 2,
+      (introSrc.match(/React\.createElement\(PresetIntroDialog, null\)/g) || []).length + ' 处挂载');
+    check('门控三件齐：hostLoaded + 未答过（localStorage 哨兵）+ 公告已处理（先公告后弹窗，不同屏）',
+      /sel\.hostLoaded && !seen && sel\.noticeSeen === NOTICE_VERSION/.test(introSrc)
+      && /PRESET_INTRO_SEEN_KEY = "dsh-wallpaper-engine:preset-intro-seen"/.test(introSrc));
+    // A 键：走预设卡片同一条 applyPreset 整快照链（settings 合并 + 资产落位 + 失败滚回），
+    // 且**成功才记已读** —— 失败留弹窗可重试，"答过了"不能伪装成"应用过了"。
+    const aGuard = (s) => /applyPreset\("factory-author"\)/.test(s)
+      && /if \(ok\) markSeen\(\); else setFailed\(true\);/.test(s);
+    check('A 键 = applyPreset("factory-author") 整快照链，成功才记已读（失败留弹窗）', aGuard(introSrc));
+    check('negative control: 把"成功才记已读"改成"总是记已读"会被判出（判据有牙）',
+      !aGuard(introSrc.replace('else setFailed(true);', 'else markSeen();')));
+    check('B 键只记已读不碰设置（onClick: markSeen 恰一处；A 键走 accept）',
+      (introSrc.match(/onClick: markSeen/g) || []).length === 1,
+      (introSrc.match(/onClick: markSeen/g) || []).length + ' 处');
+    // 哨兵住 localStorage ⇒ **不许**进 settings-schema（进了 schema 就会出现在 sanitize
+    // 输出与 golden 夹具里，两套"每机状态"口径打架；对照：noticeSeen 走 settings 是历史先例）。
+    const introSchemaSrc = readFileSync(join(root, 'lib', 'settings-schema.js'), 'utf8');
+    check('哨兵是 localStorage 口径（键定义在 client.js；settings-schema 无 preset-intro 痕迹）',
+      /dsh-wallpaper-engine:preset-intro-seen/.test(introSrc) && !/preset-intro/.test(introSchemaSrc));
   }
 }
 
