@@ -3611,6 +3611,129 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       'fx-layer = 内容驱动 rAF + 层级 + 输入过滤 + 宿主混合；死锁形态 = 帧头 ensure 之前不许有别的早退');
   }
   {
+    // ── #190 光效层性能契约 ────────────────────────────────────────────────────
+    // 报告实测的敏感度与代码结构逐条对应：主因是 Canvas2D 的 shadowBlur（每次 stroke/fill
+    // 触发一次离屏高斯模糊）落在**每帧每图元**上 —— 「点击光晕 / 拖尾光晕影响很大」、
+    // 「拖尾时长正相关」（每帧模糊次数 ≈ 存活点数）、「星火 > 涟漪」（12 次 vs 2 次）。
+    // 这条判据用**假 canvas 数贵操作**：只数 stroke / fill / 非零 shadowBlur 赋值，
+    // 在最小 DOM 替身下真跑一遍画布层，断言"一帧的贵操作数"落在一个**只许下降**的上界内。
+    // 纯源码断言（例如"文件里不许出现 shadowBlur"）挡不住"换成别的贵写法"，故以计数为准。
+    const fxPerfSrc = readFileSync(join(root, 'src', 'fx-layer.js'), 'utf8').replace(/\r\n/g, '\n');
+    const restorePerfBase = stubWeBase();
+    const PERF_KEYS = ['document', 'window', 'requestAnimationFrame', 'cancelAnimationFrame', 'selection', 'weNow'];
+    const prevPerf = {};
+    for (const k of PERF_KEYS) prevPerf[k] = globalThis[k];
+    let perfNote = '';
+    let ops = null;
+    try {
+      // 假 2D 上下文：只数贵操作。**模糊按"绘制时 shadowBlur > 0"计**（那才是真的
+      // 高斯模糊次数）—— 只数赋值会漏掉"一次赋值、多次描边"（星火那 12 条正是这个形态）。
+      const mkCtx = () => {
+        const c = { ops: { stroke: 0, fill: 0, blur: 0 } };
+        const noop = () => {};
+        for (const m of ['setTransform', 'clearRect', 'beginPath', 'moveTo', 'lineTo', 'arc',
+          'save', 'restore', 'closePath', 'rect', 'fillRect', 'translate', 'scale']) c[m] = noop;
+        c.clearRect = noop;
+        c.stroke = () => { c.ops.stroke += 1; if (c.shadowBlur > 0) c.ops.blur += 1; };
+        c.fill = () => { c.ops.fill += 1; if (c.shadowBlur > 0) c.ops.blur += 1; };
+        for (const p of ['globalAlpha', 'globalCompositeOperation', 'strokeStyle', 'fillStyle',
+          'shadowColor', 'lineWidth', 'lineCap', 'lineJoin', 'font']) c[p] = '';
+        c.shadowBlur = 0;
+        return c;
+      };
+      const ctx = mkCtx();
+      const mkStyle = () => ({
+        _m: {},
+        setProperty(k, v) { this._m[k] = v; },
+        getPropertyValue(k) { return this._m[k] || ''; },
+        removeProperty() {},
+      });
+      const fakeCanvas = {
+        width: 0, height: 0, style: mkStyle(), className: '',
+        setAttribute() {}, appendChild() {}, getContext() { return ctx; },
+      };
+      const fakeHost = {
+        id: '', className: '', style: mkStyle(), isConnected: true, parentNode: null,
+        setAttribute() {}, appendChild() {},
+        compareDocumentPosition() { return 0; },
+      };
+      const listeners = {};
+      globalThis.document = {
+        body: { appendChild() {} },
+        createElement(tag) { return tag === 'canvas' ? fakeCanvas : fakeHost; },
+        addEventListener(type, fn) { (listeners[type] = listeners[type] || []).push(fn); },
+        removeEventListener(type, fn) {
+          const a = listeners[type] || [];
+          const i = a.indexOf(fn);
+          if (i >= 0) a.splice(i, 1);
+        },
+        querySelector() { return null; },
+      };
+      let clock = 1000;
+      globalThis.weNow = () => clock;
+      globalThis.window = {
+        innerWidth: 1920, innerHeight: 1080, devicePixelRatio: 1,
+        performance: { now: () => clock },
+      };
+      let rafCb = null;
+      globalThis.requestAnimationFrame = (fn) => { rafCb = fn; return 1; };
+      globalThis.cancelAnimationFrame = () => { rafCb = null; };
+      // 满档设置：光晕与时长都拉满（= 报告里最吃 GPU 的那组），两种点击样式与拖尾样式各测一次。
+      globalThis.selection = {
+        fxEnabled: true, fxClick: true, fxTrail: true,
+        fxClickStyle: 'both', fxTrailStyle: 'comet',
+        fxClickSize: 140, fxClickGlow: 100, fxTrailLength: 2000, fxTrailWidth: 3,
+        fxTrailGlow: 100, fxOpacity: 85, fxBlend: 'screen',
+        fxColorMode: 'accent', fxColor: '#4f8cff',
+      };
+      const runFrame = () => {
+        const cb = rafCb;
+        rafCb = null;
+        if (cb) cb();
+      };
+      fxLayerMod.syncFxLayer();
+      // 灌一条足够长的拖尾（模拟光标划过）+ 一次点击，然后量**一帧**的贵操作数。
+      for (let i = 0; i < 400; i += 1) {
+        for (const fn of (listeners.pointermove || [])) {
+          fn({ clientX: 60 + i * 4, clientY: 120 + (i % 60) * 6 });
+        }
+      }
+      for (const fn of (listeners.pointerdown || [])) fn({ clientX: 900, clientY: 500, target: null });
+      clock += 100; // 跨过降帧闸门
+      ctx.ops.stroke = 0; ctx.ops.fill = 0; ctx.ops.blur = 0;
+      runFrame();
+      ops = { stroke: ctx.ops.stroke, fill: ctx.ops.fill, blur: ctx.ops.blur };
+      perfNote = 'stroke=' + ops.stroke + ' fill=' + ops.fill + ' blur=' + ops.blur;
+    } catch (e) {
+      perfNote = 'threw: ' + String((e && e.message) || e);
+    } finally {
+      try { fxLayerMod.disposeFxLayer(); } catch { /* 已卸载 */ }
+      for (const k of PERF_KEYS) {
+        if (prevPerf[k] === undefined) delete globalThis[k]; else globalThis[k] = prevPerf[k];
+      }
+      restorePerfBase();
+    }
+    // 上界是**棘轮**（只许下降）：实测形态下 96 点的彗尾 + both 点击，分带后每帧只剩个位数
+    // 的带级描边；这里留出余量到 40，但把"逐段一次模糊"（≈99）挡在外面。
+    const OPS_CAP = 40;
+    const BLUR_CAP = 24;
+    check('#190 光效层：一帧的贵操作数在棘轮内（分带 + 星火合并 + 光晕不再逐图元）',
+      Boolean(ops) && ops.stroke + ops.fill <= OPS_CAP && ops.blur <= BLUR_CAP,
+      '需 stroke+fill ≤ ' + OPS_CAP + ' 且 blur ≤ ' + BLUR_CAP + ' —— ' + perfNote);
+    // 源码口径：降级状态机与分带表的形态（行为计数够不着"有没有可回退的降级"这件事）。
+    check('#190 光效层：自适应降级状态机 + 拖尾分带表在位（可回退 / 有迟滞）',
+      fxPerfSrc.includes('FX_PERF_SLOW_MS')
+      && fxPerfSrc.includes('FX_PERF_DOWN_RUN')
+      && fxPerfSrc.includes('FX_PERF_UP_RUN')
+      && fxPerfSrc.includes('FX_TRAIL_BANDS_BY_LEVEL')
+      && fxPerfSrc.includes('function fxPerfUpdate(')
+      // 升档必须存在（只降不升 = 一次卡顿永久降级）。
+      && /fxPerfLvl\s*-=\s*1/.test(fxPerfSrc)
+      // 12 条火花合并成一条 path、只描边一次。
+      && /g\.beginPath\(\);\s*\n\s*for \(let i = 0; i < FX_SPARK_COUNT/.test(fxPerfSrc),
+      'fxPerfSrc: ' + fxPerfSrc.length + ' 字节');
+  }
+  {
     // 二号模块的岛：注册表项形状 + 「关着只画总开关、开着才画 12 个参数」这条可见行为。
     // 注意它**没有**「自动」档 —— 这一层刻意不采样壁纸像素（见 src/fx-layer.js 文件头）。
     const PREV_BLEND = globalThis.FX_BLEND_VALUES;
