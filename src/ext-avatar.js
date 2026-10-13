@@ -116,6 +116,78 @@ function avatarPreviewRound(sel) {
 }
 
 /**
+ * 上传裁切弹窗（issue #191 问题 1）：居中模态 + 方形取景框。
+ *
+ * 交互：**拖拽平移** + **滚轮 / 滑块缩放**；框里那张图按 `zoom = 1 短边铺满` 起算
+ * （再小就会露白），平移的边界是"图不能露出空白"。
+ * 几何全在 client.js 的 `avatarCropGeometry`（唯一实现）—— 这一侧只读它算出的绘制值，
+ * 不自己再算一遍（两处算法必然漂）。
+ */
+function renderAvatarCropModal(ctx) {
+  const { sel, onAvatarCropZoom, onAvatarCropDrag, onAvatarCropConfirm, onAvatarCropCancel } = ctx;
+  if (!sel.avatarCropSide) return null;
+  // 几何由 ctx 传进来（client.js 现算）：渲染器不引 avatarCropGeometry 这个裸标识符 ——
+  // 它是"只读 ctx"契约的一部分（见文件头不变量）。
+  const geo = ctx.avatarCropGeo || { dw: 0, dh: 0, dx: 0, dy: 0 };
+  const view = ctx.avatarCropView || 260;
+  return React.createElement("div", { className: "we-crop" },
+    React.createElement("div", { className: "we-crop__card" },
+      React.createElement("div", { className: "we-crop__title" }, weT("裁切头像")),
+      React.createElement("span", { className: "we-picker__hint" },
+        weT("拖动调整位置、滚轮或滑块缩放；框内这一块会作为头像（方形）。")),
+      React.createElement("div", {
+        className: "we-crop__view",
+        style: { width: view + "px", height: view + "px" },
+        onPointerDown: (e) => {
+          const startX = e.clientX;
+          const startY = e.clientY;
+          const move = (ev) => onAvatarCropDrag(ev.clientX - startX, ev.clientY - startY);
+          const up = () => {
+            try { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); } catch { /* ignore */ }
+          };
+          try {
+            window.addEventListener("pointermove", move);
+            window.addEventListener("pointerup", up);
+          } catch { /* ignore */ }
+          if (e.preventDefault) e.preventDefault();
+        },
+        onWheel: (e) => {
+          const dir = (e.deltaY || 0) > 0 ? -0.1 : 0.1;
+          onAvatarCropZoom((Number(sel.avatarCropZoom) || 1) + dir, true);
+          if (e.preventDefault) e.preventDefault();
+        },
+      },
+        React.createElement("img", {
+          className: "we-crop__img",
+          src: sel.avatarCropUrl,
+          alt: "",
+          draggable: false,
+          style: {
+            width: geo.dw + "px",
+            height: geo.dh + "px",
+            left: (view - geo.dw) / 2 + geo.dx + "px",
+            top: (view - geo.dh) / 2 + geo.dy + "px",
+          },
+        }),
+        React.createElement("span", { className: "we-crop__frame", "aria-hidden": "true" }),
+      ),
+      SliderRow(weT("缩放"), 100, 400, 5, Math.round((Number(sel.avatarCropZoom) || 1) * 100),
+        (v, live) => onAvatarCropZoom(v / 100, live), "%", "avatar-crop-zoom"),
+      React.createElement("div", { className: "we-crop__actions" },
+        React.createElement("button", {
+          className: "we-picker__btn", type: "button", onClick: onAvatarCropCancel,
+        }, weT("取消")),
+        React.createElement("button", {
+          className: "we-picker__btn we-picker__btn--primary", type: "button",
+          disabled: sel.avatarBusy === sel.avatarCropSide,
+          onClick: onAvatarCropConfirm,
+        }, sel.avatarBusy === sel.avatarCropSide ? weT("导入中…") : weT("确认并导入")),
+      ),
+    ),
+  );
+}
+
+/**
  * 扩展岛：总开关 → 两方各自的头像行 → 大小 → 圆角强度。
  * @param {{sel:object}} ctx 见文件头契约
  */
@@ -136,6 +208,8 @@ function renderAvatarIsland(ctx) {
       { tooltip: weT("100% = 正圆（默认），50% = 大圆角方块，0% = 直角方形") }),
     on && sel.avatarError
       && React.createElement("div", { className: "we-picker__hint we-avatar-error", key: "avatar-err" }, sel.avatarError),
+    // 裁切弹窗（issue #191 问题 1）：只在"已选好图、还没确认"时画。
+    renderAvatarCropModal(ctx),
   );
 }
 
@@ -148,4 +222,4 @@ const AVATAR_EXTENSION_MODULE = {
   render: renderAvatarIsland,
 };
 
-export { AVATAR_EXTENSION_MODULE, renderAvatarIsland };
+export { AVATAR_EXTENSION_MODULE, renderAvatarIsland, renderAvatarCropModal };

@@ -3734,6 +3734,43 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       'fxPerfSrc: ' + fxPerfSrc.length + ' 字节');
   }
   {
+    // ── #191 问题 2：连续同侧消息只在首条显示头像 ──────────────────────────────
+    const avSrc = readFileSync(join(root, 'src', 'avatar-layer.js'), 'utf8').replace(/\r\n/g, '\n');
+    const stSrc = readFileSync(join(root, 'src', 'styles.js'), 'utf8').replace(/\r\n/g, '\n');
+    check('#191 头像分组：只在首条显示 + 续行用 visibility 隐藏（不摘节点 ⇒ 不踩回 #154）',
+      avSrc.includes("const AVATAR_CONT_CLASS = 'we-avatar--cont';")
+      && avSrc.includes('function avatarApplyGrouping()')
+      && avSrc.includes('classList.toggle(AVATAR_CONT_CLASS, side === prev)')
+      && avSrc.includes('function avatarScheduleGrouping()')
+      && avSrc.includes('if (decorated) avatarScheduleGrouping();')
+      // #154 的保护线：续行**只许**用 visibility 隐藏。出现 display 就是踩回那个坑 ——
+      // 摘掉/收起头像那一路曾让收起的思考行宽度塌成 0、连入口一起消失。
+      && /\.we-avatar--cont\s*\{\s*visibility:\s*hidden;\s*\}/.test(stSrc)
+      && !/\.we-avatar--cont\s*\{[^}]*display\s*:/.test(stSrc),
+      'avatar-layer + styles 源码口径');
+  }
+  {
+    // ── #191 问题 1：上传裁切 ──────────────────────────────────────────────────
+    // 做法是"**导入时先裁再传**"（盘上那张就是裁完的方形图）⇒ 零新设置键、预览与会话天然一致。
+    // 判据盯三件事：① 裁切几何只有一份实现（渲染器不自己再算一遍）；② 上传腿走既有的
+    // postImageAsset（不新开第二条落盘通道）；③ 弹窗有取消路径（取消 = 不上传、撤 URL）。
+    const clSrc2 = readFileSync(join(root, 'src', 'client.js'), 'utf8').replace(/\r\n/g, '\n');
+    const eaSrc = readFileSync(join(root, 'src', 'ext-avatar.js'), 'utf8').replace(/\r\n/g, '\n');
+    check('#191 上传裁切：唯一几何实现 + 走既有上传腿 + 有取消路径',
+      clSrc2.includes('function avatarCropGeometry()')
+      && clSrc2.includes('function cropAvatarToBlob()')
+      && clSrc2.includes('function onAvatarCropConfirm()')
+      && clSrc2.includes('postImageAsset("/avatar/" + side, img.blob, weT("头像"))')
+      // 取消必须真的撤掉预览 URL（否则每次取消漏一个 blob）
+      && clSrc2.includes('function closeAvatarCrop()')
+      && clSrc2.includes('URL.revokeObjectURL(url)')
+      // 渲染器只读 ctx 传进来的几何（不引 avatarCropGeometry 这个裸标识符）
+      && eaSrc.includes('function renderAvatarCropModal(ctx)')
+      && eaSrc.includes('ctx.avatarCropGeo')
+      && !eaSrc.includes('avatarCropGeometry('),
+      'client + ext-avatar 源码口径');
+  }
+  {
     // 二号模块的岛：注册表项形状 + 「关着只画总开关、开着才画 12 个参数」这条可见行为。
     // 注意它**没有**「自动」档 —— 这一层刻意不采样壁纸像素（见 src/fx-layer.js 文件头）。
     const PREV_BLEND = globalThis.FX_BLEND_VALUES;

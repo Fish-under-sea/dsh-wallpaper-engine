@@ -352,6 +352,20 @@ const selection = {
   // 设置白名单没有它们（serialize 时被 schema 过滤掉）。
   avatarBusy: "",
   avatarError: "",
+  // 上传裁切弹窗的瞬态（issue #191 问题 1）：导入头像前先让用户框选构图，确认后**把裁好的
+  // 方形图**上传 —— 于是盘上那张就是裁完的（零新设置键、预览与会话里天然一致）。
+  //   side  = 'user' | 'ai'（空串 = 弹窗没开）
+  //   url   = 预览用的 object URL（关窗时 revoke）
+  //   w/h   = 原图像素尺寸（裁切换算要用）
+  //   zoom  = 缩放倍数（≥1，1 = 最大可用方形）
+  //   x/y   = 平移（-1..1，0 = 居中；边界由"图不能露出空白"决定）
+  avatarCropSide: "",
+  avatarCropUrl: "",
+  avatarCropW: 0,
+  avatarCropH: 0,
+  avatarCropZoom: 1,
+  avatarCropX: 0,
+  avatarCropY: 0,
   // 自定义吉祥物立绘的导入态（transient）：在途标志与最后一条错误（同上面两枚口径）。
   mascotBusy: false,
   mascotError: "",
@@ -688,6 +702,18 @@ function setTransient(field, value) {
 // 拖动期的中间值**照样会落盘**（setSetting → debounce 200ms），所以中途关窗也不丢最后一次值。
 function commitLiveSetting(field, value, live) {
   setSetting(field, value);
+  if (live) applyEffects({ live: true });
+  else emit();
+}
+/**
+ * 同一套两档口径，但写给**瞬态**字段（`setTransient`，不落盘）。
+ *
+ * 为什么需要它：瞬态也有"拖动中每格都来"的场景（上传裁切的拖拽与缩放），而那些值同样
+ * 只需要"看得见的那部分"跟手、**不需要**整棵面板重渲染。与 `commitLiveSetting` 同形成对 ——
+ * 面板处理器写 store 必须能通知到（本仓既有判据），走这个入口就自动满足。
+ */
+function commitLiveTransient(field, value, live) {
+  setTransient(field, value);
   if (live) applyEffects({ live: true });
   else emit();
 }
@@ -3518,6 +3544,18 @@ async function decodeImageFile(file) {
  *  返回 `{ blob, width, height }` —— 宽高是**缩放后**的像素数（立绘要用它算显示盒）。 */
 async function downscaleImageFile(file, maxEdge) {
   const src = await decodeImageFile(file);
+  return await downscaleDecoded(src, maxEdge, file);
+}
+/**
+ * 同一件事的 **blob 入口**：裁切链手里已经是一个画好的 canvas/blob，没有 `File`
+ * （`downscaleImageFile` 吃的是 `File`）。两者共用下面同一段实现，不复制第二份缩放逻辑。
+ */
+async function downscaleImageBlob(blob, maxEdge) {
+  const src = await decodeImageFile(blob);
+  return await downscaleDecoded(src, maxEdge, blob);
+}
+/** 缩放 + 重编码的**唯一实现**（两个入口共用；`fallback` 是编码全失败时原样交出去的那份）。 */
+async function downscaleDecoded(src, maxEdge, fallback) {
   const w = Number(src.width) || 0;
   const h = Number(src.height) || 0;
   if (!w || !h) throw new Error("bad image");
@@ -3535,7 +3573,7 @@ async function downscaleImageFile(file, maxEdge) {
     try { canvas.toBlob((b) => resolve(b), type, quality); } catch { resolve(null); }
   });
   const webp = await toBlob("image/webp", 0.92);
-  const blob = (webp && webp.type === "image/webp") ? webp : (await toBlob("image/png")) || file;
+  const blob = (webp && webp.type === "image/webp") ? webp : (await toBlob("image/png")) || fallback;
   return { blob, width: tw, height: th };
 }
 /**
@@ -3578,27 +3616,155 @@ async function postImageAsset(path, blob, what) {
 function onAvatarEnabled(e) { setSetting("avatarEnabled", e.target.checked); emit(); }
 function onAvatarSize(v, live) { commitLiveSetting("avatarSize", v, live); if (live) syncAvatarLayer(); }
 function onAvatarRadius(v, live) { commitLiveSetting("avatarRadius", v, live); if (live) syncAvatarLayer(); }
-function onAvatarPick(side) { pickImageFile((file) => uploadAvatarFile(side, file)); }
-async function uploadAvatarFile(side, file) {
+// 上传裁切（issue #191 问题 1）：用户口径是"上传非正方形、或主体不在中央时效果很差"。
+// 做法是**导入时先裁再传**（而不是存裁切参数第二次渲染）：
+//   · 盘上那张就是裁完的方形图 ⇒ 预览、会话里、以及"以后任何读到它的地方"天然一致，
+//     不存在"存了参数但某处忘了应用"的漏网点；
+//   · **零新设置键**（不动 KINDS / 夹具 / 预设段），也就没有"预设带不带裁切参数"的语义问题。
+// 代价：裁切是一次性的、事后不可再调（要重调就重新导入 —— 与"替换图片"同一条路）。
+const AVATAR_CROP_VIEW = 260; // 弹窗取景框边长（px，与 CSS 里那格同值）
+/** 待裁的原图（**内存**里，不是设置）：唯一消费者是当前这次弹窗。 */
+let avatarCropPending = null;
+/** 导入前的裁切弹窗：先让用户框选构图，确认后才真正上传。 */
+function onAvatarPick(side) {
+  pickImageFile((file) => openAvatarCrop(side, file));
+}
+/** 打开裁切弹窗（读原图尺寸 → 填瞬态 → 交给面板画）。 */
+async function openAvatarCrop(side, file) {
   if (!file || !/^image\/(png|jpeg|webp)$/.test(String(file.type || ""))) {
     setTransient("avatarError", weT("仅支持 JPG / PNG / WebP 图片"));
     emit();
     return;
   }
-  setTransient("avatarError", "");
+  let url = "";
+  try {
+    const src = await decodeImageFile(file);
+    const w = Number(src.width) || 0;
+    const h = Number(src.height) || 0;
+    if (src.close) { try { src.close(); } catch { /* ignore */ } }
+    if (!w || !h) throw new Error(weT("读不出图片尺寸"));
+    url = URL.createObjectURL(file);
+  } catch (err) {
+    setTransient("avatarError", weT("导入失败：{error}", { error: err && err.message ? err.message : String(err) }));
+    emit();
+    return;
+  }
+  // 待裁的原图**存在内存里**（不是设置）：它的唯一消费者是这次弹窗。
+  avatarCropPending = { side: side, file: file };
+  setTransient("avatarError", "");  setTransient("avatarCropSide", side);
+  setTransient("avatarCropUrl", url);
+  setTransient("avatarCropW", w);
+  setTransient("avatarCropH", h);
+  setTransient("avatarCropZoom", 1);
+  setTransient("avatarCropX", 0);
+  setTransient("avatarCropY", 0);
+  emit();
+}
+/** 关掉裁切弹窗（撤掉预览 URL，**不上传**）。 */
+function closeAvatarCrop() {
+  const url = selection.avatarCropUrl;
+  if (url) { try { URL.revokeObjectURL(url); } catch { /* ignore */ } }
+  avatarCropPending = null;
+  setTransient("avatarCropSide", "");
+  setTransient("avatarCropUrl", "");
+  setTransient("avatarCropW", 0);
+  setTransient("avatarCropH", 0);
+  setTransient("avatarCropZoom", 1);
+  setTransient("avatarCropX", 0);
+  setTransient("avatarCropY", 0);
+  emit();
+}
+/**
+ * 取景框里那张图的实际绘制几何（换算成"显示 px"）。
+ *
+ * 口径：方形取景框边长 `AVATAR_CROP_VIEW`；`zoom = 1` 时图**短边刚好铺满**取景框
+ * （cover 语义 —— 再小就会在框里露白），放大只增不减。`x` / `y` 是 -1..1 的归一化平移，
+ * 边界取"图不能露出空白"的最大可移动量。
+ */
+function avatarCropGeometry() {
+  const w = Number(selection.avatarCropW) || 0;
+  const h = Number(selection.avatarCropH) || 0;
+  const zoom = Math.max(1, Number(selection.avatarCropZoom) || 1);
+  if (!w || !h) return { dw: 0, dh: 0, dx: 0, dy: 0, base: 1 };
+  const base = AVATAR_CROP_VIEW / Math.min(w, h); // 短边铺满
+  const dw = w * base * zoom;
+  const dh = h * base * zoom;
+  const slackX = Math.max(0, (dw - AVATAR_CROP_VIEW) / 2);
+  const slackY = Math.max(0, (dh - AVATAR_CROP_VIEW) / 2);
+  const nx = Math.max(-1, Math.min(1, Number(selection.avatarCropX) || 0));
+  const ny = Math.max(-1, Math.min(1, Number(selection.avatarCropY) || 0));
+  return {
+    dw: dw, dh: dh, base: base,
+    dx: -slackX * nx, // 向右拖（nx>0）⇒ 图左移
+    dy: -slackY * ny,
+  };
+}
+/** 拖动取景：把指针位移换成归一化平移（1 = 可用位移的满量）。 */
+function onAvatarCropDrag(dxPx, dyPx) {
+  const geo = avatarCropGeometry();
+  const slackX = Math.max(0, (geo.dw - AVATAR_CROP_VIEW) / 2);
+  const slackY = Math.max(0, (geo.dh - AVATAR_CROP_VIEW) / 2);
+  const nx = slackX > 0 ? (Number(selection.avatarCropX) || 0) - dxPx / slackX : 0;
+  const ny = slackY > 0 ? (Number(selection.avatarCropY) || 0) - dyPx / slackY : 0;
+  // 拖动是"看得见的那部分" ⇒ 走 live 档（面板不重渲染；预览图由控件按新值自己挪）。
+  commitLiveTransient("avatarCropX", Math.max(-1, Math.min(1, nx)), true);
+  commitLiveTransient("avatarCropY", Math.max(-1, Math.min(1, ny)), true);
+}
+/** 缩放取景（滚轮 / 滑块）。 */
+function onAvatarCropZoom(z, live) {
+  const v = Math.max(1, Math.min(4, Number(z) || 1));
+  commitLiveTransient("avatarCropZoom", v, live);
+}
+/** 把取景框里那一块**按原图分辨率**裁出来（再用既有 downscale 链缩到 512）。 */
+async function cropAvatarToBlob() {
+  const pending = avatarCropPending;
+  if (!pending) throw new Error(weT("没有待裁的图片"));
+  const src = await decodeImageFile(pending.file);
+  const w = Number(src.width) || 0;
+  const h = Number(src.height) || 0;
+  const geo = avatarCropGeometry();
+  // 显示几何 → 原图像素：取景框边长对应原图 (AVATAR_CROP_VIEW / (base*zoom)) 个像素。
+  const perSrc = 1 / (geo.base * Math.max(1, Number(selection.avatarCropZoom) || 1));
+  const side = AVATAR_CROP_VIEW * perSrc;
+  // 取景框左上角在图坐标里的位置：图中心 + dx/dy，再退半个框。
+  const cx = w / 2 - geo.dx * perSrc;
+  const cy = h / 2 - geo.dy * perSrc;
+  const sx = Math.max(0, Math.min(w - side, cx - side / 2));
+  const sy = Math.max(0, Math.min(h - side, cy - side / 2));
+  const out = document.createElement("canvas");
+  out.width = Math.max(1, Math.round(side));
+  out.height = Math.max(1, Math.round(side));
+  const g = out.getContext("2d");
+  if (!g) throw new Error(weT("没有可用的画布"));
+  g.drawImage(src, sx, sy, side, side, 0, 0, out.width, out.height);
+  if (src.close) { try { src.close(); } catch { /* ignore */ } }
+  const toBlob = (type, quality) => new Promise((resolve) => {
+    try { out.toBlob((b) => resolve(b), type, quality); } catch { resolve(null); }
+  });
+  const webp = await toBlob("image/webp", 0.92);
+  return (webp && webp.type === "image/webp") ? webp : (await toBlob("image/png"));
+}
+/** 确认裁切 → 上传裁好的图（走既有 postImageAsset 那条腿）。 */
+async function onAvatarCropConfirm() {
+  const pending = avatarCropPending;
+  if (!pending) { closeAvatarCrop(); return; }
+  const side = pending.side;
   setTransient("avatarBusy", side);
   emit();
   try {
-    const img = await downscaleImageFile(file, IMAGE_IMPORT_MAX_EDGE);
+    const cut = await cropAvatarToBlob();
+    if (!cut) throw new Error(weT("裁切失败"));
+    const img = await downscaleImageBlob(cut, IMAGE_IMPORT_MAX_EDGE);
     const posted = await postImageAsset("/avatar/" + side, img.blob, weT("头像"));
     if (!posted.ok) throw new Error(posted.error);
     // 记账：文件名进设置（它同时是"设置过没有"与 `<img>` 的缓存键）。
     setSetting(side === "ai" ? "avatarAiImage" : "avatarUserImage", posted.name);
-  } catch (err) {
-    setTransient("avatarError", weT("导入失败：{error}", { error: err && err.message ? err.message : String(err) }));
-  } finally {
     setTransient("avatarBusy", "");
-    emit();
+    closeAvatarCrop(); // 它自己会 emit
+  } catch (err) {
+    setTransient("avatarBusy", "");
+    setTransient("avatarError", weT("导入失败：{error}", { error: err && err.message ? err.message : String(err) }));
+    closeAvatarCrop();
   }
 }
 function onAvatarClear(side) {
@@ -4929,6 +5095,9 @@ function WallpaperPicker() {
     // 必须同源，否则会出现点了没反应的滑杆。它与「界面元素跟随」互不依赖（不是 `ui &&`）。
     parallaxPluginSlots: sel.parallaxPlugin === true ? parallaxDiscoveredGroups().sort() : [],
     onAvatarEnabled, onAvatarSize, onAvatarRadius, onAvatarPick, onAvatarClear,
+    // 上传裁切（issue #191 问题 1）：几何在这里现算（唯一实现），渲染器只读结果。
+    onAvatarCropZoom, onAvatarCropDrag, onAvatarCropConfirm, onAvatarCropCancel: closeAvatarCrop,
+    avatarCropGeo: avatarCropGeometry(), avatarCropView: AVATAR_CROP_VIEW,
   });
   const renderActiveTab = () => {
     if (activeTab === "about") return renderAboutTab({});

@@ -3614,6 +3614,11 @@ body[data-we-glass-floaters] .we-repo-panel {
   .we-avatar__img { display: block; width: 100%; height: 100%; object-fit: cover; }
   .we-avatar__glyph { display: flex; align-items: center; justify-content: center; }
   .we-avatar__glyph svg { width: 62%; height: 62%; }
+  /* 连续同侧消息的后续行（issue #191 问题 2）：头像**只显示在第一条**。
+     ⚠️ 只做 visibility: hidden —— 节点与它的框都还在，缩进对齐与 flex 几何逐字节不变。
+     绝不写 display: none / 摘节点：那会让宿主 display:contents 锚点下的内容退回
+     flex: 0 1 auto，收起的思考行固有宽为 0 ⇒ 整条消息连入口一起消失（issue #154）。 */
+  .we-avatar--cont { visibility: hidden; }
   /* 面板里的预览：固定框（不随滑块长高），里头那张脸按当前大小 / 圆角现画。
      预览用的是自己的一对类名（不是 .we-avatar）—— 那些节点由装饰层建在会话里，
      面板这一份是 React 画的，两边共用的是"零件表与 URL"而不是 DOM 结构。 */
@@ -3633,6 +3638,42 @@ body[data-we-glass-floaters] .we-repo-panel {
   .we-avatar-preview__glyph { display: flex; align-items: center; justify-content: center; }
   .we-avatar-preview__glyph svg { width: 62%; height: 62%; }
   .we-avatar-error { font-size: 0.82em; opacity: 0.9; color: #e5534b; }
+  /* 上传裁切弹窗（issue #191 问题 1）：居中模态 + 方形取景框。
+     取景框 overflow: hidden 是"框外不显示"的唯一手段；框内那张图由 client.js 现算的
+     几何定位（left/top 负偏移），**不用 transform** —— transform 会建合成层，
+     而这里每拖一下都改值（见 styles.js 里"不常驻合成层"那条纪律）。 */
+  .we-crop {
+    position: fixed; inset: 0; z-index: 40;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.45);
+  }
+  .we-crop__card {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    padding: 16px; border-radius: 14px; corner-shape: round;
+    background: var(--dsw-alias-bg-layer-1, #101418);
+    border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.28));
+    max-width: min(92vw, 360px);
+  }
+  .we-crop__title { font-size: 0.95em; font-weight: 600; color: var(--we-ink, inherit); }
+  .we-crop__view {
+    position: relative; overflow: hidden; flex: 0 0 auto;
+    border-radius: 8px; corner-shape: round;
+    background: rgba(128, 128, 128, 0.16);
+    cursor: grab; touch-action: none;
+  }
+  .we-crop__img { position: absolute; display: block; pointer-events: none; user-select: none; }
+  /* 框线：纯装饰（拖拽由整格接管），压在图上但吃不到指针。 */
+  .we-crop__frame {
+    position: absolute; inset: 0; pointer-events: none;
+    border: 2px solid rgba(255, 255, 255, 0.85);
+    border-radius: 8px; corner-shape: round;
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35);
+  }
+  .we-crop__actions { display: flex; gap: 8px; align-self: stretch; justify-content: flex-end; }
+  .we-picker__btn--primary {
+    border-color: color-mix(in srgb, var(--we-accent, #4f8cff) 60%, transparent);
+    color: var(--we-accent, #4f8cff);
+  }
   /* 自定义立绘那一格（「系统」页签 · 聊天吉祥物）：与形态卡片同一个画框口径 ——
      固定尺寸的透明底小舞台，图各自按自己的宽高比 contain 进去。未导入时画一句
      「未导入」占位（虚线框），导入后画的是**用户那张图**（与主页面那只同一份盒）。 */

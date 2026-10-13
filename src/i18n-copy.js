@@ -995,6 +995,15 @@ const WE_I18N_EN = {
   "{side}统一圆角 {value}": "{side} uniform radius {value}",
   "四角全直角": "All corners square",
   "四角全圆角": "All corners round",
+
+  // ── 上传裁切（issue #191 问题 1）────────────────────────────────────────────
+  "裁切头像": "Crop avatar",
+  "拖动调整位置、滚轮或滑块缩放；框内这一块会作为头像（方形）。": "Drag to reposition, scroll or use the slider to zoom; the area inside the frame becomes the avatar (square).",
+  "确认并导入": "Confirm and import",
+  "没有待裁的图片": "No image is waiting to be cropped",
+  "没有可用的画布": "No canvas available",
+  "裁切失败": "Cropping failed",
+  "读不出图片尺寸": "Could not read the image dimensions",
 };
 
 // ── 宿主文案（lib/** 里由客户端显示的那些原文）────────────────────────────────
