@@ -217,6 +217,9 @@ function renderAvatarIsland(ctx) {
  *  `title` / `desc` 与别的模块同一条理由写成 getter（见 src/panel-tabs.js 的注册表契约）。 */
 const AVATAR_EXTENSION_MODULE = {
   id: 'avatar',
+  // 模块级重置的分组名（issue #192）：键集住在 lib/settings-schema.js 的 RESET_GROUPS，
+  // 这一侧只报"我是哪一组" —— 键表不在渲染器里手抄第二份。
+  resetGroup: 'avatar',
   get title() { return weT("自定义会话头像"); },
   get desc() { return weT("给会话双方各配一张头像，消息像好友聊天一样左右分列（默认关）"); },
   render: renderAvatarIsland,

@@ -3574,6 +3574,31 @@ body[data-we-glass-floaters] .we-repo-panel {
   }
   .we-ext__module-head { display: flex; align-items: center; gap: 8px; }
   .we-ext__module-title { font-size: 0.85em; font-weight: 600; color: var(--we-ink, inherit); }
+  /* 模块级重置按钮（issue #192）↺：外观各节的节头与扩展模块头**共用同一枚**。
+     margin-left: auto 把它推到行尾（两者都是 flex 行）。
+     ⚠️ 本段注释不许出现反引号：整套样式文本是模板字符串，一个反引号就拼断 JS。 */
+  .we-mod-reset {
+    margin-left: auto; flex: 0 0 auto;
+    width: 24px; height: 24px; padding: 0; line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 1em; cursor: pointer;
+    border-radius: 999px; corner-shape: round;
+    border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.28));
+    background: transparent; color: var(--dsw-alias-label-secondary, inherit);
+  }
+  .we-mod-reset:hover { color: var(--dsw-alias-label-primary, inherit); }
+  /* 破坏性动作的用色（「全部重置」）：与别的按钮同形，只在描边与文字上给警示色
+     （不填底色 —— 填了在浅色主题下会压过旁边的说明文字）。 */
+  .we-picker__btn--danger {
+    border-color: color-mix(in srgb, #e5534b 55%, transparent);
+    color: #e5534b;
+  }
+  /* 重置节的标题（页签级「重置本页」/ 全局「重置」）—— 与设置分组卡同字形，但用**独立类名**：
+     它是**操作区**不是分组卡（语义更准），同时那些按"分组卡位置"取窗口的判据不会被它干扰
+     （3D 效果那一页正好有三张分组卡 + 本节排在末尾，用同名类名会挤掉「背景」）。 */
+  .we-picker__section-reset-label {
+    font-size: 0.85em; font-weight: 600; color: var(--we-ink, inherit);
+  }
 
   /* ── 「扩展」页签一号模块：自定义会话头像（装饰层见 src/avatar-layer.js）──
      这一层是**宿主会话 DOM 的补丁**：给三类消息行（data-chat-flow-kind = user / steering /

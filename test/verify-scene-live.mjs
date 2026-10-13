@@ -3111,6 +3111,9 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
   globalThis.SliderRow = noop; globalThis.switchRow = noop;
   globalThis.ctlText = noop; globalThis.swatchRow = noop; globalThis.renderFontSetEditor = noop;
   globalThis.ACCENT_PRESETS = []; globalThis.GLASS_COLOR_PRESETS = []; globalThis.CARET_COLOR_PRESETS = [];
+  // 模块级重置的处理器（issue #192）：quick-panel 的装配点会按名引用它 ⇒ 这里必须预置
+  //（与 onAccent 那批模块级处理器同一条口径：本守卫只验"渲染得出"，动作不真的跑）。
+  globalThis.onResetModule = noop;
   // 子 UI 玻璃登记表 + 键名生成器：panel-tabs 的「玻璃 UI」节按它逐项渲染。
   // ⚠️ 给**真值**（schema 的同一份），不手抄 —— 手抄一份就多一个会漂的副本，
   //    而且夹具渲染的项数一旦与真实面板不同就是假绿。
@@ -3126,6 +3129,10 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
   // 挂个替身等于"判据测替身"（比红更糟）。
   globalThis.sectionHead =
     (await import(pathToFileURL(join(root, 'src', 'section-head.js')).href)).sectionHead;
+  // 模块级重置按钮（issue #192）：同样是 panel-tabs 与 glass-panel 共用的构件，同样给**真实现**
+  // —— 判据要验"每处节头都挂上了 ↺"，挂替身就等于判据测替身。
+  globalThis.moduleResetButtonNode =
+    (await import(pathToFileURL(join(root, 'src', 'module-reset.js')).href)).moduleResetButtonNode;
   // `renderMascotTab` 会调 `ropeArtOf(sel)`（主页面那只吉祥物当前用哪张立绘）—— 它住在
   // `src/client.js` 顶层，按文件 import 的替身里没有 ⇒ 挂一个形状正确的替身（本文件对它的
   // 判据在 verify-client 那边打真产物；这里只需要"有个合法的立绘盒"让环画得出来）。
@@ -3732,6 +3739,87 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       // 12 条火花合并成一条 path、只描边一次。
       && /g\.beginPath\(\);\s*\n\s*for \(let i = 0; i < FX_SPARK_COUNT/.test(fxPerfSrc),
       'fxPerfSrc: ' + fxPerfSrc.length + ' 字节');
+  }
+  {
+    // ── #192 模块级 / 页签级 / 全局重置 ────────────────────────────────────────
+    // 键集是**派生或手写+对账**的（RESET_MODULES / RESET_TABS ← KINDS）⇒ 判据盯四件事：
+    // 四档口径都要有、各组非空、两两不相交、且每个键都有默认值可回写。
+    const groups = schemaMod.RESET_MODULES || {};
+    const names = Object.keys(groups);
+    const allKeys = [];
+    for (const n of names) { for (const k of groups[n]) allKeys.push(k); }
+    const uniq = new Set(allKeys);
+    // 真正要守的是"每个键都有默认值可回写" —— 缺默认值的键会让重置**静默什么都不做**
+    //（`resetKeysToDefault` 会跳过它），那正是"假控件"。刻意**不**用
+    // `PROFILE_PRESET_KEYS` 当判据：头像文件名属预设的**资产段**、`parallaxPluginDepths`
+    // 属排除段，但两者都该跟着模块一起重置（重置不该留着"上次导入的头像"）。
+    const missingDefault = allKeys.filter((k) => !Object.prototype.hasOwnProperty.call(schemaMod.DEFAULTS, k));
+    check('#192 模块分组：扩展 3 + 外观 6 共九组、非空、两两不相交、每键都有默认值可回写',
+      names.length === 9
+      && names.every((n) => groups[n].length > 0)
+      && uniq.size === allKeys.length
+      && missingDefault.length === 0,
+      'names=' + names.join(',') + ' keys=' + allKeys.length + ' missingDefault=' + missingDefault.join(','));
+    // 面板侧源码口径：全局重置**必须**经过既有两步确认构件（直接上屏 = 违背 #192 的
+    // "不可撤销所以要确认"），模块头要有 ↺ 且真的接到 onResetModule。
+    const ptSrc = readFileSync(join(root, 'src', 'panel-tabs.js'), 'utf8').replace(/\r\n/g, '\n');
+    check('#192 全局重置走两步确认 + 模块头有 ↺ 且接到分组',
+      ptSrc.includes('function renderResetSection(')
+      && ptSrc.includes('renderConfirmRow(armedConfirm, token,')
+      && ptSrc.includes('we-mod-reset') === false // 类名住在共用构件里
+      && ptSrc.includes('moduleResetButton(mod.resetGroup, onResetModule)'),
+      'panel-tabs 源码口径');
+    // 模块级 ↺ 必须**覆盖外观页签下的每个模块**（用户口径："外观下的模块也要能单独重置"）：
+    // 六个外观节各有一处调用，且共用构件必须阻止冒泡（否则点 ↺ 会连带收起该节）。
+    const mrSrc = readFileSync(join(root, 'src', 'module-reset.js'), 'utf8').replace(/\r\n/g, '\n');
+    const gpSrc = readFileSync(join(root, 'src', 'glass-panel.js'), 'utf8').replace(/\r\n/g, '\n');
+    const appearanceModules = ['theme', 'detail', 'corners', 'uiColor', 'font'];
+    const missingModules = appearanceModules.filter((m) => !ptSrc.includes('moduleResetButton("' + m + '"'));
+    check('#192 外观六模块各挂 ↺ + 玻璃 UI 也挂 + 共用构件阻止冒泡',
+      missingModules.length === 0
+      && gpSrc.includes('moduleResetButtonNode("glass", onResetModule')
+      && mrSrc.includes('function moduleResetButtonNode(moduleName, onResetModule, labels) {')
+      && mrSrc.includes('stopPropagation')
+      && mrSrc.includes('"we-mod-reset"'),
+      'missing=' + missingModules.join(',') + ' glass=' + gpSrc.includes('moduleResetButtonNode("glass"')
+      + ' stop=' + mrSrc.includes('stopPropagation'));
+    // 页签级划分（用户口径「每个选项卡后面加重置，重置指定选项卡」）：
+    // 必须是一份**完整划分** —— 每个可重置键恰好属于一个页签，或落在显式排除表里。
+    // 这是"手写表"的唯一兜底：新增设置键若两边都没登记，这里当场判红（而不是静默不重置）。
+    const tabs = schemaMod.RESET_TABS || {};
+    const excluded = schemaMod.RESET_TABS_EXCLUDED || [];
+    const resettable = Object.keys(schemaMod.KINDS)
+      .filter((k) => !schemaMod.DEFAULTS_ONLY.includes(k) && !schemaMod.CLIENT_ONLY.includes(k));
+    const tabKeys = [];
+    for (const n of Object.keys(tabs)) { for (const k of tabs[n]) tabKeys.push(k); }
+    const tabSeen = new Set(tabKeys);
+    const tabDup = tabKeys.filter((k, i) => tabKeys.indexOf(k) !== i);
+    const uncovered = resettable.filter((k) => !tabSeen.has(k) && !excluded.includes(k));
+    const overlapWithExcluded = excluded.filter((k) => tabSeen.has(k));
+    const strayExcluded = excluded.filter((k) => !resettable.includes(k));
+    check('#192 页签划分：五页签非空 + 完整覆盖可重置键 + 与排除表互斥（新增键漏登记即判红）',
+      Object.keys(tabs).length === 5
+      && Object.keys(tabs).every((n) => tabs[n].length > 0)
+      && tabDup.length === 0
+      && uncovered.length === 0
+      && overlapWithExcluded.length === 0
+      && strayExcluded.length === 0,
+      'tabs=' + Object.keys(tabs).join(',') + ' covered=' + tabSeen.size + '/' + resettable.length
+      + ' dup=' + tabDup.join(',') + ' uncovered=' + uncovered.join(',')
+      + ' overlap=' + overlapWithExcluded.join(',') + ' stray=' + strayExcluded.join(','));
+    // 面板侧：页签重置**挂在渲染点一处**（六处渲染器各挂一遍必然漏一个）。
+    const clSrc3 = readFileSync(join(root, 'src', 'client.js'), 'utf8').replace(/\r\n/g, '\n');
+    check('#192 页签重置：单一挂载点 + 关于页签不给假按钮 + 处理器在 client.js',
+      ptSrc.includes('function renderTabReset(ctx, tabId)')
+      && ptSrc.includes('if (tabId === "about") return null;')
+      && ptSrc.includes('renderConfirmRow(armedConfirm, token,')
+      // ⚠️ 重置节的标题**不许**用 `we-picker__section-label`：那是"设置分组卡"的类名，
+      // 而那些按"末三张分组卡"取窗口的判据（3D 效果页正好三张）会被它挤掉。
+      && ptSrc.includes('we-picker__section-reset-label')
+      && !/weT\("重置本页"\)\).*section-label/.test(ptSrc)
+      && clSrc3.includes('renderTabReset({')
+      && clSrc3.includes('const onResetTab = (tabId) =>'),
+      'panel-tabs + client 源码口径');
   }
   {
     // ── #191 问题 2：连续同侧消息只在首条显示头像 ──────────────────────────────

@@ -166,8 +166,17 @@ const INLINE_MODULES = [
     //    才读得出依赖方向 —— 与 `we-base.js` 排最前是同一条理由。
     file: 'src/section-head.js',
     why: '节头构件（可折叠）：panel-tabs 与 glass-panel 共用的那一份，抽出来是为了让挂载台能 import 真实现',
-    markers: ['function sectionHead(label, open, onToggle) {',
+    markers: ['function sectionHead(label, open, onToggle, action) {',
       'className: "we-picker__section-head we-picker__section-head--toggle"'],
+  },
+  {
+    // 模块级重置按钮（issue #192 的 ↺）：与 section-head 同一条理由抽出来 ——
+    // panel-tabs（外观各节 + 扩展模块头）与 glass-panel（玻璃 UI）共用同一枚构件，
+    // 抽成独立文件才能让挂载台 import 到真实现。
+    file: 'src/module-reset.js',
+    why: '模块级重置按钮（↺）：panel-tabs 与 glass-panel 共用；模块名查 RESET_MODULES 取键集',
+    markers: ['function moduleResetButtonNode(moduleName, onResetModule, labels) {',
+      'className: "we-mod-reset"'],
   },
   {
     // 「玻璃 UI」节的渲染器（wip §10.13）：与其余页签只共享**模块级纯助手**，

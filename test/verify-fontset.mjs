@@ -1054,6 +1054,8 @@ section('⑧ 面板渲染回归（配色区在总开关打开时必须渲染得�
     // `sectionHead`（搬走了），而就算找到、补成 noop 也会让**每个节头变成 `null`**：
     // 本段判的是"渲染得出"，节头全丢照样"渲染得出" ⇒ 判据静默空转。
     await import(pathToFileURL(join(root, 'src', 'section-head.js')).href),
+    // 同理（issue #192）：模块级重置按钮也是跨模块共用构件，按文件 import 时是裸标识符。
+    await import(pathToFileURL(join(root, 'src', 'module-reset.js')).href),
     // 面板还会调 `filterUsableSystemFonts(...)`（本机字体那道"本浏览器能否匹配"的筛，同一条理由）。
     await import(pathToFileURL(join(root, 'src', 'system-fonts.js')).href),
     schema,

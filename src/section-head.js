@@ -25,8 +25,11 @@
  * @param {*} label 已翻译的节标签
  * @param {boolean} open 展开态（真值才画内容）
  * @param {() => void} [onToggle] 点击 / 键盘触发时调用
+ * @param {*} [action] 可选的尾部动作节点（issue #192 的模块级 ↺）。渲染在标签之后、caret
+ *   之前；**调用方负责 `stopPropagation`** —— 本构件是折叠开关，不拦的话点动作会连带把
+ *   这一节收起来（重置完看不到结果）。不传就与原来逐字节同形（既有判据不受影响）。
  */
-function sectionHead(label, open, onToggle) {
+function sectionHead(label, open, onToggle, action) {
   return React.createElement("div", {
     className: "we-picker__section-head we-picker__section-head--toggle",
     role: "button",
@@ -41,6 +44,7 @@ function sectionHead(label, open, onToggle) {
     },
   },
     React.createElement("span", { className: "we-picker__section-label" }, label),
+    action || null,
     React.createElement("span", {
       className: "we-picker__section-caret" + (open ? " is-open" : ""),
       "aria-hidden": "true",

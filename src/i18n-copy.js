@@ -996,6 +996,18 @@ const WE_I18N_EN = {
   "四角全直角": "All corners square",
   "四角全圆角": "All corners round",
 
+  // ── 重置（issue #192）──────────────────────────────────────────────────────
+  "重置": "Reset",
+  "重置本模块": "Reset this module",
+  "把这一块的参数恢复为默认值（不需要确认）": "Restore this module's settings to their defaults (no confirmation needed)",
+  "全部重置": "Reset everything",
+  "把全部设置恢复为出厂默认值；导入的头像与吉祥物图片、字体集不受影响。此操作不可撤销。": "Restore all settings to their factory defaults. Imported avatars, mascot artwork and font sets are not affected. This cannot be undone.",
+  "确定要将所有设置恢复为默认吗？此操作不可撤销。": "Restore all settings to their defaults? This cannot be undone.",
+  // 页签级重置（用户口径：每个选项卡后面各一个）
+  "重置本页": "Reset this tab",
+  "把这一页的设置恢复为默认值；其他页签与导入的图片不受影响。": "Restore this tab's settings to their defaults. Other tabs and imported images are not affected.",
+  "确定要把这一页的设置恢复为默认吗？此操作不可撤销。": "Restore this tab's settings to their defaults? This cannot be undone.",
+
   // ── 上传裁切（issue #191 问题 1）────────────────────────────────────────────
   "裁切头像": "Crop avatar",
   "拖动调整位置、滚轮或滑块缩放；框内这一块会作为头像（方形）。": "Drag to reposition, scroll or use the slider to zoom; the area inside the frame becomes the avatar (square).",

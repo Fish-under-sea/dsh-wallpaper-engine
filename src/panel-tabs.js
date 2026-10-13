@@ -518,7 +518,7 @@
 
 
   function renderAppearanceThemeSection(ctx) {
-    const { onToggleThemeFollow, sel } = ctx;
+    const { onResetModule, onToggleThemeFollow, sel } = ctx;
     return React.createElement(React.Fragment, null,
     // ── 主题：本节点只剩「主题随壁纸」—— 玻璃配置在「玻璃 UI」节，
     //    **「配色」（accent）已迁进「全局 UI 配色」节**（2026-10-11 用户口径：配色要成为
@@ -526,6 +526,7 @@
     React.createElement("div", { className: "we-picker__section" },
       React.createElement("div", { className: "we-picker__section-head" },
         React.createElement("span", { className: "we-picker__section-label" }, weT("主题")),
+        moduleResetButton("theme", onResetModule),
       ),
       // 主题随壁纸：总开关（**默认关** = 不按壁纸自动改深浅主题；**试验性功能**，行内已标注）。
       // 开着时才取色判决，并把**最近一次结论**摊开（"为什么判成浅色"要能当场答）；
@@ -543,7 +544,7 @@
   }
 
   function renderAppearanceDetailSection(ctx) {
-    const { onBorder, sel, detailOpen, onToggleDetailSection } = ctx;
+    const { onBorder, onResetModule, sel, detailOpen, onToggleDetailSection } = ctx;
     // 简化 / 高级分档见 ADR-0008 **D4**（实现口径在 `src/glass-panel.js`，按 `ctx.surface` 判定）：
     // 全局四件套、预设方案与各面总开关属简化配置（侧栏档也画）；本节的「独立配置」层及其子项
     // 属高级配置 ⇒ 只在设置页画。它与 quick-panel 的 setting-only 占位器互为负对照。
@@ -553,7 +554,7 @@
     return React.createElement(React.Fragment, null,
     // ── 细节：只剩**非釉层**的「边框」（边框 / 分割线对比度）—— 不属于玻璃配方 ──
     React.createElement("div", { className: "we-picker__section" },
-      sectionHead(weT("细节"), open, onToggleDetailSection),
+      sectionHead(weT("细节"), open, onToggleDetailSection, moduleResetButton("detail", onResetModule)),
       open && SliderRow(weT("边框"), 0, 90, 5, Math.round(sel.border * 100), onBorder, Math.round(sel.border * 100) + "%", "border-emphasis", {
         tooltip: weT("提高边框 / 分割线的对比度（浅色与深色主题通用）"),
       }),
@@ -882,7 +883,7 @@
   }
 
   function renderAppearanceFontSection(ctx) {
-    const { officialColorOf, onComponentFamily, onComponentFont, onFontAdvanced, onFontResetAll, onGlobalFamily, onRefreshSystemFonts, onThemeColor, onThemeColorClear, onThemeDarkSeparate, onThemeFamily, onThemeSize, onThemeTypeOnly, onThemeWeight, onToggleFontCustom, fontOpen, onToggleFontSection, fontSet, sel } = ctx;
+    const { officialColorOf, onComponentFamily, onComponentFont, onFontAdvanced, onFontResetAll, onGlobalFamily, onRefreshSystemFonts, onResetModule, onThemeColor, onThemeColorClear, onThemeDarkSeparate, onThemeFamily, onThemeSize, onThemeTypeOnly, onThemeWeight, onToggleFontCustom, fontOpen, onToggleFontSection, fontSet, sel } = ctx;
     // 「排版角色」表要按「只看改过的」筛，而**筛完是空**时要单独给一行提示 ⇒ 先算出来再渲染表。
     // ⚠️ 必须在 `React.createElement(...)` **之前**算（写成参数位置上的赋值表达式 ——
     //    赋值表达式的值是那个**数组本身**，于是它被当成一个子节点 ⇒ React #31「对象不能作为子节点」；
@@ -918,6 +919,7 @@
         },
       },
         React.createElement("span", { className: "we-picker__section-label" }, weT("全局字体")),
+        moduleResetButton("font", onResetModule),
         React.createElement("span", {
           className: "we-picker__section-caret" + (open ? " is-open" : ""),
           "aria-hidden": "true",
@@ -1000,12 +1002,12 @@
   }
 
   function renderAppearanceSidebarCornersSection(ctx) {
-    const { onSidebarAllCorners, onSidebarCornerRadius, onSidebarCornerSquare, sel, cornersOpen, onToggleCornersSection } = ctx;
+    const { onResetModule, onSidebarAllCorners, onSidebarCornerRadius, onSidebarCornerSquare, sel, cornersOpen, onToggleCornersSection } = ctx;
     // ⚠️ 折叠门同「细节」节（2026-10-11 二次修订）：两档都支持隐藏，差别只在默认值。
     const open = cornersOpen === true;
     return React.createElement(React.Fragment, null,
       React.createElement("div", { className: "we-picker__section" },
-        sectionHead(weT("侧边栏圆角"), open, onToggleCornersSection),
+        sectionHead(weT("侧边栏圆角"), open, onToggleCornersSection, moduleResetButton("corners", onResetModule)),
         open && sidebarCornerGroup("left", weT("左侧栏"), sel, onSidebarCornerRadius, onSidebarCornerSquare, onSidebarAllCorners),
         open && sidebarCornerGroup("right", weT("右侧栏"), sel, onSidebarCornerRadius, onSidebarCornerSquare, onSidebarAllCorners),
       ),
@@ -1022,7 +1024,7 @@
   //    ⚠️ 折叠门与字体节同形（`uiColorOpen`，默认收起，两档各记各的 localStorage 键）。
   //    令牌与宿主消费者的实证见 `src/styles.js` 的同名段与 `lib/settings-schema.js` 的 DEFAULTS 注释。
   function renderAppearanceUiColorSection(ctx) {
-    const { onAccent, onCaretColor, onToggleUiColorCustom, onUiColorElement, sel, uiColorOpen, onToggleUiColorSection } = ctx;
+    const { onAccent, onCaretColor, onResetModule, onToggleUiColorCustom, onUiColorElement, sel, uiColorOpen, onToggleUiColorSection } = ctx;
     const open = uiColorOpen === true;
     const custom = sel.uiColorCustom === true;
     // 五个元素行：id 与 settings 键一一对应；文案与 tooltip 写明它**具体是哪一处** ——
@@ -1059,6 +1061,7 @@
         },
       },
         React.createElement("span", { className: "we-picker__section-label" }, weT("全局 UI 配色")),
+        moduleResetButton("uiColor", onResetModule),
         React.createElement("span", {
           className: "we-picker__section-caret" + (open ? " is-open" : ""),
           "aria-hidden": "true",
@@ -1121,6 +1124,17 @@
   // 判据按真渲染的节序列钉住，见 verify-scene-live 的节顺序一节）。
   // ⚠️ 这个顺序是**两个界面共用的**（侧边栏的 `qpRenderAppearancePane` 调的也是本函数）
   //    ⇒ 改这里等于同时改设置页与侧边栏 —— 这正是用户口径要的"两边同序"。
+  // 模块级 ↺ 的**薄包装**（issue #192）：真实现住在 `src/module-reset.js`（panel-tabs 与
+  // glass-panel 共用，抽出来才能让挂载台 import 真实现）。这里只把"取词 + 处理器"两样外界
+  // 喂给它 —— 中文因此留在本文件的 `weT(...)` 里（i18n 扫描器认这个形态；写进被调模块会
+  // 被判成"裸中文"），各节调用点则保持 `moduleResetButton("模块名", onResetModule)` 这么短。
+  function moduleResetButton(moduleName, onResetModule) {
+    return moduleResetButtonNode(moduleName, onResetModule, {
+      title: weT("把这一块的参数恢复为默认值（不需要确认）"),
+      aria: weT("重置本模块"),
+    });
+  }
+
   // 用户口径（2026-10-11）：主题 → 细节 → 玻璃 UI → 侧边栏圆角 → 全局 UI 配色 → 全局字体。
   // 与上一版的差别只有一处：**「玻璃 UI」与「侧边栏圆角」对调**（前者上移到细节之后）。
   function renderAppearanceTab(ctx) {
@@ -2261,7 +2275,7 @@
   // ⚠️ 判据口径：`const { … } = ctx;` 必须是函数体的**第一条语句**（前面连注释行都不许有），
   // 所以说明文字只能写在函数外面 —— 见 test/verify-scene-live.mjs 的『每个页签首行都从 ctx 解构』。
   function renderExtensionsTab(ctx) {
-    const { } = ctx;
+    const { onResetModule } = ctx;
     const modules = extensionModules();
     return React.createElement(React.Fragment, null,
       React.createElement("div", { className: "we-picker__section" },
@@ -2281,6 +2295,7 @@
               },
                 React.createElement("div", { className: "we-ext__module-head" },
                   React.createElement("span", { className: "we-ext__module-title" }, mod.title),
+                  moduleResetButton(mod.resetGroup, onResetModule),
                 ),
                 mod.desc ? React.createElement("span", { className: "we-picker__hint" }, mod.desc) : null,
                 mod.render ? mod.render(ctx) : null,
@@ -2414,7 +2429,72 @@
   }
 
 
+  // ── 页签级重置（issue #192 用户口径：「每个选项卡后面加重置，重置指定选项卡」）──────────
+  // 压在**每个页签内容的最末尾**，由 client.js 的渲染点在 renderActiveTab() 之后统一挂 ——
+  // 六处渲染器各挂一遍必然漏一个，挂一处才是结构性的。
+  // 走两步确认：整页设置量不小（外观页就有 60 个键）且不可撤销 ⇒ 与模块级 ↺ 分档
+  //（那是单模块、用户口径明确"无需确认"）。令牌按页签区分，因为 `armedConfirm` 是单值。
+  function renderTabReset(ctx, tabId) {
+    const { armedConfirm, onArmConfirm, onDisarmConfirm, onResetTab } = ctx;
+    // 「关于」页签没有任何设置（纯静态文案）⇒ 不给它画一个点了没反应的按钮。
+    if (tabId === "about") return null;
+    const token = "tab:" + tabId;
+    // ⚠️ 刻意**不用** `we-picker__section-label`：那是"设置分组卡"的类名，而本节的判据口径
+    //（既有守卫按"末三张分组卡"取窗口）会被这一节顶掉 —— 3D 效果那一页就有三张分组卡，
+    // 重置节排在它后面会挤走「背景」。它是**操作区**不是分组卡，用独立类名在语义上也更准。
+    const cls = "we-picker__section-reset-label";
+    return React.createElement("div", { className: "we-picker__section" },
+      React.createElement("div", { className: "we-picker__section-head" },
+        React.createElement("span", { className: cls }, weT("重置本页")),
+      ),
+      React.createElement("span", { className: "we-picker__hint" },
+        weT("把这一页的设置恢复为默认值；其他页签与导入的图片不受影响。")),
+      React.createElement("div", { className: "we-picker__row" },
+        React.createElement("button", {
+          className: "we-picker__btn",
+          type: "button",
+          disabled: armedConfirm === token,
+          onClick: () => onArmConfirm(token),
+        }, weT("重置本页")),
+      ),
+      renderConfirmRow(armedConfirm, token,
+        weT("确定要把这一页的设置恢复为默认吗？此操作不可撤销。"),
+        () => onResetTab(tabId), onDisarmConfirm),
+    );
+  }
+
+  // ── 全局重置节（issue #192，压在「系统」页签末尾）──────────────────────────────
+  // 三档里的最高一档：**模块 < 页签 < 全局**。全局必须二次确认（不可撤销）。
+  // 二次确认复用 client.js 既有的 `armConfirm` / `renderConfirmRow` 两步构件 ——
+  // `selection.armedConfirm` 是单值 ⇒ 结构上同一时刻只有一个动作待确认。
+  // ⚠️ 只重置**设置值**：导入的头像图 / 吉祥物立绘 / 字体集住各自的目录，删不删是另一件事
+  //（文案必须把这一点说清，否则用户会以为"重置"连图一起删了）。
+  function renderResetSection(ctx) {
+    const { armedConfirm, onArmConfirm, onDisarmConfirm, onResetAll } = ctx;
+    const token = "resetAll";
+    return React.createElement("div", { className: "we-picker__section" },
+      React.createElement("div", { className: "we-picker__section-head" },
+        // 同 renderTabReset：操作区不用「设置分组卡」那个类名（它会被"末三张分组卡"那类
+        // 位置口径的判据看见，挤掉真正的分组卡）。
+        React.createElement("span", { className: "we-picker__section-reset-label" }, weT("重置")),
+      ),
+      React.createElement("span", { className: "we-picker__hint" },
+        weT("把全部设置恢复为出厂默认值；导入的头像与吉祥物图片、字体集不受影响。此操作不可撤销。")),
+      React.createElement("div", { className: "we-picker__row" },
+        React.createElement("button", {
+          className: "we-picker__btn we-picker__btn--danger",
+          type: "button",
+          disabled: armedConfirm === token,
+          onClick: () => onArmConfirm(token),
+        }, weT("全部重置")),
+      ),
+      renderConfirmRow(armedConfirm, token,
+        weT("确定要将所有设置恢复为默认吗？此操作不可撤销。"),
+        onResetAll, onDisarmConfirm),
+    );
+  }
+
 export {
   renderWallpaperTab, renderAppearanceTab, renderAudioTab, renderMascotTab, renderEffectsTab, renderAdvancedTab,
-  renderExtensionsTab, renderAboutTab,
+  renderExtensionsTab, renderAboutTab, renderResetSection, renderTabReset,
 };
