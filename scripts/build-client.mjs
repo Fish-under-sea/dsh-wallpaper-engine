@@ -215,6 +215,18 @@ const INLINE_MODULES = [
     markers: ['const PARALLAX_EXTENSION_MODULE = {', 'function renderParallaxIsland(ctx)'],
   },
   {
+    // 头像导入的两道闸 + 零解码尺寸探针（#185 后续）。**纯函数**，因此是本仓少数几个
+    // 能被守卫**直接执行**的模块之一（用真字节喂真函数 —— 位域读错一位那种错，
+    // "源码里有没有这行字"测不出来）。排在 avatar-layer / ext-avatar / client 正文之前：
+    // 那几处的调用点直接按名引用这些常量与函数。
+    file: 'src/avatar-import.js',
+    why: '头像导入的两道闸（边长 1024 / 体积 4 MiB）、零解码的文件头尺寸探针（PNG/JPEG/GIF/BMP/WebP/SVG）与两层 MIME 清单（直传 / 仅光栅化）',
+    markers: ['const AVATAR_IMPORT_MAX_EDGE = ', 'const AVATAR_IMPORT_MAX_BYTES = ',
+      'const IMAGE_DIRECT_ACCEPT = ', 'const IMAGE_RASTER_ACCEPT = ',
+      'function parseBitmapHeaderSize(', 'function parseSvgSize(',
+      'async function probeImageSize(', 'function avatarImportLimit('],
+  },
+  {
     // 「扩展」页签**一号模块**（自定义会话头像）：与前面两份不同 —— 它的"本体"既不是画布层
     // 也不是纯变量层，而是**会话界面上的 DOM 补丁**（给宿主的消息行补头像节点 + 一个
     // 观察者），所以行为层是 src/avatar-layer.js。排在 panel-tabs 之前（它要在渲染时取

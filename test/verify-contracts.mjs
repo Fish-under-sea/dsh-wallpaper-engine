@@ -108,10 +108,17 @@ function acceptLists(src) {
   return [...src.matchAll(/accept:\s*['"]([^'"]+)['"]/g)]
     .map((m) => uniq(m[1].split(',').map((s) => s.trim()).filter(Boolean)));
 }
-/** 客户端**选图腿自己写下的赋值点** `input.accept = "a,b,c"`（`src/client.js` 的 pickImageFile）。 */
+/** 客户端**选图腿自己写下的赋值点** `input.accept = …`（`src/client.js` 的 pickImageFile）。
+ *  ⚠️ 右侧**不一定是字面量**（issue #185 之后是 `accept || IMAGE_DIRECT_ACCEPT`）⇒ 这里抽的是
+ *  "整条赋值语句"，由调用方按形态判定（字面量 or 常量名兜底）。 */
 function acceptAssignments(src) {
-  return [...src.matchAll(/input\.accept\s*=\s*['"]([^'"]+)['"]/g)]
-    .map((m) => uniq(m[1].split(',').map((s) => s.trim()).filter(Boolean)));
+  return [...src.matchAll(/input\.accept\s*=\s*([^;\n]+)/g)].map((m) => m[1].trim());
+}
+/** 一条赋值语句右侧里的字面量 MIME 清单（不是字面量则空数组）。 */
+function acceptAssignmentLiterals(assignments) {
+  return assignments
+    .filter((rhs) => /^['"]/.test(rhs))
+    .map((rhs) => uniq(rhs.replace(/^['"]|['"]$/g, '').split(',').map((s) => s.trim()).filter(Boolean)));
 }
 /** 负对照用的变异体：把每个 `input.accept` 清单**砍掉最后一项**。 */
 function weakenedAcceptAssignments(src) {
@@ -154,27 +161,71 @@ const tabsSrc = read('src/panel-tabs.js');
     'host=' + (hostFrame || []).join(',') + ' client=' + clientFrame.map((l) => l.join(',')).join(' | '));
 
   // 自定义会话头像（「扩展」页签一号模块）与吉祥物立绘（「系统」页签 · 聊天吉祥物）走的是
-  // **同一条选图腿**（`src/client.js` 的 pickImageFile），也就是说客户端那一份 accept 只写在
-  // 一个地方：`input.accept = "…"`（`src/client.js:3307`）。判据必须锚在**这条腿自己写下的那一行**上
-  // ——先前三条 check 共用从 `src/panel-tabs.js` 抄来的同一份清单，选图腿漂了它也照样绿。
-  // 宿主那边是 lib/index.js 的 AVATAR_EXT / MASCOT_EXT；不一致的失效模式同自定义画面：
-  // 选择器收得下、宿主判 415（静默失败）。
+  // **同一条选图腿**（`src/client.js` 的 pickImageFile）。宿主那边是 lib/index.js 的
+  // AVATAR_EXT / MASCOT_EXT；不一致的失效模式同自定义画面：选择器收得下、宿主判 415（静默失败）。
+  //
+  // ⚠️ issue #185（头像支持 SVG 等格式）之后，accept **不再是"等于宿主表"**，而是分成两层：
+  //   · **直传格式**（`IMAGE_DIRECT_ACCEPT`）—— 客户端原样上传、宿主认、**原样落盘**。
+  //     这一层的键集必须与宿主表**逐个相等**（老契约，一个字都没松）。
+  //   · **仅光栅化格式**（`IMAGE_RASTER_ACCEPT`）—— 选择器收得下，但**绝不会原样落盘**：
+  //     它经 canvas 解码成像素、再由同一个编码器重编成直传格式。宿主**不认识也不该认识**
+  //     它们（`/avatar/<side>` 与页面同源，原样存一份 SVG 就是同源存储型 XSS）。
+  // 判据因此守三件事：① 直传层 == 宿主表（两侧都比）；② 仅光栅化层与宿主表**不相交**
+  //（加了 SVG 却没光栅化、直接落盘 ⇒ 这里当场红）；③ 选图腿真的把两层都挂上了（不是造了个
+  // 常量没人用）。
   const clientAccept = acceptAssignments(clientSrc);
-  /** 某个客户端赋值点里是否存在与宿主表一致的 accept 列表（正判据与负对照共用这一条）。 */
+  const clientAcceptLiterals = acceptAssignmentLiterals(clientAccept);
+  /** 某个 accept 清单里是否存在与宿主表一致的列表（正判据与负对照共用这一条）。 */
   const acceptCovers = (lists, hostTable) =>
     Boolean(hostTable && hostTable.length >= 3) && lists.some((l) => sameSet(l, hostTable));
   check('覆盖面：选图腿确实写下了 input.accept 赋值点（抽取器退化 ⇒ 当场红，不静默恒真）',
-    clientAccept.length >= 1, '赋值点=' + clientAccept.map((l) => l.join(',')).join(' | ') || '(没抽到)');
+    clientAccept.length >= 1, '赋值点=' + (clientAccept.join(' | ') || '(没抽到)'));
 
   const hostAvatar = hostMimeKeys(hostSrc, 'AVATAR_EXT');
-  check('会话头像 MIME：客户端选图腿自己的 input.accept 与宿主 AVATAR_EXT 键集一致',
-    acceptCovers(clientAccept, hostAvatar),
-    'host=' + (hostAvatar || []).join(',') + ' client=' + clientAccept.map((l) => l.join(',')).join(' | '));
-
   const hostMascot = hostMimeKeys(hostSrc, 'MASCOT_EXT');
-  check('吉祥物立绘 MIME：客户端选图腿自己的 input.accept 与宿主 MASCOT_EXT 键集一致',
-    acceptCovers(clientAccept, hostMascot),
-    'host=' + (hostMascot || []).join(',') + ' client=' + clientAccept.map((l) => l.join(',')).join(' | '));
+  // ⚠️ 两层的**真源**住在 `src/avatar-import.js`（纯函数模块，与选图腿同一条链）。
+  // 判据必须读真源、不能读产物或抄一份：抄的那份漂了判据照样绿。
+  const importSrc = read('src/avatar-import.js');
+  /** 客户端 `const NAME = "a,b,c";` 形态的 MIME 串（两层 accept 都是这么写的）。 */
+  const clientMimeConst = (src, name) => {
+    const m = new RegExp('const\\s+' + name + '\\s*=\\s*[\'"]([^\'"]+)[\'"]').exec(src);
+    return m ? uniq(m[1].split(',').map((s) => s.trim()).filter(Boolean)) : null;
+  };
+  const directAccept = clientMimeConst(importSrc, 'IMAGE_DIRECT_ACCEPT');
+  const rasterAccept = clientMimeConst(importSrc, 'IMAGE_RASTER_ACCEPT');
+  const intersects = (a, b) => (a || []).filter((x) => (b || []).includes(x));
+
+  check('会话头像 MIME：直传层 `IMAGE_DIRECT_ACCEPT` 与宿主 AVATAR_EXT 键集逐个相等',
+    directAccept !== null && acceptCovers([directAccept], hostAvatar),
+    'host=' + (hostAvatar || []).join(',') + ' direct=' + (directAccept || []).join(','));
+  check('吉祥物立绘 MIME：同一条直传层与宿主 MASCOT_EXT 键集逐个相等（选图腿是共用的）',
+    directAccept !== null && acceptCovers([directAccept], hostMascot),
+    'host=' + (hostMascot || []).join(',') + ' direct=' + (directAccept || []).join(','));
+  // ② 仅光栅化层不许漏进宿主表 —— 这是 "SVG 只以像素形态落盘" 的**结构性**保证。
+  const rasterLeak = intersects(rasterAccept, [...(hostAvatar || []), ...(hostMascot || [])]);
+  check('#185 仅光栅化格式（SVG 等）与宿主 MIME 表不相交（原始矢量绝不落盘 ⇒ 无同源 XSS 面）',
+    Boolean(rasterAccept && rasterAccept.length > 0) && rasterLeak.length === 0,
+    'raster=' + (rasterAccept || []).join(',') + ' 泄漏=' + (rasterLeak.join(',') || '无'));
+  // ③ 两层都真的挂上了选图腿：默认用直传层，头像那一处把两层拼起来。
+  //   ⚠️ 拼装点（`AVATAR_PICK_ACCEPT`）与两层清单同住 avatar-import.js；选图腿消费它。
+  check('#185 选图腿挂上了两层 accept（默认直传层 + 头像处直传∪仅光栅化）',
+    clientSrc.includes('input.accept = accept || IMAGE_DIRECT_ACCEPT;')
+    && importSrc.includes('const AVATAR_PICK_ACCEPT = IMAGE_DIRECT_ACCEPT + "," + IMAGE_RASTER_ACCEPT;')
+    && clientSrc.includes('pickImageFile((file) => onAvatarFileChosen(side, file), AVATAR_PICK_ACCEPT)'),
+    '默认=' + (clientSrc.includes('input.accept = accept || IMAGE_DIRECT_ACCEPT;') ? '直传层' : '缺')
+    + ' 头像=' + (clientSrc.includes('AVATAR_PICK_ACCEPT') ? '两层并集' : '缺'));
+
+  // 负对照：直传层少一种 / 仅光栅化层混进宿主表 —— 喂给**同一对**判据必须判坏。
+  check('negative control: 直传层少写一种 MIME 会被判出',
+    !acceptCovers([(directAccept || []).slice(0, -1)], hostAvatar));
+  // ⚠️ 这一条的形态与上一版不同：先前只断言 `intersects(...).length === 1`，那是**恒真式**
+  //（把 svg 同时喂给两个实参，交集当然非空）—— 它对"判据是否有效"什么都没证明。
+  // 现在把「仅光栅化层是否泄漏进宿主表」抽成判据本身，正反两侧喂同一个函数。
+  const rasterLeaks = (raster, hostTables) => intersects(raster, hostTables).length > 0;
+  const hostTables = [...(hostAvatar || []), ...(hostMascot || [])];
+  check('negative control: 仅光栅化层混进宿主表会被判出（同一个泄漏判据，正反都喂它）',
+    rasterLeaks(rasterAccept, hostTables) === false
+      && rasterLeaks([...(rasterAccept || []), 'image/webp'], hostTables) === true);
 
   // 吉祥物**显示盒上限**的单源契约：`MASCOT_BOX_MAX_W/H` 只住在 lib/settings-schema.js
   // （`mascotBox` 档用它限量级），客户端上传腿与 ropeArtOf 经构建期内联引用同一对 ——

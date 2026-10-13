@@ -366,6 +366,11 @@ const selection = {
   avatarCropZoom: 1,
   avatarCropX: 0,
   avatarCropY: 0,
+  // 超限拦截（#185 后续，2026-10-13）：原图过了两道闸（边长 1024 / 体积 4 MiB）就在**解码前**
+  // 被拦下，这里记住"哪张图、超了哪一条、实测多少"，面板据此画提示行 + 「自动压缩后导入」。
+  // null = 没有被拦下的图（提示行不画）。压缩中另有一枚布尔（按钮要变成「压缩中…」）。
+  avatarOverflow: null,
+  avatarCompressing: false,
   // 自定义吉祥物立绘的导入态（transient）：在途标志与最后一条错误（同上面两枚口径）。
   mascotBusy: false,
   mascotError: "",
@@ -3499,13 +3504,19 @@ function onParallaxSmooth(v, live) { commitLiveSetting("parallaxSmooth", v, live
 // 为什么**不缓存 input 元素**（custom-frame 那种模块级 ref 是为了"面板重渲染后还点得到"）：
 // 这里每次导入都是一次性的 —— 造一个、点开、用完即弃，语义经闭包带进来。
 /** 客户端缩放上限（px）：显示尺寸最多 72px（头像）/ 96px（立绘），把原图按它缩一遍 ——
- *  直接把 8MB 的原图发上去只会让宿主目录变大、每次加载多传几倍字节。 */
+ *  直接把 8MB 的原图发上去只会让宿主目录变大、每次加载多传几倍字节。
+ *  ⚠️ 头像是**例外**：裁切链要按原图分辨率取样，72px 的显示尺寸放大 4 倍也才 288 —
+ *  它用 src/avatar-import.js 的 AVATAR_IMPORT_MAX_EDGE（1024）。 */
 const IMAGE_IMPORT_MAX_EDGE = 512;
-function pickImageFile(onFile) {
+// 头像导入的两道闸（边长 1024 / 体积 4 MiB）、零解码尺寸探针与两层 MIME 清单全部住在
+// `src/avatar-import.js` —— **纯函数**，因此 `test/verify-scene-live.mjs` 能 import 真实现、
+// 用真字节喂它（"源码里有没有这行字"测不出位域读错一位：1024 读成 0 ⇒ 闸恒放行）。
+/** 选图腿的 accept：默认直传层；调用方要收更多格式就显式传（头像传两层之和）。 */
+function pickImageFile(onFile, accept) {
   if (typeof document === "undefined" || typeof document.createElement !== "function") return;
   const input = document.createElement("input");
   input.type = "file";
-  input.accept = "image/png,image/jpeg,image/webp";
+  input.accept = accept || IMAGE_DIRECT_ACCEPT;
   input.style.display = "none";
   try { document.body.appendChild(input); } catch { /* ignore */ }
   const done = () => { try { input.remove(); } catch { /* ignore */ } };
@@ -3554,8 +3565,10 @@ async function downscaleImageBlob(blob, maxEdge) {
   const src = await decodeImageFile(blob);
   return await downscaleDecoded(src, maxEdge, blob);
 }
-/** 缩放 + 重编码的**唯一实现**（两个入口共用；`fallback` 是编码全失败时原样交出去的那份）。 */
-async function downscaleDecoded(src, maxEdge, fallback) {
+/** 缩放 + 重编码的**唯一实现**（两个入口共用；`fallback` 是编码全失败时原样交出去的那份）。
+ *  `losslessFirst` = 先试 PNG（**像素级无损**）再退 WebP —— 只有头像的「自动压缩后导入」
+ *  走这一档（用户口径："保证原图信息不丢失"）；其余导入档仍按"WebP 优先、体积优先"编。 */
+async function downscaleDecoded(src, maxEdge, fallback, losslessFirst) {
   const w = Number(src.width) || 0;
   const h = Number(src.height) || 0;
   if (!w || !h) throw new Error("bad image");
@@ -3572,10 +3585,19 @@ async function downscaleDecoded(src, maxEdge, fallback) {
   const toBlob = (type, quality) => new Promise((resolve) => {
     try { canvas.toBlob((b) => resolve(b), type, quality); } catch { resolve(null); }
   });
+  // 无损优先（头像压缩档）：PNG 装得下就用 PNG，装不下才退视觉无损的 WebP。
+  if (losslessFirst) {
+    const png = await toBlob("image/png");
+    if (png && png.type === "image/png") return { blob: png, width: tw, height: th };
+    const lossy = await toBlob("image/webp", 0.92);
+    return { blob: (lossy && lossy.type === "image/webp") ? lossy : ((await toBlob("image/png")) || fallback), width: tw, height: th };
+  }
   const webp = await toBlob("image/webp", 0.92);
   const blob = (webp && webp.type === "image/webp") ? webp : (await toBlob("image/png")) || fallback;
   return { blob, width: tw, height: th };
 }
+
+
 /**
  * 用户资产路由的失败文案。
  *
@@ -3625,14 +3647,90 @@ function onAvatarRadius(v, live) { commitLiveSetting("avatarRadius", v, live); i
 const AVATAR_CROP_VIEW = 260; // 弹窗取景框边长（px，与 CSS 里那格同值）
 /** 待裁的原图（**内存**里，不是设置）：唯一消费者是当前这次弹窗。 */
 let avatarCropPending = null;
+/** 超限**被拦下**的原图（内存里）：用户在提示行点「自动压缩后导入」时走它。 */
+let avatarOverflowPending = null;
 /** 导入前的裁切弹窗：先让用户框选构图，确认后才真正上传。 */
 function onAvatarPick(side) {
-  pickImageFile((file) => openAvatarCrop(side, file));
+  // 收的格式 = 直传层 ∪ 仅光栅化层（AVATAR_PICK_ACCEPT 与两层清单同住 src/avatar-import.js）。
+  pickImageFile((file) => onAvatarFileChosen(side, file), AVATAR_PICK_ACCEPT);
+}
+/**
+ * 选好图之后的**第一站**：先过两道闸，再进裁切弹窗（`#185` 后续，用户口径 2026-10-13）。
+ *
+ * 顺序就是这道闸的全部价值 —— `avatarImportLimit` 只读文件头，**一次都不解码**；
+ * 超限则当场拦下并记住这张图（`avatarOverflowPending`），让面板画一行提示 + 一枚
+ * 「自动压缩后导入」。用户点它才真的解码 → 缩到 1024 → 无损重编（见 `onAvatarAutoCompress`）。
+ */
+async function onAvatarFileChosen(side, file) {
+  if (!file) return;
+  const type = String(file.type || "").toLowerCase();
+  // 白名单两层都收；认不出的 MIME（或浏览器不给 type）仍放行给解码腿去判 ——
+  // 这里只挡"明确不在清单里"的，别把扩展名不规范的图也一起拒了。
+  const known = (IMAGE_DIRECT_ACCEPT + "," + IMAGE_RASTER_ACCEPT).split(",");
+  if (type && !known.includes(type)) {
+    setTransient("avatarOverflow", null);
+    setTransient("avatarError", weT("仅支持 JPG / PNG / WebP / SVG / GIF / BMP / AVIF 图片"));
+    emit();
+    return;
+  }
+  const size = await probeImageSize(file);
+  const verdict = avatarImportLimit(file, size);
+  if (verdict.ok) {
+    avatarOverflowPending = null;
+    setTransient("avatarOverflow", null);
+    await openAvatarCrop(side, file);
+    return;
+  }
+  // 拦下：把"哪一条超了、实测多少"说清楚（笼统的"图太大"等于什么都没说）。
+  avatarOverflowPending = { side: side, file: file };
+  setTransient("avatarError", "");
+  setTransient("avatarOverflow", {
+    side: side,
+    bytes: verdict.bytes,
+    width: verdict.width,
+    height: verdict.height,
+    overBytes: verdict.overBytes,
+    overEdge: verdict.overEdge,
+    // 压缩后仍可能装不下的提示用得上（超大图压到 1024 也可能 > 4 MiB —— 见 ext-avatar 文案）。
+    compressible: true,
+  });
+  emit();
+}
+/**
+ * 「自动压缩后导入」：解码 → 缩到 1024 → **无损优先**重编（PNG，装不下才退 WebP）→ 进裁切弹窗。
+ *
+ * 为什么压在 1024 而不是更小：用户要的是"信息不丢失"，1024 是显示尺寸（72px）的 14 倍，
+ * 肉眼与矢量几乎没有差别；PNG 优先则保证**像素级无损**（只有 PNG 真装不下时才退视觉无损的
+ * WebP，并在面板上如实说明）。
+ */
+async function onAvatarAutoCompress() {
+  const pending = avatarOverflowPending;
+  if (!pending) return;
+  setTransient("avatarCompressing", true);
+  setTransient("avatarError", "");
+  emit();
+  try {
+    const src = await decodeImageFile(pending.file);
+    const shrunk = await downscaleDecoded(src, AVATAR_IMPORT_MAX_EDGE, pending.file, true);
+    // 压缩结果包成 File 再进裁切弹窗：裁切腿吃的是 File（它要 type 与 size）。
+    const name = "avatar-compressed." + (shrunk.blob.type === "image/png" ? "png" : "webp");
+    const compressed = (typeof File === "function")
+      ? new File([shrunk.blob], name, { type: shrunk.blob.type })
+      : shrunk.blob;
+    setTransient("avatarCompressing", false);
+    avatarOverflowPending = null;
+    setTransient("avatarOverflow", null);
+    await openAvatarCrop(pending.side, compressed);
+  } catch (err) {
+    setTransient("avatarCompressing", false);
+    setTransient("avatarError", weT("压缩失败：{error}", { error: err && err.message ? err.message : String(err) }));
+    emit();
+  }
 }
 /** 打开裁切弹窗（读原图尺寸 → 填瞬态 → 交给面板画）。 */
 async function openAvatarCrop(side, file) {
-  if (!file || !/^image\/(png|jpeg|webp)$/.test(String(file.type || ""))) {
-    setTransient("avatarError", weT("仅支持 JPG / PNG / WebP 图片"));
+  if (!file || !/^image\//.test(String(file.type || ""))) {
+    setTransient("avatarError", weT("仅支持 JPG / PNG / WebP / SVG / GIF / BMP / AVIF 图片"));
     emit();
     return;
   }
@@ -3754,7 +3852,7 @@ async function onAvatarCropConfirm() {
   try {
     const cut = await cropAvatarToBlob();
     if (!cut) throw new Error(weT("裁切失败"));
-    const img = await downscaleImageBlob(cut, IMAGE_IMPORT_MAX_EDGE);
+    const img = await downscaleImageBlob(cut, AVATAR_IMPORT_MAX_EDGE);
     const posted = await postImageAsset("/avatar/" + side, img.blob, weT("头像"));
     if (!posted.ok) throw new Error(posted.error);
     // 记账：文件名进设置（它同时是"设置过没有"与 `<img>` 的缓存键）。
@@ -5153,6 +5251,8 @@ function WallpaperPicker() {
     // 上传裁切（issue #191 问题 1）：几何在这里现算（唯一实现），渲染器只读结果。
     onAvatarCropZoom, onAvatarCropDrag, onAvatarCropConfirm, onAvatarCropCancel: closeAvatarCrop,
     avatarCropGeo: avatarCropGeometry(), avatarCropView: AVATAR_CROP_VIEW,
+    // 超限拦截（#185 后续）：面板画提示行 + 「自动压缩后导入」按钮，处理器在 client 这一侧。
+    onAvatarAutoCompress,
     // 模块级重置（issue #192）：各模块头的 ↺ 把该模块的键整批写回默认值。
     onResetModule,
   });

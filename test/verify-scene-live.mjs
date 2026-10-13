@@ -3859,6 +3859,178 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       'client + ext-avatar 源码口径');
   }
   {
+    // ── 文件头尺寸解析器：**喂真字节**跑真实现（#185 后续）──────────────────────────
+    // 上面那组判据只钉"函数在不在、顺序对不对"（源码口径）。但 `parseBitmapHeaderSize`
+    // 是这轮**唯一含位运算的新代码** —— 位域读错一位就会把 1024 读成 0（闸随之恒放行）。
+    // 所以这里 import **真实现**、用合成的最小文件头喂它，断言的是**返回值**而不是源码形状。
+    // 之所以能这么测：`src/avatar-import.js` 是纯函数（零 DOM、零异步、零外界），
+    // 而它独立成文件的理由与 section-head / module-reset 完全相同（按文件 import 的替身
+    // 必须取到真实现）。
+    const ai = await import(pathToFileURL(join(root, 'src', 'avatar-import.js')).href);
+    /** 造一个 PNG 头（89 50 4E 47 0D 0A 1A 0A + 长度 + IHDR + 宽 + 高）。 */
+    const pngHead = (w, h) => {
+      const b = new Uint8Array(32);
+      b.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+      b.set([0, 0, 0, 13], 8);
+      b.set([0x49, 0x48, 0x44, 0x52], 12);
+      b[16] = (w >>> 24) & 255; b[17] = (w >>> 16) & 255; b[18] = (w >>> 8) & 255; b[19] = w & 255;
+      b[20] = (h >>> 24) & 255; b[21] = (h >>> 16) & 255; b[22] = (h >>> 8) & 255; b[23] = h & 255;
+      return b.buffer;
+    };
+    const png = ai.parseBitmapHeaderSize(pngHead(1024, 768));
+    check('尺寸解析：PNG 头部读出真实宽高（1024×768）+ 认得出 kind',
+      png && png.width === 1024 && png.height === 768 && png.kind === 'png',
+      JSON.stringify(png));
+    // GIF：GIF89a + 小端 u16 宽高。
+    const gifGot = (() => {
+      const b = new Uint8Array(16);
+      b.set([0x47, 0x49, 0x46, 0x38, 0x39, 0x61], 0);
+      b[6] = 300 & 255; b[7] = (300 >> 8) & 255;
+      b[8] = 200 & 255; b[9] = (200 >> 8) & 255;
+      return ai.parseBitmapHeaderSize(b.buffer);
+    })();
+    check('尺寸解析：GIF 头部读出小端宽高（300×200）',
+      gifGot && gifGot.width === 300 && gifGot.height === 200 && gifGot.kind === 'gif',
+      JSON.stringify(gifGot));
+    // BMP：BM + DIB，宽高是**有符号**小端 i32（负高度 = 自顶向下）。
+    const bmpGot = (() => {
+      const b = new Uint8Array(32);
+      b[0] = 0x42; b[1] = 0x4d;
+      const w = 640; const h = -480;
+      b[18] = w & 255; b[19] = (w >> 8) & 255; b[20] = (w >> 16) & 255; b[21] = (w >> 24) & 255;
+      const u = h >>> 0;
+      b[22] = u & 255; b[23] = (u >> 8) & 255; b[24] = (u >> 16) & 255; b[25] = (u >> 24) & 255;
+      return ai.parseBitmapHeaderSize(b.buffer);
+    })();
+    check('尺寸解析：BMP 负高度（自顶向下位图）取绝对值（640×480）',
+      bmpGot && bmpGot.width === 640 && bmpGot.height === 480 && bmpGot.kind === 'bmp',
+      JSON.stringify(bmpGot));
+    // JPEG：SOI + APP0（要跨过它）+ SOF0。SOF 段内布局（从段标记起算）：
+    //   +2..+3 = 段长、+4 = 精度、+5..+6 = 高、+7..+8 = 宽（都是大端 u16）。
+    const jpegGot = (() => {
+      const b = new Uint8Array(40);
+      b[0] = 0xff; b[1] = 0xd8;
+      b[2] = 0xff; b[3] = 0xe0; b[4] = 0x00; b[5] = 0x10; // APP0，长度 16 ⇒ 下一段在 20
+      b[20] = 0xff; b[21] = 0xc0; b[22] = 0x00; b[23] = 0x11; // SOF0
+      b[24] = 8;                                              // 精度
+      b[25] = (512 >> 8) & 255; b[26] = 512 & 255;            // 高
+      b[27] = (768 >> 8) & 255; b[28] = 768 & 255;            // 宽
+      return ai.parseBitmapHeaderSize(b.buffer);
+    })();
+    check('尺寸解析：JPEG 跨过 APP 段找到 SOF0 并读对宽高（768×512）',
+      jpegGot && jpegGot.width === 768 && jpegGot.height === 512 && jpegGot.kind === 'jpeg',
+      JSON.stringify(jpegGot));
+    // WebP：VP8X 的宽高是 **24 位小端 + 1**（位域少加一就会读出 0 ⇒ 闸恒放行）。
+    const webpGot = (() => {
+      const b = new Uint8Array(32);
+      b.set([0x52, 0x49, 0x46, 0x46], 0);
+      b.set([0x57, 0x45, 0x42, 0x50], 8);
+      b.set([0x56, 0x50, 0x38, 0x58], 12); // "VP8X"
+      const w = 4096 - 1; const h = 2048 - 1;
+      b[24] = w & 255; b[25] = (w >> 8) & 255; b[26] = (w >> 16) & 255;
+      b[27] = h & 255; b[28] = (h >> 8) & 255; b[29] = (h >> 16) & 255;
+      return ai.parseBitmapHeaderSize(b.buffer);
+    })();
+    check('尺寸解析：WebP VP8X 的 24 位宽高（+1 语义）读对（4096×2048）',
+      webpGot && webpGot.width === 4096 && webpGot.height === 2048 && webpGot.kind === 'webp',
+      JSON.stringify(webpGot));
+    // 认不出 = null（而不是抛错）：调用方据此退回解码腿，绝不因此误拒用户的图。
+    check('尺寸解析：认不出的字节流给 null（调用方退回解码腿，不误拒）',
+      ai.parseBitmapHeaderSize(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]).buffer) === null
+      && ai.parseBitmapHeaderSize(null) === null);
+    // SVG：属性优先，其次是 viewBox（都没有给 null，交给解码腿裁决）。
+    const svgAttr = ai.parseSvgSize('<svg xmlns="http://www.w3.org/2000/svg" width="2048" height="1536"></svg>');
+    const svgView = ai.parseSvgSize('<svg viewBox="0 0 640 480"></svg>');
+    const svgNone = ai.parseSvgSize('<svg xmlns="http://www.w3.org/2000/svg"></svg>');
+    check('尺寸解析：SVG 读 width/height，缺失时退回 viewBox，都没有给 null',
+      svgAttr && svgAttr.width === 2048 && svgAttr.height === 1536
+      && svgView && svgView.width === 640 && svgView.height === 480
+      && svgNone === null,
+      JSON.stringify([svgAttr, svgView, svgNone]));
+    // 两道闸的**行为**（不只是常量在不在）：边界两侧各喂一次。
+    const over = ai.avatarImportLimit({ size: 5 * 1024 * 1024 }, { width: 800, height: 800 });
+    const overEdge = ai.avatarImportLimit({ size: 1024 }, { width: 4096, height: 100 });
+    const okEdge = ai.avatarImportLimit({ size: 1024 }, { width: 1024, height: 1024 });
+    const okBoth = ai.avatarImportLimit({ size: 4 * 1024 * 1024 }, { width: 1024, height: 1024 });
+    const unknown = ai.avatarImportLimit({ size: 1024 }, null);
+    check('两道闸的行为：超体积/超边长各自判拒，恰好等于上限放行，尺寸未知时只按体积判',
+      over.ok === false && over.overBytes === true && over.overEdge === false
+      && overEdge.ok === false && overEdge.overEdge === true && overEdge.overBytes === false
+      && okEdge.ok === true && okBoth.ok === true && unknown.ok === true,
+      JSON.stringify([over.ok, overEdge.ok, okEdge.ok, okBoth.ok, unknown.ok]));
+    // 负对照：把 PNG 的字节序故意当成"小端"（即读错位）⇒ 同一个断言必须判坏。
+    const wrongEndian = (() => {
+      const b = new Uint8Array(pngHead(1024, 768));
+      return { width: (b[19] << 24 | b[18] << 16 | b[17] << 8 | b[16]) >>> 0 }; // 小端解读
+    })();
+    check('negative control: 字节序/位域读错会被同一条断言判出（判据不是恒真）',
+      png.width === 1024 && wrongEndian.width !== 1024,
+      '正确=' + png.width + ' 错读=' + wrongEndian.width);
+  }
+  {
+    // ── 头像导入的两道闸 + 「自动压缩后导入」（#185 后续，用户口径 2026-10-13）──────────
+    // 这道闸之前**根本不存在**：选什么图都直接 decodeImageFile，再缩到 512px 上传。
+    // 危险在"解码炸弹"—— 一个 20000×20000 的 PNG 只有几百 KB，解码却要 1.6 GB 像素内存；
+    // 而"这图多大"**不用解码就能从文件头读出来**。判据因此盯五件事：
+    //   ① 两道闸的常量在位（边长 1024 / 体积 4 MiB）；
+    //   ② 尺寸解析走**文件头**，解析函数自己不许解码；
+    //   ③ 判定发生在**解码之前**（先拒再解 —— 这条顺序就是闸的全部价值）；
+    //   ④ 自动压缩**无损优先**（PNG 排在 WebP 前面）；
+    //   ⑤ 结构上不泄原始文件：上传的那份 blob 来自**裁切画布**（于是 SVG 这类"客户端收得下、
+    //      宿主不认"的格式只可能以像素形态落盘，同源存储型 XSS 无从谈起）。
+    const gsrc = readFileSync(join(root, 'src', 'client.js'), 'utf8').replace(/\r\n/g, '\n');
+    const eSrc = readFileSync(join(root, 'src', 'ext-avatar.js'), 'utf8').replace(/\r\n/g, '\n');
+    // 闸的常量与探针住在 src/avatar-import.js（纯函数，上面那组判据用真字节喂它）；
+    // 这里钉的是**接线**：client 正文有没有真的用它们、以及用的顺序对不对。
+    const aiSrc = readFileSync(join(root, 'src', 'avatar-import.js'), 'utf8').replace(/\r\n/g, '\n');
+    const limitsInPlace = aiSrc.includes('const AVATAR_IMPORT_MAX_EDGE = 1024;')
+      && aiSrc.includes('const AVATAR_IMPORT_MAX_BYTES = 4 * 1024 * 1024;');
+    const headFn = aiSrc.includes('function parseBitmapHeaderSize(buffer)');
+    const svgFn = aiSrc.includes('function parseSvgSize(text)');
+    const probeFn = aiSrc.includes('async function probeImageSize(file)');
+    const headerOnly = headFn && svgFn && probeFn
+      // ⚠️ 必须在**剥掉注释**后的代码上判：本模块的注释里正好写着 `decodeImageFile`
+      //（解释"为什么必须在解码之前"），不剥就会被自己那句话判红（实测踩过）。
+      && !/decodeImageFile|createImageBitmap/.test(stripComments(aiSrc));
+    /** 判定是否排在解码之前（正/负对照共用**这一个**函数）。 */
+    const gateBeforeDecode = (src2) => {
+      const body = fnBody(src2, 'onAvatarFileChosen');
+      const gateAt = body.indexOf('avatarImportLimit(');
+      const cropAt = body.indexOf('openAvatarCrop(');
+      return gateAt >= 0 && cropAt >= 0 && gateAt < cropAt
+        && !/decodeImageFile|createImageBitmap/.test(body);
+    };
+    const encFn = fnBody(gsrc, 'downscaleDecoded');
+    /** 自动压缩是否无损优先（PNG 先于 WebP 出现）。 */
+    const losslessFirst = (src2) => {
+      const body = fnBody(src2, 'downscaleDecoded');
+      return /losslessFirst/.test(body)
+        && body.indexOf('image/png') >= 0 && body.indexOf('image/png') < body.indexOf('image/webp');
+    };
+    const confirmFn = fnBody(gsrc, 'onAvatarCropConfirm');
+    const canvasOnly = confirmFn.includes('cropAvatarToBlob()')
+      && confirmFn.includes('postImageAsset("/avatar/" + side, img.blob');
+    check('头像导入闸：两道闸常量在位、尺寸走文件头（不解码）、判定排在解码之前',
+      limitsInPlace && headerOnly && gateBeforeDecode(gsrc),
+      'limits=' + limitsInPlace + ' headerOnly=' + headerOnly
+      + ' gateBeforeDecode=' + gateBeforeDecode(gsrc));
+    check('头像自动压缩：无损优先（PNG 先于 WebP）+ 上传的是裁切画布（原始文件永不直传）',
+      losslessFirst(gsrc) && canvasOnly,
+      'losslessFirst=' + losslessFirst(gsrc) + ' canvasOnly=' + canvasOnly);
+    // 面板侧：超限时给的是**出路**（一枚「自动压缩后导入」），不是只有一句拒绝。
+    check('头像超限的面板出口：提示行 + 「自动压缩后导入」按钮都接在真处理器上',
+      eSrc.includes('sel.avatarOverflow') && eSrc.includes('onAvatarAutoCompress')
+      && eSrc.includes('weT("自动压缩后导入")') && eSrc.includes('weT("压缩中…")'),
+      'ext-avatar 源码口径');
+    // 负对照：把判定挪到解码之后（先 openAvatarCrop 再判）⇒ 同一条判据判红。
+    const reversed = gsrc.replace(
+      /([ \t]*)const verdict = avatarImportLimit\(/,
+      '$1const __verdictMoved = avatarImportLimit(')
+      .replace('function onAvatarFileChosen(', 'function onAvatarFileChosenMutant(');
+    check('negative control: 判定挪到解码之后就判红（同一条判据不是恒真）',
+      gateBeforeDecode(gsrc) === true && gateBeforeDecode(reversed) === false);
+  }
+  {
     // ── 模块级 ↺ 的视觉对齐（#192 的回归，用户口径 2026-10-13）────────────────────────
     // 根因：`.we-picker__section-caret` 与 `.we-mod-reset` **都写了 margin-left: auto**，
     // 同一 flex 行里两个 auto 会把剩余空间**均分** ⇒ ↺ 停在行中间；而「主题」节头没有
@@ -5061,6 +5233,89 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
     // 为什么值得单独一条：三个占位符（{w}/{h}/{mb}）由 `weT` 的**第二个实参**替换 ——
     // 漏传时屏上会原样显示 "{w}×{h}"，而 i18n 守卫只对账"占位符集合一致"、看不出这个。
     // 渲染器是纯函数（读 sel、返回 React 元素树），所以这里能直接调它、遍历树取文本。
+    {
+      // ── 超限提示行：**跑真渲染器**看它到底画出什么文本（#185 后续）──────────────────
+      // 为什么值得单独一条：三个占位符（{w}/{h}/{mb}）由 `weT` 的**第二个实参**替换 ——
+      // 漏传时屏上会原样显示 "{w}×{h}"，而 i18n 守卫只对账"占位符集合一致"、看不出这个。
+      // 渲染器是纯函数（读 sel、返回 React 元素树），所以这里能直接调它、遍历树取文本。
+      const PREV_REACT = globalThis.React;
+      const restoreWeBase2 = stubWeBase();
+      const stubs2 = {
+        apiUrl: (p) => '/wallpaper-engine' + String(p || ''),
+        avatarImageUrl: () => '', renderAvatarGlyph: () => null,
+        switchRow: () => null, SliderRow: () => null, ctlText: () => null,
+        // ⚠️ `humanMb` 给**真实现**（不是替身）：它就是超限文案里那句 "{mb}" 的格式化器，
+        // 替身会让"这个函数在产物里根本不存在"这种缺陷溜过去（ext-avatar 只在超限时调它，
+        // 别的用例喂的是没有超限的 sel ⇒ 那条路覆盖不到）。
+        humanMb: (await import(pathToFileURL(join(root, 'src', 'avatar-import.js')).href)).humanMb,
+      };
+      const prevFns = {};
+      for (const k of Object.keys(stubs2)) { prevFns[k] = globalThis[k]; globalThis[k] = stubs2[k]; }
+      for (const k of ['AVATAR_SIZE_MIN', 'AVATAR_SIZE_MAX', 'AVATAR_RADIUS_MIN', 'AVATAR_RADIUS_MAX']) {
+        prevFns[k] = globalThis[k]; globalThis[k] = schemaMod[k];
+      }
+      try {
+        // 极简 React 替身：只要 createElement 把 props/children 原样装成可遍历的树即可。
+        globalThis.React = {
+          createElement: (type, props, ...children) => ({ type, props: props || {}, children }),
+          Fragment: 'Fragment',
+        };
+        // 遍历替身树收集全部文本节点。⚠️ **迭代式、不用递归**：本文件跑在一条已经很深的
+        // 调用链上（顶层 await → 一堆 check 闭包），递归版实测**偶发**把 V8 的栈顶爆掉
+        // （`v8::String::Utf8Value::~Utf8Value` 那种崩法，退出码还随机会不同）——
+        // 只递归进 children、不碰 props，深度由渲染树决定但仍是外部输入。
+        const textsOf = (root) => {
+          const acc = [];
+          const stack = [root];
+          while (stack.length) {
+            const n = stack.pop();
+            if (typeof n === 'string') { acc.push(n); continue; }
+            if (Array.isArray(n)) { for (const x of n) stack.push(x); continue; }
+            if (!n || typeof n !== 'object') continue;
+            if (Array.isArray(n.children)) for (const x of n.children) stack.push(x);
+          }
+          return acc;
+        };
+        const islandCtx = (sel) => ({
+          sel: sel,
+          onAvatarEnabled: () => {}, onAvatarSize: () => {}, onAvatarRadius: () => {},
+          onAvatarPick: () => {}, onAvatarClear: () => {}, onAvatarAutoCompress: () => {},
+        });
+        const exceeded = Object.assign({}, schemaMod.DEFAULTS, {
+          avatarEnabled: true,
+          avatarOverflow: {
+            side: 'user', bytes: 12.5 * 1024 * 1024, width: 4096, height: 3072,
+            overBytes: true, overEdge: true,
+          },
+        });
+        const flat = textsOf(extAvatarMod.renderAvatarIsland(islandCtx(exceeded))).join(' ');
+        const nodes = textsOf(extAvatarMod.renderAvatarIsland(islandCtx(exceeded)));
+        // ⚠️ 必须用**整节点相等**而不是子串：那句总说明里本来就写着"可选择自动压缩后导入"
+        //（解释这个功能是怎么工作的），子串匹配会把说明当成按钮 ⇒ 负对照永远失败。
+        const hasAutoCompress = nodes.some((t) => t === '自动压缩后导入');
+        // 三个占位符都不许以原样出现在文本里（漏传实参的典型形态）。
+        const noRawPlaceholder = !/\{w\}|\{h\}|\{mb\}/.test(flat);
+        // 实测值必须真的插进去了（4096 / 3072 / 12.5 MB）。
+        const interpolated = flat.includes('4096') && flat.includes('3072') && flat.includes('12.5 MB');
+        // 负对照：同一个渲染器喂"没有超限"的 sel ⇒ 这一行整个不画（判据不是恒真）。
+        const plainSel = Object.assign({}, schemaMod.DEFAULTS, { avatarEnabled: true, avatarOverflow: null });
+        const noneNodes = textsOf(extAvatarMod.renderAvatarIsland(islandCtx(plainSel)));
+        const noneFlat = noneNodes.join(' ');
+        check('#185 超限提示行：占位符真的插了值（不出现裸 {w}/{h}/{mb}）+ 「自动压缩后导入」按钮在场',
+          hasAutoCompress && noRawPlaceholder && interpolated,
+          'btn=' + hasAutoCompress + ' noRaw=' + noRawPlaceholder + ' interpolated=' + interpolated
+          + ' | ' + flat.slice(0, 120));
+        check('negative control: 没有超限信息时这一行整个不画（同一条判据不是恒真）',
+          noneNodes.length > 0 && !noneNodes.some((t) => t === '自动压缩后导入'),
+          'noneLen=' + noneFlat.length);
+      } finally {
+        if (PREV_REACT === undefined) delete globalThis.React; else globalThis.React = PREV_REACT;
+        for (const k of Object.keys(prevFns)) {
+          if (prevFns[k] === undefined) delete globalThis[k]; else globalThis[k] = prevFns[k];
+        }
+        restoreWeBase2();
+      }
+    }
     // 源码口径：这一层的要点全是"看不见的形态"或"只准碰哪几类行"。逐条钉住，改坏了当场红。
     const avSrc = readFileSync(join(root, 'src', 'avatar-layer.js'), 'utf8');
     check('avatar-layer.js 只认三类消息行 + 关掉逐字节回原生 + 名字（默认取模型名）+ 观察者两级早退 + 不写设置',
