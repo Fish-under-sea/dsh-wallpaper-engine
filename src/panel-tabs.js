@@ -905,26 +905,8 @@
     //    找不到该节、报"字体自定义被干掉了" ⇒ 用户口径"两边都有"。两档都**默认收起**
     //    （节头点击展开），开合状态各记各的键。──
     React.createElement("div", { className: "we-picker__section" },
-      React.createElement("div", {
-        className: "we-picker__section-head we-picker__section-head--toggle",
-        role: "button",
-        tabIndex: 0,
-        "aria-expanded": open ? "true" : "false",
-        onClick: () => onToggleFontSection && onToggleFontSection(),
-        onKeyDown: (e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            if (onToggleFontSection) onToggleFontSection();
-          }
-        },
-      },
-        React.createElement("span", { className: "we-picker__section-label" }, weT("全局字体")),
-        moduleResetButton("font", onResetModule),
-        React.createElement("span", {
-          className: "we-picker__section-caret" + (open ? " is-open" : ""),
-          "aria-hidden": "true",
-        }, "▾"),
-      ),
+      // 同「全局 UI 配色」：节头走共用构件，三角与 ↺ 的次序只有一份实现。
+      sectionHead(weT("全局字体"), open, onToggleFontSection, moduleResetButton("font", onResetModule)),
       open && switchRow(weT("字体自定义"), sel.fontCustom, (e) => onToggleFontCustom(e.target.checked), {
         tooltip: weT("关闭后恢复 dsh 默认字体外观；开启后可调颜色角色、排版角色（字号/字重/字族）与组件字体"),
       }),
@@ -1047,26 +1029,9 @@
     }, weT("跟随"));
     return React.createElement(React.Fragment, null,
     React.createElement("div", { className: "we-picker__section" },
-      React.createElement("div", {
-        className: "we-picker__section-head we-picker__section-head--toggle",
-        role: "button",
-        tabIndex: 0,
-        "aria-expanded": open ? "true" : "false",
-        onClick: () => onToggleUiColorSection && onToggleUiColorSection(),
-        onKeyDown: (e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            if (onToggleUiColorSection) onToggleUiColorSection();
-          }
-        },
-      },
-        React.createElement("span", { className: "we-picker__section-label" }, weT("全局 UI 配色")),
-        moduleResetButton("uiColor", onResetModule),
-        React.createElement("span", {
-          className: "we-picker__section-caret" + (open ? " is-open" : ""),
-          "aria-hidden": "true",
-        }, "▾"),
-      ),
+      // 节头一律走共用构件（`sectionHead`）：折叠三角与模块级 ↺ 的**次序只有一份实现**
+      // ——手写副本正是次序会漂的地方（一处改了另一处不改 ⇒ 只有部分模块对齐）。
+      sectionHead(weT("全局 UI 配色"), open, onToggleUiColorSection, moduleResetButton("uiColor", onResetModule)),
       open && React.createElement(React.Fragment, null,
         // ① 全局配色：直接调全部。开自定义后**禁用**（不是隐藏）—— 让它可见但明示"此刻不由它说了算"。
         React.createElement("div", { key: "global-accent", className: custom ? "we-picker__ctl we-picker__ctl--disabled" : "" },

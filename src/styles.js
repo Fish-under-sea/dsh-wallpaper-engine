@@ -3576,6 +3576,10 @@ body[data-we-glass-floaters] .we-repo-panel {
   .we-ext__module-title { font-size: 0.85em; font-weight: 600; color: var(--we-ink, inherit); }
   /* 模块级重置按钮（issue #192）↺：外观各节的节头与扩展模块头**共用同一枚**。
      margin-left: auto 把它推到行尾（两者都是 flex 行）。
+     ⚠️ 与折叠三角同排时**必须让位**（见下面那条相邻选择器）：三角也靠 margin-left: auto
+     推右，两个 auto 在同一 flex 行里会**均分**剩余空间 —— ↺ 于是停在行中间，而"主题"
+     （那个节头没有 caret）的 ↺ 贴在最右端，同一批模块两种位置（用户 2026-10-13 报的正是
+     这个）。现在的次序是 标签 → 三角 → ↺，三角吃掉剩余空间、↺ 紧跟其后贴在最右一列。
      ⚠️ 本段注释不许出现反引号：整套样式文本是模板字符串，一个反引号就拼断 JS。 */
   .we-mod-reset {
     margin-left: auto; flex: 0 0 auto;
@@ -3586,6 +3590,9 @@ body[data-we-glass-floaters] .we-repo-panel {
     border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.28));
     background: transparent; color: var(--dsw-alias-label-secondary, inherit);
   }
+  /* 有折叠三角同排 ⇒ 由三角独占那个 auto（它已是 margin-left: auto），↺ 只留一段间距。
+     两者因此成组贴在行尾：…… [▾] [↺]。 */
+  .we-picker__section-caret + .we-mod-reset { margin-left: 8px; }
   .we-mod-reset:hover { color: var(--dsw-alias-label-primary, inherit); }
   /* 破坏性动作的用色（「全部重置」）：与别的按钮同形，只在描边与文字上给警示色
      （不填底色 —— 填了在浅色主题下会压过旁边的说明文字）。 */

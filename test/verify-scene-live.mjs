@@ -3859,6 +3859,39 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       'client + ext-avatar 源码口径');
   }
   {
+    // ── 模块级 ↺ 的视觉对齐（#192 的回归，用户口径 2026-10-13）────────────────────────
+    // 根因：`.we-picker__section-caret` 与 `.we-mod-reset` **都写了 margin-left: auto**，
+    // 同一 flex 行里两个 auto 会把剩余空间**均分** ⇒ ↺ 停在行中间；而「主题」节头没有
+    // 折叠三角、只剩一个 auto ⇒ 它贴在最右端。用户要的是**所有模块都长成主题那样**。
+    // 于是两件事：① 节头里 ↺ 排到折叠三角**之后**（坐进原来"小绿点"那一列）；
+    //            ② 有三角同排时 ↺ 不再抢剩余空间（让位给三角的 auto）。
+    const headSrc = readFileSync(join(root, 'src', 'section-head.js'), 'utf8').replace(/\r\n/g, '\n');
+    const styleSrc = readFileSync(join(root, 'src', 'styles.js'), 'utf8').replace(/\r\n/g, '\n');
+    /** 节头尾部次序：标签 → 折叠三角 → ↺（正/负对照共用**这一个**函数）。 */
+    const tailOrderOk = (src2) => {
+      const iLabel = src2.indexOf('we-picker__section-label');
+      const iCaret = src2.indexOf('"we-picker__section-caret');
+      const iAction = src2.indexOf('action || null');
+      return iLabel >= 0 && iCaret >= 0 && iAction >= 0 && iLabel < iCaret && iCaret < iAction;
+    };
+    /** 有三角同排时 ↺ 让出剩余空间（不再抢 auto）。 */
+    const resetYieldsOk = (src2) => /\.we-picker__section-caret\s*\+\s*\.we-mod-reset\s*\{[^}]*margin-left:\s*8px/.test(src2);
+    // 折叠节头**只有一个实现**：panel-tabs 里那两处手写的 --toggle 节头已并回共用构件
+    //（手写副本正是顺序会漂的地方 —— 一处改了另一处不改，就是"只有部分模块对齐"）。
+    const handRolled = (readFileSync(join(root, 'src', 'panel-tabs.js'), 'utf8')
+      .match(/we-picker__section-head--toggle/g) || []).length;
+    check('#192 回归：节头里 ↺ 排在折叠三角之后（标签 → 三角 → ↺）+ 有三角时 ↺ 让出剩余空间',
+      tailOrderOk(headSrc) && resetYieldsOk(styleSrc),
+      'order=' + tailOrderOk(headSrc) + ' yields=' + resetYieldsOk(styleSrc));
+    check('#192 回归：折叠节头只剩共用构件一个实现（panel-tabs 不再手写 --toggle 节头）',
+      handRolled === 0, '手写处数=' + handRolled);
+    // 负对照：把次序换回旧样子（↺ 排在三角之前）⇒ 同一条判据判红。
+    const oldOrder = headSrc.replace('    action || null,\n', '')
+      + '\n// 旧样子：action 排在 caret 之前\n';
+    check('negative control: ↺ 排回折叠三角之前会被同一条判据判出',
+      tailOrderOk(headSrc) === true && tailOrderOk(oldOrder) === false);
+  }
+  {
     // 二号模块的岛：注册表项形状 + 「关着只画总开关、开着才画 12 个参数」这条可见行为。
     // 注意它**没有**「自动」档 —— 这一层刻意不采样壁纸像素（见 src/fx-layer.js 文件头）。
     const PREV_BLEND = globalThis.FX_BLEND_VALUES;
@@ -5024,6 +5057,10 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       && typeof avatarLayerMod.syncAvatarLayer === 'function'
       && typeof avatarLayerMod.disposeAvatarLayer === 'function'
       && !threw && !pure, threw || pure);
+    // ── 超限提示行：**跑真渲染器**看它到底画出什么文本（#185 后续）────────────────────
+    // 为什么值得单独一条：三个占位符（{w}/{h}/{mb}）由 `weT` 的**第二个实参**替换 ——
+    // 漏传时屏上会原样显示 "{w}×{h}"，而 i18n 守卫只对账"占位符集合一致"、看不出这个。
+    // 渲染器是纯函数（读 sel、返回 React 元素树），所以这里能直接调它、遍历树取文本。
     // 源码口径：这一层的要点全是"看不见的形态"或"只准碰哪几类行"。逐条钉住，改坏了当场红。
     const avSrc = readFileSync(join(root, 'src', 'avatar-layer.js'), 'utf8');
     check('avatar-layer.js 只认三类消息行 + 关掉逐字节回原生 + 名字（默认取模型名）+ 观察者两级早退 + 不写设置',
