@@ -32,7 +32,7 @@ export async function verifyEgg2Browser({ evaluate, until, send, width, height, 
     document.body.prepend(frame);window.__eggFrame=frame;
     window.__eggSurface=frame.querySelector('.dshDesktopRightbarSurface');window.__eggWidth=Math.min(320,innerWidth*.4);
     window.__eggTrace={samples:[],finishes:[]};
-    const snapshot=()=>({at:performance.now(),p:window.__dshPetCtl.getPlayback(),width:__eggSurface.getBoundingClientRect().width,x:frame.getBoundingClientRect().left,y:frame.getBoundingClientRect().top,clip:document.documentElement.style.getPropertyValue('overflow-x')});
+    const snapshot=()=>({at:performance.now(),p:window.__dshWePetCtl.getPlayback(),width:__eggSurface.getBoundingClientRect().width,x:frame.getBoundingClientRect().left,y:frame.getBoundingClientRect().top,clip:document.documentElement.style.getPropertyValue('overflow-x')});
     window.__eggSample=snapshot;
     new Function('document','React','petLink','wallSidebarOpen','wallSidebarClose','sidebarRightOursActive',${JSON.stringify(official)})(document,{useEffect:fn=>fn()},
       {mascot:{registerSidebar(api){
@@ -46,7 +46,7 @@ export async function verifyEgg2Browser({ evaluate, until, send, width, height, 
     __link.set('egg2','egg2LeadMs',0);__link.set('egg2','egg2OpenEase',0);
     void __link.tuner.run('egg2').then(result=>{__eggResult=result;__eggDone=true;});
   })()`);
-  await until(`__dshPetCtl.getPlayback().name==='彩蛋-吉祥物-哈气-dshwe'&&__dshPetCtl.getPlayback().phase==='playing'&&__dshPetCtl.getPlayback().currentTime>2.4`, '实际哈气已播放且侧栏进入中间进度');
+  await until(`__dshWePetCtl.getPlayback().name==='彩蛋-吉祥物-哈气-dshwe'&&__dshWePetCtl.getPlayback().phase==='playing'&&__dshWePetCtl.getPlayback().currentTime>2.4`, '实际哈气已播放且侧栏进入中间进度');
   await evaluate(`document.querySelector('video.is-front').pause();`);
   await evaluate(`new Promise(resolve=>{let n=0;const next=()=>++n===3?resolve():requestAnimationFrame(next);requestAnimationFrame(next);})`);
   const paused = await evaluate('__eggSample()');
@@ -74,7 +74,7 @@ export async function verifyEgg2Browser({ evaluate, until, send, width, height, 
 
   await evaluate(`__eggFrame.style.transition='none';__eggFrame.style.gridTemplateColumns='0px minmax(0,1fr) 0px';void __eggFrame.offsetWidth;__eggFrame.style.transition='grid-template-columns var(--ds-transition-duration-slow) linear';
     __eggTrace.finishes=[];__eggDone=false;void __link.tuner.run('egg2').then(()=>__eggDone=true);`);
-  await until(`__dshPetCtl.getPlayback().name==='彩蛋-吉祥物-哈气-dshwe'&&__dshPetCtl.getPlayback().phase==='playing'&&__dshPetCtl.getPlayback().currentTime>2.1&&!!__link.state.egg2Release`, '第二次真实哈气中途退出');
+  await until(`__dshWePetCtl.getPlayback().name==='彩蛋-吉祥物-哈气-dshwe'&&__dshWePetCtl.getPlayback().phase==='playing'&&__dshWePetCtl.getPlayback().currentTime>2.1&&!!__link.state.egg2Release`, '第二次真实哈气中途退出');
   await evaluate('__cap.linkEnabled=false');
   await until(`!__link.eligible()&&__eggDone&&!__link.state.egg2Release`, '热撤销立即结束哈气特效');
   assert.deepEqual(await evaluate(`({finishes:__eggTrace.finishes.length,frames:__link.runtime.frames.size,x:__eggFrame.getBoundingClientRect().left,y:__eggFrame.getBoundingClientRect().top,slow:__eggFrame.style.getPropertyValue('--ds-transition-duration-slow'),overflow:__eggSurface.style.overflow})`),

@@ -150,6 +150,7 @@ export const OFF_CHAIN_WHY = {
   'verify-bridge-ci.mjs': '`npm run verify:bridge` 的**判词入口**（要下载产物并真跑中间件）⇒ 独立 CI 步骤，不进 verify 链（链上零下载、零外部进程）。',
   'verify-bundle-rows.mjs': '有意脱链：链尾有一条**真 cordis 往返**（按路径拼接动态 `import` 宿主 peer 包 `@deepseek-ai/cordis`，见本文件 `cordisPath` / `pathToFileURL` 那处），而 CI 是 `npm ci --omit=peer` ⇒ 挂链只会让它永久"出声 SKIP"（P5 的字面量扫描看不到路径拼接的说明符，所以挂链并不会被 P5 判红 —— 但"链上恒跳过"比脱链更坏）；故留在链外 + 每次改行/包必须手跑一次（BUNDLE-SPLIT §10.1 #2）。',
   'verify-static.mjs': '静态棘轮入口（ESLint / tsc 都是 devDependencies）⇒ CI 独立步骤 `npm run verify:static`；链上零裸依赖容不下它。',
+  'verify-pet-eslint-compat.mjs': '内置桌宠静态兼容适配的**边界**判据：`import { ESLint } from "eslint"`（devDependency，与 verify-static 同族）⇒ 链上零裸依赖容不下它；判据本体可随时 `node test/verify-pet-eslint-compat.mjs` 手跑，并由 t12 定向验证消费。',
 };
 
 /** 守卫面地板（防"面变空 ⇒ 脱链判据永真"）。实测 2026-10-16 = 88。 */

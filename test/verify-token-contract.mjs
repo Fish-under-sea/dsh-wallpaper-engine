@@ -9,8 +9,11 @@
  *
  *   ① `docs/TOKEN-CONTRACT.md` 与现算契约**逐字节一致**（增删令牌忘了重算 ⇒ 红）；
  *   ② 覆盖面地板（声明 >100、令牌 >30 —— 解析器静默返回空表时 ① 变成空对空）；
- *   ③ **无门控白名单封闭**：没有门控的 `--dsw-*` 声明只允许落在两处已知语义
- *      （`body[data-we-thinking-native]` 思考块自带开关、`.we-layer` 插件自有元素）；
+ *   ③ **无门控白名单封闭**：没有门控的 `--dsw-*` 声明只允许落在已知语义
+ *      （`body[data-we-thinking-native]` 思考块自带开关；插件自有 **bare roots 封闭集**
+ *      `{.we-layer, .we-picker, .we-picker__modal, .we-qp}` —— 整条链必须是纯逗号列表、
+ *      每段 trim 后**精确命中**集合成员，不认 .we-* 前缀/子串，拒空段/未知根/:root/body/
+ *      后代或组合器/@media/伪类/合法+未知混组）；
  *      **新增任何一条无门控改写 ⇒ 红**（这正是审计 M1 说的"看不见的耦合"的止损线）；
  *   ④ `--dsw-alias-bg-base` 必须**全部**挂壁纸门控 —— 壁纸可见性的关键前提归壁纸半边
  *      （审计 §三.3：这是玻璃/壁纸解耦能干净落地的既成事实，钉死防回退）；
@@ -27,7 +30,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildContract, scanTokenDecls, bucketOf, ungatedReason } from './tools/token-contract.mjs';
+import { buildContract, scanTokenDecls, bucketOf, ungatedReason, UNGATED_BARE_ROOTS } from './tools/token-contract.mjs';
 import { stripComments } from './tools/js-text.mjs';
 // 刀3：样式族取文（8 个域模块 + 组装点，构建序拼接）。
 import { styleSources } from './tools/src-scope.mjs';
@@ -58,7 +61,7 @@ check('覆盖面地板：声明 >100 且令牌 >30',
 console.log('\n② 无门控白名单封闭（M1 的止损线）');
 {
   const strays = buckets.ungated.filter((d) => !ungatedReason(d.chain));
-  check('无门控声明全部落在白名单（thinking-native / .we-layer）', strays.length === 0,
+  check('无门控声明全部落在白名单（thinking-native / bare roots 封闭集）', strays.length === 0,
     strays.length ? strays.map((d) => d.file + ':' + d.line + ' ' + d.token + ' @ ' + d.chain).join(' | ')
       : buckets.ungated.length + ' 条（' + new Set(buckets.ungated.map((d) => d.token)).size + ' 个令牌）');
   // 负对照 1：构造一条无门控声明 ⇒ 分类器必须把它报成白名单外（否则 ② 永远绿）
@@ -75,14 +78,65 @@ console.log('\n② 无门控白名单封闭（M1 的止损线）');
   const thinking = scanTokenDecls('const CSS = `\n  body[data-we-thinking-native] [x] { --dsw-probe-think: red; }\n`;\n');
   check('负对照：thinking-native 门控在白名单内（白名单不是空的）',
     thinking.length === 1 && ungatedReason(thinking[0].chain) !== null);
+  // 正向锚点 4：插件自有 bare roots 封闭集的组选择器链（styles-panel.js picker/快捷面板
+  // 实底的真实形态）——整条链是纯逗号列表且每段精确命中集合成员 ⇒ 必须给出理由而非 stray。
+  // 独立来源：src/styles-panel.js 的 `.we-picker, .we-picker__modal, .we-qp` 注释自证
+  // 「本插件自有控件的局部表面，令牌仅挂本插件根节点」（与 .we-layer 同类豁免）。
+  const picker = scanTokenDecls('const CSS = `\n  .we-picker, .we-picker__modal, .we-qp { --dsw-probe-picker: red; }\n`;\n');
+  check('正向锚点：`.we-picker, .we-picker__modal, .we-qp` 组选择器链在白名单内',
+    picker.length === 1 && bucketOf(picker[0].chain) === 'ungated' && ungatedReason(picker[0].chain) !== null,
+    picker.map((d) => d.chain + ' ⇒ ' + ungatedReason(d.chain)).join(','));
+  // 负向拒绝面锚点 5-9：bare roots 判据的封闭性 —— 以下形态一律不得给出白名单理由。
+  // （禁 .we-* 前缀/子串识别；拒空段/未知根/:root/body/后代或组合器/@media/伪类/合法+未知混组。）
+  const BARE_ROOT_REJECTS = [
+    ['.we-popup（前缀同族但不在集合）', '.we-popup { --dsw-reject-prefix: red; }'],
+    ['.we-picker__panel（子串派生不在集合）', '.we-picker__panel { --dsw-reject-derived: red; }'],
+    ['.we-layer, .we-unknown（合法+未知混组）', '.we-layer, .we-unknown { --dsw-reject-mixed: red; }'],
+    ['.we-picker, （尾随空段）', '.we-picker, { --dsw-reject-empty: red; }'],
+    ['.we-qp（单根，但用 body 后代形态绕集合）', 'body .we-qp { --dsw-reject-descendant: red; }'],
+  ];
+  const rejectProblems = BARE_ROOT_REJECTS.filter(([, css]) => {
+    const ds = scanTokenDecls('const CSS = `\n  ' + css + '\n`;\n');
+    return ds.length !== 1 || ungatedReason(ds[0].chain) !== null;
+  }).map(([label]) => label);
+  check('负向锚点：bare roots 之外形态（前缀/派生/混组/空段/后代）一律判出白名单',
+    rejectProblems.length === 0,
+    rejectProblems.length ? '未按预期拒绝：' + rejectProblems.join(' | ')
+      : BARE_ROOT_REJECTS.length + ' 条拒绝面全部 ungatedReason=null');
+  // 拒绝面补遗（等价断言，免歧义）：伪类/元素根/@media 前提/:root 也不放行。
+  const MORE_REJECTS = [
+    ['.we-qp:hover（伪类）', '.we-qp:hover { --dsw-reject-pseudo: red; }'],
+    ['.we-layer, body（合法+元素根混组）', '.we-layer, body { --dsw-reject-body: red; }'],
+    // m01477 纠正③补遗：@media 包裹自有根、单独 :root/body、显式 > 或 + 组合器。
+    ['.we-picker 组经 @media 包裹（前提不改门控归属）', '@media (prefers-reduced-motion: no-preference) { .we-picker, .we-picker__modal, .we-qp { --dsw-reject-media: red; } }'],
+    [':root（根元素选择器不入集合）', ':root { --dsw-reject-root: red; }'],
+    ['body（元素根不入集合）', 'body { --dsw-reject-body-root: red; }'],
+    ['body > .we-qp（显式子组合器）', 'body > .we-qp { --dsw-reject-child: red; }'],
+    ['.sidebar + .we-qp（显式相邻组合器）', '.sidebar + .we-qp { --dsw-reject-adjacent: red; }'],
+  ];
+  const moreProblems = MORE_REJECTS.filter(([, css]) => {
+    const ds = scanTokenDecls('const CSS = `\n  ' + css + '\n`;\n');
+    return ds.length !== 1 || ungatedReason(ds[0].chain) !== null;
+  }).map(([label]) => label);
+  check('负向锚点补遗：伪类/混入 body 等同样不放行',
+    moreProblems.length === 0,
+    moreProblems.length ? '未按预期拒绝：' + moreProblems.join(' | ') : MORE_REJECTS.length + ' 条全部拒绝');
+  // 白名单封闭集以常量钉死：改动集合（增删成员）⇒ 本锚点表当场红 = 一次可见评审。
+  check('白名单封闭集成员 = {.we-layer, .we-picker, .we-picker__modal, .we-qp}',
+    JSON.stringify(UNGATED_BARE_ROOTS) === JSON.stringify(['.we-layer', '.we-picker', '.we-picker__modal', '.we-qp']),
+    UNGATED_BARE_ROOTS.join(', '));
 }
 
 console.log('\n②b 独立锚点表（A1：口径不能自己证明自己）');
 {
   // ⚠️ 这张表是**人工独立来源**的 oracle，不是跑工具抄结果（抄结果 = 退回 A1）。
   //    期望值逐条从产品/文档约定推出，来源写在 `why` 里：
-  //      · 无门控封闭白名单 = thinking-native + `.we-layer` 两处
-  //        （docs/COEXISTENCE.md §审计、docs/adr/0010-*:17-19、docs/wip/COEXISTENCE-AUDIT.md:198）；
+  //      · 无门控封闭白名单 = thinking-native + 插件自有 bare roots 封闭集
+  //        {.we-layer, .we-picker, .we-picker__modal, .we-qp}
+  //        （thinking/layer 来源=docs/COEXISTENCE.md §审计、docs/adr/0010-*:17-19、
+  //        docs/wip/COEXISTENCE-AUDIT.md:198；picker 三根来源=src/styles-panel.js:368-373
+  //        注释自证「本插件自有控件的局部表面…令牌仅挂本插件根节点」，与 .we-layer 同类
+  //        豁免，经 t9 窄 amend 授权加入；docs/TOKEN-CONTRACT.md 白名单表与工具口径同步）；
   //      · 玻璃门 = 链上有 `[data-we-glass-*]`（docs/CHANGELOG.md「页面玻璃锚点 data-we-glass-page」、
   //        docs/HOW-IT-WORKS.md、src/styles.js 的 `body[data-we-glass-page]` 块）；
   //      · 壁纸门 = 只有 `[data-we-wallpaper]`（src/styles.js 里 bg-base/侧栏填充那两条）；

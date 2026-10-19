@@ -35,6 +35,7 @@ import { builtinModules } from 'node:module';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { stripComments } from './tools/js-text.mjs';
+import { upstreamForkByName } from './tools/subpackage-shapes.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -49,12 +50,15 @@ const readAbs = (abs) => (isFile(abs) ? readFileSync(abs, 'utf8') : null);
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
 const relOf = (abs) => relative(ROOT, abs).split(sep).join('/');
 
+/** 工具备份目录名（发行面外）：`lib/pet-link-backups/` 是补丁链的恢复点，不是产品代码。 */
+const SKIP_DIRS = new Set(['node_modules', '.test-cache', 'pet-link-backups']);
+
 function walkFiles(dir, out) {
   out = out || [];
   if (!isDir(dir)) return out;
   for (const n of readdirSync(dir).sort()) {
     const abs = join(dir, n);
-    if (isDir(abs)) { if (n !== 'node_modules' && n !== '.test-cache') walkFiles(abs, out); }
+    if (isDir(abs)) { if (!SKIP_DIRS.has(n)) walkFiles(abs, out); }
     else if (/\.(?:js|mjs)$/.test(n)) out.push(abs);
   }
   return out;
@@ -103,6 +107,15 @@ const rootNameOf = (spec) => {
 function declaredFace(manifest, spec) {
   const rootName = rootNameOf(spec);
   const fam = [manifest.dependencies, manifest.peerDependencies, manifest.optionalDependencies, manifest.devDependencies];
+  // upstream-fork：宿主提供面登记在 test/tools/subpackage-shapes.mjs（上游真值），清单里的三族
+  // 必须与之逐字相等（由 S12 判）。这里**同时**认登记表 —— 否则"清单漏写一条"会被报成
+  // 「未声明」，而真问题是「清单与登记表漂移」。两处都认 = 判据不互相遮蔽。
+  const fork = upstreamForkByName(manifest && manifest.name);
+  if (fork) {
+    for (const d of [fork.dependencies, fork.peerDependencies, fork.optionalDependencies]) {
+      if (d && Object.prototype.hasOwnProperty.call(d, rootName)) return true;
+    }
+  }
   for (const d of fam) if (d && Object.prototype.hasOwnProperty.call(d, rootName)) return true;
   return false;
 }
@@ -122,7 +135,18 @@ function hostEntryRel(pkg) {
 /** 子包**声明面**的客户端落点（manifest `exports["./client"]`）的仓内相对路径；null = 未声明。 */
 function clientArtifactRelOf(pkg) {
   const exp = (pkg && pkg.manifest && pkg.manifest.exports) || {};
-  const t = typeof exp['./client'] === 'string' ? exp['./client'].replace(/^\.\//, '') : null;
+  const v = exp['./client'];
+  // 条件对象（`{ types, default }`）是 upstream-fork 的合法形态：落点取 default（与
+  // `test/tools/packages.mjs` 的 clientExport 同口径），否则 fork 的放行面永远对不上账。
+  let t = null;
+  if (typeof v === 'string') t = v;
+  else if (v && typeof v === 'object') {
+    for (const k of ['default', 'import', 'require', 'node', 'browser']) {
+      if (typeof v[k] === 'string') { t = v[k]; break; }
+    }
+  }
+  if (typeof t !== 'string') return null;
+  t = t.replace(/^\.\//, '');
   return t && pkg.dir ? pkg.dir + '/' + t : null;
 }
 
@@ -175,6 +199,13 @@ function purityViolations(inp) {
   // 放行面：只认声明落点产物里的那一行 require（P-C 契约 §2）。
   const allowed = new Set(rootChannels(pkg, inp.rootPkg, inp.files).map((c) => c.rel + '|' + c.spec + '|' + c.kind));
   const siblings = inp.siblings.map((s) => ({ name: s.manifest.name, abs: s.abs, dir: s.dir }));
+  // upstream-fork 形态（P1：packages/pet）不是主包服务面的消费者：它自带 patch 行 + 自己的
+  // inject 面（webServer / agentDefaultModel / credentials / llm / commands / connection），
+  // 与主包的关系是"同级插件"。所以「必须 inject wallpaperEngineHost 且必须从 ctx 取用」这条
+  // 对它不适用 —— 显式跳过（判据**反向**由 client-half 的"产物不许有主包绑定"与
+  // subpackage-boot 的"空面必须为空"钉住），不是静默放宽。
+  const forkReg = upstreamForkByName(name);
+  const forkNoHostService = Boolean(forkReg && forkReg.hostServiceConsumer === false);
   for (const file of inp.files) {
     const rel = relOf(file.abs), base = dirname(file.abs), clientSide = isClientArtifact(file.abs);
     for (const sp of specifiersOf(file.text)) {
@@ -225,7 +256,7 @@ function purityViolations(inp) {
         bad.push(rel + ' 宿主半边 export const inject=[' + listed.join(', ') + "] 里没有 '" + hostService + "'（§5.1 ①：子包半边唯一跨包面 = 主包服务名，逐字对账 lib/subpackage-boot.js 的 HOST_SERVICE_NAME）");
       }
     }
-    if (hostService && !clientSide && entryRel && rel === entryRel) {
+    if (hostService && !clientSide && entryRel && rel === entryRel && !forkNoHostService) {
       if (!inj) bad.push(rel + " 宿主入口没有 export const inject = [...]（§5.1 ①：必须 inject '" + hostService + "'）");
       else {
         const body = stripComments(file.text);
@@ -285,16 +316,22 @@ if (usable.length > 0) {
     const chans = rootChannels(i.pkg, rootPkg, i.files);
     const declared = clientArtifactRelOf(i.pkg);
     const kinds = [...new Set(chans.map((c) => c.kind))];
+    const forkReg = upstreamForkByName(i.pkg.manifest.name);
     let note = (declared || '（未声明 exports["./client"]）') + ' => ' + chans.length + ' 条'
       + (kinds.length ? '（' + kinds.join('/') + '）' : '');
     if (!declared) note += ' ✗ 未声明 exports["./client"]：浏览器半边没有声明落点，放行面无法对账';
     else if (!i.files.some((f) => relOf(f.abs) === declared)) note += ' ✗ 声明落点产物不在盘（先跑 npm run build）';
-    else if (chans.length !== 1 || kinds.length !== 1 || kinds[0] !== 'dynamic') note += ' ✗ 声明落点产物里的主包通道必须恰一条 require("<主包名>")';
+    else if (forkReg && forkReg.hostServiceConsumer === false) {
+      // upstream-fork：独立插件，跨包面只有 HTTP capability 一条 ⇒ 主包通道必须**恰为 0 条**。
+      // 这一条与一般子包的"恰为 1 条"是同一条判据的两向，不是放宽（多一条 = 偷偷挂主包模块图）。
+      note += chans.length === 0 ? ' ✓（fork：独立插件，主包通道必须为 0）'
+        : ' ✗ fork 的声明落点产物里出现 ' + chans.length + ' 条主包通道（独立插件不许绑定主包）';
+    } else if (chans.length !== 1 || kinds.length !== 1 || kinds[0] !== 'dynamic') note += ' ✗ 声明落点产物里的主包通道必须恰一条 require("<主包名>")';
     else note += ' ✓';
     if (note.indexOf('✗') >= 0) channelBad++;
     channelRows.push(note);
   }
-  check('每个声明 dsh.client 的子包：声明落点产物里的主包通道恰一条 require("' + rootPkg.name + '")（P-C 契约 §1/§2）',
+  check('每个声明 dsh.client 的子包：声明落点产物里的主包通道「一般子包恰一条 require("' + rootPkg.name + '") / upstream-fork 恰零条」（P-C 契约 §1/§2）',
     channelBad === 0, channelRows.join('；'));
 
   const files = inputs.reduce((n, i) => n + i.files.length, 0);

@@ -114,10 +114,22 @@ If Steam is installed in a non-standard location, the host auto-detects it via `
 
 ## Verify before opening a PR / 提交 PR 前验证
 
+先按本次 PR 的**完整差异**选择验证路径，不只看最后一笔提交：
+
+- **纯文档（`docs`）**：README、贡献指南和明确白名单内的普通 Markdown，运行轻量文档检查。不安装产品依赖，不构建，不跑全仓静态检查或运行时测试。
+- **文档展示素材（`docs-assets`）**：仅文档使用的图片和排版源稿，增加图片与引用检查；影响排版时补桌面 / 手机预览。运行时素材不属于此类。
+- **完整验证（`full`）**：任意代码、schema、依赖、包清单、测试、CI、生成契约文档或未知路径。与文档混改仍选此路径；无法完整取得差异时全量或阻断，不能默认文档。
+
+For documentation-only changes, use the dedicated lightweight document check. Mixed code, dependencies, CI, generated contracts and unknown paths retain full verification. `verify:docs` is repository housekeeping, **not** the documentation fast path.
+
+完整路径继续执行：
+
 ```sh
-npm ci              # 本地取工具链（CI 不装依赖，见下）
+npm ci              # 本地安装工具链；CI 使用受控安装参数
 npm run verify:all  # = build + verify（硬档）+ verify:docs（软档）+ smoke
 ```
+
+`verify:all` 的含义不变。分类不会豁免代码改动，也不把此前门禁失败或未执行项变为通过。
 
 **提交前必须全绿的是硬档**（`npm run verify`：真机行为 / 发布面 / 平台契约 / 打包面）。
 软档（`npm run verify:docs`：仓库内务 —— 模块布局 / 可达性 / 退役线 / 声明孤儿）
@@ -126,12 +138,11 @@ npm run verify:all  # = build + verify（硬档）+ verify:docs（软档）+ smo
 > **两档各含哪些守卫、分档判据是什么，只在 [`docs/DEV-GUIDE.md`](docs/DEV-GUIDE.md) §4.2 定义一处**
 > —— 这里刻意不列清单（此前抄过一份，删掉两条守卫后就过时了，正说明为什么不该抄）。
 
-`.github/workflows/verify.yml` 在每次 push / PR 上跑同一套，并额外断言两件事：产物不入库（`git ls-files -- lib/client.js docs/images` 必须为空；新鲜度由本地链首条 `test/verify-client-sync.mjs` 真跑构建逐字节判），
-以及 `git diff --check` 无尾随空白 / 冲突标记。
+`.github/workflows/verify.yml` 三个阶段：`changes` 作业用 `node scripts/ci-routing.mjs check` 分类——PR 事件取 merge-base 完整 PR 差异（`--base-mode merge-base`），push 事件取 `before → after` 原样差异（`--base-mode exact`：force-push 后 before 不一定是 after 的祖先，merge-base 会漏算 before 独有的代码删除），workflow_dispatch 无事件边界 ⇒ `github.sha → github.sha` 空差异 ⇒ 分类器保守完整验证；差异取不全 ⇒ fail-closed 全量，绝不误判文档。纯文档路径由 `docs` 作业对**同一差异、同一模式档**再跑一次 `node scripts/ci-routing.mjs docs`（文档引用 / 冲突标记 / 素材类型检查；差异里混入代码或未知路径 ⇒ 退出码 3 明确拒绝，不以假成功放行；其 checkout 显式指向 head 提交，保证被审计的树就是被分类的树）。完整路径保留 Windows / Ubuntu 两个平台、静态门禁、构建、运行守卫、媒体桥与冒烟。固定 `ci/result` 汇总在 `if: always()` 下核验所选作业确实成功：取消、失败、缺结果或意外跳过不能放行。分支保护需由维护者在验证新检查后迁移到该固定名称。
 
-> CI **故意不执行 `npm ci`**：build / verify / smoke 只用 `node:` 内置模块与相对路径，
-> 整条链对 registry 与 peer 解析完全免疫 —— 这条不变量由 `test/verify-package-files.mjs`
-> 的 P5 断言钉住。本地开发仍需 `npm ci` 取工具链。
+完整路径还检查产物不入库（`git ls-files -- lib/client.js docs/images` 必须为空），并扫描被跟踪文件的尾随空白与冲突标记。产物同步仍由 `test/verify-client-sync.mjs` 真跑构建逐字节检查。
+
+CI 完整路径使用 `npm ci --omit=peer --ignore-scripts --no-audit --no-fund` 安装依赖，随后运行静态检查。build / verify / smoke 仍只直接引用 `node:` 内置模块及仓库相对路径，P5 的零裸依赖判据不变。文档快通道无需这一步安装。
 
 ### Harness compatibility CI / harness 适配 CI（基线制）
 

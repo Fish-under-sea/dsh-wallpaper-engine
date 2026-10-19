@@ -101,6 +101,9 @@ function packageDivergences(root = ROOT) {
 function walk(dir, out = [], base = '') {
   for (const n of readdirSync(dir)) {
     if (n === 'node_modules') continue;
+    // 工具备份面（`packages/pet/lib/pet-link-backups/`）：补丁链的恢复点快照，不是产品代码，
+    // 也不进发行面（`files` 里被 `!` 排除）。放进模块面只会让"零覆盖"表被历史副本刷屏。
+    if (n === 'pet-link-backups') continue;
     const rel = base ? base + '/' + n : n;
     const abs = join(dir, n);
     if (statSync(abs).isDirectory()) walk(abs, out, rel);

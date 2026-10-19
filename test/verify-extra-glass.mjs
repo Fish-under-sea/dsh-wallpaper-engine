@@ -84,6 +84,33 @@ async function fresh() {
 
 const GOOD = '.dsh-mobile-control__panel, .dim-jh-badgePop';
 
+/**
+ * 把生成结果切成规则表。G5/G6 的判据要求「霜 + 完整两段 color-mix 底色」在**同一条规则**里
+ * 同时成立，且软渲档是**另一条规则**（无霜 + 不透明底色）——所以先按规则切，再逐条判，
+ * 不做跨规则拼凑（与 verify-glass-surfaces ⑰ 组同一纪律）。
+ * 每条规则 = 2 档主题 × 2 种所有权标记（正常 extra / 软渲 extra-fallback）。
+ */
+function rulesOf(css) {
+  return css.split('\n')
+    .filter((line) => line.includes('::before {'))
+    .map((line) => {
+      const marker = /:where\(\[data-we-surface-runtime="(extra(?:-fallback)?)"\]\)::before \{/.exec(line);
+      const sel = /^body(?:\[[^\]]+\])+ (.*?):where\(\[data-we-surface-runtime=/.exec(line);
+      return {
+        line,
+        marker: marker ? marker[1] : null,
+        selector: sel ? sel[1] : '',
+        body: line.slice(line.indexOf('::before {') + 10),
+        dark: line.startsWith('body[data-ds-dark-theme]'),
+      };
+    });
+}
+
+/** 唯一选择器清单（每个选择器会生成多条规则：浅/深 × 正常/软渲）。 */
+function selectorList(css) {
+  return [...new Set(rulesOf(css).map((r) => r.selector).filter(Boolean))];
+}
+
 // ── ① 生成（纯函数）────────────────────────────────────────────────────────────
 {
   const { mod } = await fresh();
@@ -94,11 +121,21 @@ const GOOD = '.dsh-mobile-control__panel, .dim-jh-badgePop';
 
   const css = mod.weExtraGlassCss({ extraGlassSelectors: GOOD });
   const n = (css.match(/::before \{/g) || []).length;
-  check('两条选择器 ⇒ 两条 ::before 载体', n === 2, 'n=' + n);
+  // 2 条选择器 × 4 档（浅/深 × 正常/软渲回退）= 8 条规则。
+  check('两条选择器 ⇒ 每条 4 档规则（浅/深 × 正常/软渲），共 8 条 ::before 载体', n === 8, 'n=' + n);
+  // selectorList 的契约口径（见其注释）：每条唯一选择器都要凑齐 4 档 —— 防止某条
+  // 选择器只生成一半档位（例如浅色有、深色缺，或正常有、软渲缺）而总数恰好看不出。
+  const selList = selectorList(css);
+  check('唯一选择器清单：每条选择器恰好 4 档 ::before（清单非空且无缺档）',
+    selList.length === 2 && selList.every((sel) => {
+      const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return ((css.match(new RegExp(esc + ':where\\(\\[data-we-surface-runtime="(?:extra(?:-fallback)?)"\\]\\)::before \\{', 'g')) || []).length === 4);
+    }), JSON.stringify(selList));
   check('载体挂在 ::before 上（**不是**直接给目标元素加 backdrop-filter —— #89 的包含块坑）',
     /\.dsh-mobile-control__panel:where\(\[data-we-surface-runtime="extra"\]\)::before \{/.test(css) && !/\.dsh-mobile-control__panel \{[^}]*backdrop-filter/.test(css));
   check('只有安全所有权标记激活载体，不给未验证目标补背景或定位',
-    (css.match(/:where\(\[data-we-surface-runtime="extra"\]\)::before/g) || []).length === 2
+    (css.match(/:where\(\[data-we-surface-runtime="extra"\]\)::before/g) || []).length === 4
+      && (css.match(/:where\(\[data-we-surface-runtime="extra-fallback"\]\)::before/g) || []).length === 4
       && !/position:\s*relative|z-index:\s*0\b/.test(css));
   for (const decl of ['content: ""', 'position: absolute', 'inset: 0', 'border-radius: inherit',
     'z-index: -1', 'pointer-events: none']) {
@@ -125,12 +162,12 @@ const GOOD = '.dsh-mobile-control__panel, .dim-jh-badgePop';
   const css = mod.weExtraGlassCss({ extraGlassSelectors: evil });
   check('注入串一个字都进不去（整条作废，不修剪成另一个选择器）', css === '', JSON.stringify(css));
   const css2 = mod.weExtraGlassCss({ extraGlassSelectors: GOOD + ', .x{y}' });
-  check('坏条只丢自己，好条照旧',
-    (css2.match(/::before \{/g) || []).length === 2 && !css2.includes('.x'));
+  check('坏条只丢自己，好条照旧（存活 2 选择器 × 4 档 = 8 条规则）',
+    (css2.match(/::before \{/g) || []).length === 8 && !css2.includes('.x'));
   const css3 = mod.weExtraGlassCss({ extraGlassSelectors: '[data-dsh-mobile-details]' });
   check('合法属性选择器保留（那是真实面板的锚点形状）', css3.includes('[data-dsh-mobile-details]:where([data-we-surface-runtime="extra"])::before'));
-  check('生成结果里不出现任何 `}` 由选择器引入的痕迹（选择器只在 { 之前）',
-    css2.split('::before {').every((part, i) => i === 0 || !/\}/.test(part.split('backdrop-filter:')[0])));
+  check('生成结果里不出现任何 `}` 由选择器引入的痕迹（每个 ::before { 之后的片段恰含 1 个收尾 `}`，注入会多出）',
+    css2.split('::before {').every((part, i) => i === 0 || part.split('}').length === 2));
 }
 
 // ── ②b 总量上限（P1 复审：#204 原实现 slice(0,400) 会切出半截选择器）──────────────
@@ -149,9 +186,9 @@ const GOOD = '.dsh-mobile-control__panel, .dim-jh-badgePop';
   const JOINED = FULL.join(', ');
   const TOTAL_MAX = JOINED.length;                       // 974，由 8×120 推导而来
   const START_OK = /^[A-Za-z0-9.#_:*>()[\]=+~|\-]/;     // 与 schema 白名单首字符一致
-  const selOf = (css) => css.split('\n').filter((l) => l.includes('::before'))
-    .map((l) => l.replace(/^body\[data-we-glass-page\]:not\(\[data-we-glass-fallback\]\) /, '')
-      .replace(/:where\(\[data-we-surface-runtime="extra"\]\)::before \{.*$/, ''));
+  const selOf = (css) => [...new Set(css.split('\n').filter((l) => l.includes('::before'))
+    .map((l) => l.replace(/^body(?:\[data-ds-dark-theme\])?\[data-we-glass-page\](?::not\(\[data-we-glass-fallback\]\)|\[data-we-glass-fallback\])? /, '')
+      .replace(/:where\(\[data-we-surface-runtime="extra(?:-fallback)?"\]\)::before \{.*$/, '')))];
   // 一条判据，正反两用：每段必须逐字属于输入、长度在 [1,120]、起始符合法。
   const intact = (sels) => sels.length === COUNT_MAX && sels.every((s) =>
     FULL.includes(s) && s.length >= 1 && s.length <= PER_MAX && START_OK.test(s));
@@ -282,6 +319,37 @@ const GOOD = '.dsh-mobile-control__panel, .dim-jh-badgePop';
   const bad = schema.sanitizeFromSchema(
     Object.assign({}, schema.DEFAULTS, { extraGlassSelectors: '.a;}x' }), 'client');
   check('非法条经 sanitizeFromSchema 被丢（两侧共用同一份判据）', bad.extraGlassSelectors === '');
+}
+
+// ── ⑦ extra 端值与继承（t9-003：按现有真实参数合同，不虚构 extra 专属滑杆）─────
+{
+  const { mod } = await fresh();
+  const css = mod.weExtraGlassCss({ extraGlassSelectors: GOOD });
+  // 软渲行形态 = `[data-we-glass-fallback] `（尾随空格）；`:not([data-we-glass-fallback])`
+  // 的内串不带尾空格后接 `)`，不会被这把尺子误收。
+  const softRules = css.split('\n').filter((l) => l.includes('[data-we-glass-fallback] ') && l.includes('::before {'));
+  const noFrost = (rules) => rules.length > 0 && rules.every((l) =>
+    !/backdrop-filter: blur\(/.test(l)
+    && (/backdrop-filter: none/.test(l) || !/backdrop-filter/.test(l)));
+  check('⑦-1 软渲档恰 4 条（浅/深 × 每选择器）且无霜：backdrop-filter 只能是 none',
+    softRules.length === 4 && noFrost(softRules), 'n=' + softRules.length);
+  const frosty = softRules[0].replace('backdrop-filter: none', 'backdrop-filter: blur(var(--we-blur, 16px))');
+  check('negative control ⑦-1: 软渲规则若带霜会被同判据判红', !noFrost([frosty]));
+  check('⑦-2 软渲底色 = tint 满量（恒不透明可读，不消费 alpha 端值，无 color-mix）',
+    softRules.every((l) => /background-color: var\(--we-surface-tint-(light|dark), #/.test(l)) && !softRules.some((l) => /color-mix/.test(l)));
+  const alphaRefs = (css.match(/var\(--we-settings-window-alpha, 0\.15\) \* 0\.9 \* 100%\)/g) || []).length;
+  check('⑦-3 正常档底色继承设置窗 alpha 变量（tint × --we-settings-window-alpha × 0.9），浅深各一份',
+    alphaRefs === GOOD.split(', ').length * 2, 'refs=' + alphaRefs);
+  const kindsSrc = JSON.stringify(Object.keys(schema.KINDS));
+  check('⑦-4 extra 无专属滑杆键（KINDS 只登记 extraGlassSelectors），面板无 extra 专属 SliderRow',
+    kindsSrc.includes('extraGlassSelectors') && !kindsSrc.includes('extraBlur')
+    && !kindsSrc.includes('extraAlpha') && !kindsSrc.includes('extraTransparency')
+    && !panelSrc.includes('sel.extraBlur') && !panelSrc.includes('sel.extraAlpha'));
+  check('⑦-5 端值刻度 = 全局滑杆真实刻度（雾化 0..60 / 玻璃透明度 0..100），非自有面 5..42/5..50；--we-blur 由 selection.blur 驱动',
+    /SliderRow\(weT\("雾化"\), 0, 60, 1, sel\.blur/.test(panelSrc)
+    && /SliderRow\(weT\("玻璃透明度"\), 0, 100, 5, sel\.glassAlpha/.test(panelSrc)
+    && !/SliderRow\(weT\("雾化"\), 5, 42/.test(panelSrc)
+    && /s\.setProperty\("--we-blur", selection\.blur \+ "px"\)/.test(effectsSrc));
 }
 
 console.log('\n' + (failed ? 'EXTRA-GLASS CHECKS FAILED — ' + failed + ' failed' : 'ALL EXTRA-GLASS CHECKS PASSED'));

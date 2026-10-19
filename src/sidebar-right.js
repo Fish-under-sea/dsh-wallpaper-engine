@@ -47,6 +47,7 @@ function sidebarRightOpen() {
 /** 当前展开的右侧栏是否正显示「壁纸」tab（TabRecord.kind 即注册时的 kind）。 */
 function sidebarRightOursActive() {
   try {
+    if (weSidebarCtrl && typeof weSidebarCtrl.isExpanded === "function" && !weSidebarCtrl.isExpanded()) return false;
     const a = weSidebarCtrl && typeof weSidebarCtrl.active === "function" ? weSidebarCtrl.active() : null;
     return Boolean(a && a.kind === WE_SIDEBAR_KIND);
   } catch { return false; }
@@ -88,7 +89,10 @@ function sidebarRightClose() {
 let ropeDrawerControl = null; // { toggle, open, close } | null（RopeDock 隐藏/卸载时为 null）
 /** 开：官方态展开并聚焦本 tab；抽屉态开抽屉。两边都不可用返回 false。 */
 function wallSidebarOpen() {
-  if (sidebarRightOpen()) return true;
+  if (sidebarRightOpen()) {
+    if (ropeDrawerControl) ropeDrawerControl.close();
+    return true;
+  }
   if (ropeDrawerControl) { ropeDrawerControl.open(); return true; }
   return false;
 }
@@ -100,7 +104,10 @@ function wallSidebarClose() {
 }
 /** 开/关切换（吉祥物点击、快捷键共用）。不可用（如吉祥物被隐藏且非官方态）返回 false。 */
 function wallSidebarToggle() {
-  if (sidebarRightToggle()) return true;
+  if (sidebarRightToggle()) {
+    if (ropeDrawerControl) ropeDrawerControl.close();
+    return true;
+  }
   if (ropeDrawerControl) { ropeDrawerControl.toggle(); return true; }
   return false;
 }

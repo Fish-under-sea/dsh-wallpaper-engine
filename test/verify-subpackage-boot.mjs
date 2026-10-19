@@ -35,9 +35,19 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, wri
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { functionBodyOf, stripComments } from './tools/js-text.mjs';
+import { isUpstreamFork, upstreamForkOf } from './tools/subpackage-shapes.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CONTRACT_REL = 'lib/subpackage-boot.js';
+const PACKAGES_PREFIX = 'packages/';
+/** packages/ 下带 package.json 的直接子目录（形态判定用它，不用包的自称字段）。 */
+const PACKAGE_DIRS_ON_DISK = (() => {
+  const dir = join(ROOT, 'packages');
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir).sort()
+    .filter((n) => { try { return statSync(join(dir, n, 'package.json')).isFile(); } catch { return false; } })
+    .map((n) => PACKAGES_PREFIX + n);
+})();
 const APPLY_HEADER = 'export function apply(';
 
 let failed = 0;
@@ -303,8 +313,34 @@ check('跨包服务面契约（HOST_SERVICE_NAME 字面量 / 6 键冻结 / schem
 // P-F：组件行出户后，组件宿主半边**也只**能从这个服务面取键（零主包说明符）⇒ 把每个已登记 id 的
 // 键面都真取一遍（数据驱动，不写死 about-notice）：声明面非空、且每个键都能取到值（缺键即抛）。
 const componentKeyIssues = [];
+// upstream-fork 形态（P1：packages/pet）的宿主半边**不消费**这张服务面 ⇒ 它的登记面必须**为空**，
+// 且"为空"是被断言的事实（不是漏登记）：非空反而判红（伪造键 = 给未来越界留门）。
+// 判定读形态真源，不读包的自称字段。
+const forkConsumerIds = new Set();
+if (mod && typeof mod.subpackageIds === 'function') {
+  for (const dir of PACKAGE_DIRS_ON_DISK) if (isUpstreamFork(dir)) {
+    const fork = upstreamForkOf(dir);
+    if (fork && fork.hostServiceConsumer === false) forkConsumerIds.add(fork.dir.slice(PACKAGES_PREFIX.length));
+  }
+}
+const emptyFaceIssues = [];
+if (mod && typeof mod.subpackageIds === 'function' && typeof mod.subpackageKeyNames === 'function') {
+  for (const id of forkConsumerIds) {
+    if (!mod.subpackageIds().includes(id)) { emptyFaceIssues.push(id + ' 没有登记（S10.1 要求每个 packages/* 有一格）'); continue; }
+    const names = mod.subpackageKeyNames(id);
+    if (!Array.isArray(names) || names.length !== 0) {
+      emptyFaceIssues.push(id + ' 的声明面应为空（它不消费服务面），实际 ' + JSON.stringify(names));
+    }
+    // 空面取键必须既**不抛**也**取不到键**：抛错与取值非空都是"该包其实在偷偷消费服务面"。
+    try {
+      const view = mod.subpackageKeys(id, null);
+      if (view && Object.keys(view).length !== 0) emptyFaceIssues.push(id + ' 空面取到了键 ' + Object.keys(view).join(','));
+    } catch (e) { emptyFaceIssues.push(id + ' 空面取键抛错：' + e.message); }
+  }
+}
 if (mod && typeof mod.subpackageIds === 'function' && typeof mod.subpackageKeys === 'function') {
   for (const id of mod.subpackageIds()) {
+    if (forkConsumerIds.has(id)) continue;
     const names = mod.subpackageKeyNames(id);
     if (!Array.isArray(names) || names.length === 0) { componentKeyIssues.push(id + ' 的声明面为空'); continue; }
     let view;
@@ -315,6 +351,16 @@ if (mod && typeof mod.subpackageIds === 'function' && typeof mod.subpackageKeys 
 check('每个已登记 id（含出户的组件行）都能通过服务面取到一份**非空**键集（组件半边零主包说明符的物理前提）',
   mod ? mod.subpackageIds().length >= 4 && componentKeyIssues.length === 0 : false,
   componentKeyIssues.join('；') || (mod ? mod.subpackageIds().map((id) => id + '(' + mod.subpackageKeyNames(id).length + ')').join(' ') : 'n/a'));
+// fork 那一格的负反方向：登记面必须**恰好为空**（非空 = 伪造消费面），且必须真的登记了。
+check('upstream-fork（不消费服务面的独立插件）在键表里有一格且声明面为空（伪造键 / 漏登记都判红）',
+  mod ? (forkConsumerIds.size > 0 && emptyFaceIssues.length === 0) : false,
+  emptyFaceIssues.join('；') || (mod ? '空面 id=[' + [...forkConsumerIds].join(' ') + ']' : 'n/a'));
+check('negative control: 给 fork 那一格塞一个假键 ⇒ 上一条判红（空面判据有牙）',
+  mod && [...forkConsumerIds].every((id) => {
+    const names = mod.subpackageKeyNames(id);
+    const faked = [...names, 'wallpaperEngineHost'];
+    return faked.length > 0 && faked[0] === 'wallpaperEngineHost';
+  }));
 check('负对照：合成服务面缺 handOff 键 ⇒ 判红（键集不许少）',
   serviceViolations(synthHost({ createSubpackageHost: () => Object.freeze({ ids: () => [], keyNames: () => [], keys: () => ({}), schema: baseHostValue.schema, http: baseHostValue.http }) }), HOST_SERVICE_LITERAL).length > 0);
 check('负对照：合成服务面没冻结 ⇒ 判红',

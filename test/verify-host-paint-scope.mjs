@@ -19,6 +19,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { cssBodyOf } from './tools/src-scope.mjs';
+// 剥 CSS 注释走共享实现（此前这里是一行朴素正则 —— 模块布局守卫规则 ⑦ 的针眼）。
+import { stripCssComments } from './tools/css-text.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // 读**构建产物**（与 verify-readability 同源）：它才是实际注入浏览器的字符串。
@@ -43,7 +45,8 @@ try {
   CSS = new Function('READABILITY_FLOOR', 'READABILITY_FLOOR_DARK', 'return `' + CSS_BODY + '`;')(
     num(/const READABILITY_FLOOR = ([\d.]+);/), num(/const READABILITY_FLOOR_DARK = ([\d.]+);/));
 } catch { CSS = CSS_BODY; }
-CSS = CSS.replace(/\/\*[\s\S]*?\*\//g, ' ');
+// 剥注释走共享实现（等长替换 ⇒ 这里按下标切片的口径不变；未配对即抛，不静默留半份样式）。
+CSS = stripCssComments(CSS);
 
 const TARGET = '[data-sidebar-right-panel]';
 const GATE = '[data-sidebar-right-open]';

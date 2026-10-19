@@ -14,7 +14,7 @@ function load(sharedWindow, noTimers = false) {
     adoptPosition() { calls.push('adopt'); return true; }, throwNative() {}, getNativeThrow: () => ({ active: false }), stopNativeThrow() {},
   };
   const window = sharedWindow || { innerWidth: 1200, innerHeight: 800 };
-  window.__dshPetCtl = ctl;
+  window.__dshWePetCtl = ctl;
   const document = { querySelector: selector => selector === '.dsh-pet-root' ? root : null,
     querySelectorAll: () => [], addEventListener(type, fn) { listeners.set(fn, type); }, removeEventListener(type, fn) { listeners.delete(fn); } };
   const schedule = (fn, ms, repeat = false) => { const id = ++nextId; timers.set(id, { fn, at: now + Math.max(1, ms), ms, repeat }); return id; };
@@ -35,7 +35,7 @@ function load(sharedWindow, noTimers = false) {
   };
   if (noTimers) { env.setTimeout = undefined; env.clearTimeout = undefined; }
   const capability = () => ({ protocol: 1, generation: 'a', enabled: true, linkEnabled: true, available: true,
-    ttlMs: 1500, target: 'main', petBase: '/dsh-pet-7340', names: Object.values(api.names) });
+    ttlMs: 1500, target: 'main', petBase: '/dsh-we-pet-builtin', names: Object.values(api.names) });
   const api = new Function('env', 'with(env){' + tuner + '\n' + pet + `
     return { ...petLink, state:petLinkState, names:PET_ANIM, probe:petLinkProbe,
       eligible:()=>typeof petLinkEligible==='function' && petLinkEligible(),

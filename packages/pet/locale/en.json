@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Built-in desktop pet (dsh-we-pet-builtin)",
+    "description": "A controlled derived copy of upstream dsh-pet@0.3.7, bundled as a wallpaper upstream-fork subpackage: host half lib/index.js (desktop transparent window, AI chat, pet packs, multi-instance control surface), browser half lib/client.js (prebuilt derived artifact registered as dsh-we-pet-builtin). Fully identity-isolated from an active dsh-pet install (app.setName / userData / data root $DSH_HOME/dsh-we-pet-builtin are not shared)."
+  }
+}

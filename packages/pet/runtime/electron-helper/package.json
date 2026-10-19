@@ -1,0 +1,8 @@
+{
+  "name": "dsh-we-pet-builtin-electron-helper",
+  "version": "0.1.0",
+  "private": true,
+  "description": "dsh-we-pet-builtin desktop helper — Electron transparent overlay window",
+  "_derived": "dsh-pet@0.3.7 受控派生副本（wallpaper 内置子包候选）；身份独立于活动 dsh-pet（app.setName/userData 不共用）",
+  "main": "main.js"
+}

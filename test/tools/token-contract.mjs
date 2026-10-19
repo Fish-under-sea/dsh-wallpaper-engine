@@ -29,6 +29,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { scopeFiles } from './src-scope.mjs';
+// 剥 CSS 注释的唯一真源（此前这里有一份私有实现，玻璃两处又各写了一行朴素正则 —— 三份各自演化）。
+import { stripCssComments } from './css-text.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DOC = join(ROOT, 'docs', 'TOKEN-CONTRACT.md');
@@ -86,20 +88,10 @@ export function scanStyleFamily() {
   return decls;
 }
 
-/** 剥 `/* … *\/` 注释，等长替换（保换行 ⇒ 行号不漂移）。未配对的注释标记直接抛。 */
-function stripCssComments(css) {
-  const out = css.replace(/\/\*[\s\S]*?\*\//g, (s) => s.replace(/[^\n]/g, ' '));
-  if (/\/\*/.test(out) || /\*\//.test(out)) {
-    throw new Error('styles: 注释标记未配对（或注释体里有字面 `*/` 提前闭合）');
-  }
-  return out;
-}
-
 /**
  * 花括号栈扫描：返回全部 `--dsw-*` **属性位**声明。
  * 每条：{ token, value, line, chain }，chain = 选择器链（含 @media 前提）。
- */
-export function scanTokenDecls(src) {
+ */export function scanTokenDecls(src) {
   const { raw, baseLine } = extractCss(src);
   const clean = stripCssComments(raw);
   const decls = [];
@@ -173,10 +165,23 @@ export function bucketOf(chain) {
   return 'ungated';
 }
 
-/** 无门控声明的**封闭白名单**：只有思考块自己的开关与插件自有元素两处（审计 §三.3）。 */
+/** 无门控白名单的**插件自有 bare roots 封闭集**：整条选择器链必须是纯逗号列表、
+ * 每段 trim 后精确命中集合成员。改动集合（增删成员）= 一次可见评审（守卫锚点表钉死名单）。 */
+export const UNGATED_BARE_ROOTS = ['.we-layer', '.we-picker', '.we-picker__modal', '.we-qp'];
+
+/** 无门控声明的**封闭白名单**：思考块自带开关 + 插件自有 bare roots 封闭集（审计 §三.3）。
+ * strict 判据：不以 .we-* 前缀/子串识别；拒空段/未知根/:root/body/后代或组合器/
+ * @media 前提/伪类/合法+未知混组。thinking-native 判据保持在 bare-roots 之前
+ * （真实链 `body[data-we-thinking-native] [data-chat-flow], …` 本身是含后代选择器的逗号列表）。 */
 export function ungatedReason(chain) {
   if (/\[data-we-thinking-native\]/.test(chain)) return 'thinking-native（思考块自带开关）';
-  if (chain === '.we-layer') return '.we-layer（插件自有元素，卸载即消失）';
+  const parts = String(chain).split(',').map((s) => s.trim());
+  if (parts.length > 0 && parts.every((p) => UNGATED_BARE_ROOTS.includes(p))) {
+    // .we-layer 单根保留原文案（文档既有行不变）；其余集合成员给统一豁免理由。
+    return parts.length === 1 && parts[0] === '.we-layer'
+      ? '.we-layer（插件自有元素，卸载即消失）'
+      : '插件自有 bare roots 局部表面（' + parts.join(', ') + '）—— 令牌仅挂本插件根节点';
+  }
   return null; // 不在白名单 ⇒ 守卫红
 }
 
@@ -241,8 +246,11 @@ export function buildContract() {
   L.push('');
   L.push('## 无门控声明（白名单 —— M1 的全部暴露面）');
   L.push('');
-  L.push('除下列两处封闭白名单外，**任何新的无门控 `--dsw-*` 声明都会让 `verify-token-contract` 变红**');
-  L.push('（按宿主规范消费 token 的第三方插件无法区分「玻璃开/关」，只能拿到配方本身 —— 见 `docs/COEXISTENCE.md`）。');
+  L.push('除下列封闭白名单外，**任何新的无门控 `--dsw-*` 声明都会让 `verify-token-contract` 变红**');
+  L.push('（白名单 = `body[data-we-thinking-native]` 思考块自带开关 + 插件自有 bare roots 封闭集');
+  L.push('`{.we-layer, .we-picker, .we-picker__modal, .we-qp}` —— 整条选择器链必须是纯逗号列表、');
+  L.push('每段 trim 后精确命中集合成员，不认 `.we-*` 前缀/子串，拒未知根/混组；');
+  L.push('按宿主规范消费 token 的第三方插件无法区分「玻璃开/关」，只能拿到配方本身 —— 见 `docs/COEXISTENCE.md`）。');
   L.push('');
   L.push('| 令牌 | 行 | 选择器链 | 归属 |');
   L.push('|---|---|---|---|');

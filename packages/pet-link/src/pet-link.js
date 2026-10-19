@@ -28,7 +28,7 @@
  *   · 位置动画由本模块直接驱动宠物元素（dsh-pet 的 /anim 不支持指定目标坐标，
  *     而宠物就渲染在同一页面里）——只写 `transform`，绝不碰它拥有的 `left/top`。
  */
-const PET_BASE = '/dsh-pet-7340';
+const PET_BASE = '/dsh-we-pet-builtin';
 /** 动作名（协议值，与 src/pet-link-actions.json 和注入工具逐字一致）。
  *
  *  ── 2026-10-15 整批换代：18 段 → 9 段，命名体系一并换掉 ────────────────────
@@ -93,7 +93,7 @@ const PET_SEG_GAP_MS = 0;
  *  宿主 dsh-pet 把气泡时长**硬编码**成 10s（其 `BUBBLE_DURATION_MS`），且
  *  `pets.<id>.say` 是**只写**叶子 —— 没有任何"收回气泡"的接口。而彩蛋一的排播明确要求
  *  「弹气泡 → 播动作 → **回收气泡** → 播下一段」。所以 bridge 配套了一个针对 dsh-pet
- *  渲染半的补丁（`tools/repatch-pet.mjs`），它暴露页内控制面 `window.__dshPetCtl`，
+ *  渲染半的补丁（`tools/repatch-pet.mjs`），它暴露页内控制面 `window.__dshWePetCtl`，
  *  本模块通过它设时长与收回。
  *  **补丁不在场时全部静默降级**（气泡照弹，只是按宿主默认 10s 自行消失），
  *  绝不因为一个可选增强把流程打断。 */
@@ -232,8 +232,8 @@ const PET_WALK_MAX_MS = 2600;
 /** 逻辑二：把吉祥物本体（`.we-rope`）下拉的距离与时长（含弹回）。
  *  用户口径（2026-10-15）：「侧边栏弹出逻辑在这为**吉祥物被抓握往下拖的关键帧**」——
  *  即吉祥物被拖下来这一刻，侧栏顺势弹出。所以下拉与 `petLinkSnapOpenSidebar()` 同一时刻。 */
-const PET_ROPE_PULL_DOWN = 90;  // 下拉距离（px）
-const PET_ROPE_PULL_MS = 420;   // 拉到底的时长
+const PET_ROPE_PULL_DOWN = 40;  // 下拉距离（px），用户确认的逻辑二默认基准
+const PET_ROPE_PULL_MS = 800;   // 拉到底的时长
 const PET_ROPE_BACK_MS = 260;   // 弹回的时长
 /** 跟随面板边缘时的速度上限（px/s）—— **必须按时间算，不能按帧算**。
  *  ⚠️ 这里踩过坑：原先写「每帧最多 24px」= 按帧限速 ⇒ 速度上限 = 24 × fps。
@@ -444,7 +444,7 @@ function petLinkControlReady(ctl, root) {
 function petLinkEligible() {
   const rt = petLinkRuntime;
   const valid = Boolean(rt.lease && petLinkNow() < rt.lease.expires
-    && typeof window !== 'undefined' && window.__dshPetCtl === rt.ctl
+    && typeof window !== 'undefined' && window.__dshWePetCtl === rt.ctl
     && petLinkControlReady(rt.ctl, rt.root));
   if (!valid && rt.lease) petLinkCancel(weT('桌宠运行资格失效'));
   return valid;
@@ -597,7 +597,7 @@ function petLinkProbe() {
       if (rt.lease && rt.lease.generation !== cap.generation) {
         petLinkCancel(weT('桌宠桥接会话已替换')); return false;
       }
-      const ctl = typeof window !== 'undefined' ? window.__dshPetCtl : null;
+      const ctl = typeof window !== 'undefined' ? window.__dshWePetCtl : null;
       const root = ctl && typeof ctl.getRoot === 'function' ? ctl.getRoot() : null;
       if (rt.lease && (rt.ctl !== ctl || rt.root !== root)) {
         petLinkCancel(weT('桌宠实例已替换')); return false;
@@ -609,7 +609,7 @@ function petLinkProbe() {
       const pet = Array.isArray(main?.pets) && main.pets.find(row => row?.id === PET_TARGET);
       if (!pet || !['web', 'both'].includes(pet.display) || !Array.isArray(pool)
           || !names.every(name => pool.flat().includes(name)) || !petLinkControlReady(ctl, root)
-          || window.__dshPetCtl !== ctl || petLinkNow() >= started + cap.ttlMs) throw new Error(reason);
+          || window.__dshWePetCtl !== ctl || petLinkNow() >= started + cap.ttlMs) throw new Error(reason);
       rt.ctl = ctl; rt.root = root;
       rt.lease = { generation: cap.generation, expires: started + cap.ttlMs };
       petLinkPool.names = pool.flat(); petLinkState.available = true; petLinkState.reason = '';
@@ -947,7 +947,7 @@ function petLinkRopeEl() {
 //  ⚠️ 为什么走"页内控制面"而不是改 dsh-pet 的路由：
 //  dsh-pet 的气泡时长是宿主里硬编码的常量，`pets.<id>.say` 又是**只写**叶子 ——
 //  没有"收回气泡"的接口。但 dsh-pet 的渲染半侧与墙纸插件**跑在同一个页面**里，
-//  所以 bridge 的补丁在那边挂一个 `window.__dshPetCtl`，我们直接调用即可。
+//  所以 bridge 的补丁在那边挂一个 `window.__dshWePetCtl`，我们直接调用即可。
 //  这比改宿主的 host 路由干净得多：不需要新端点、不碰它的状态叶子、卸载即失效。
 
 /** 取页内控制面；不在场（没打补丁 / 补丁版本旧）返回 null。 */
@@ -955,7 +955,7 @@ function petLinkPetCtl() {
   try {
     if (petLinkRuntime.ctl) return petLinkRuntime.ctl;
     if (petLinkRuntime.started) return null;
-    const ctl = typeof window !== 'undefined' ? window.__dshPetCtl : null;
+    const ctl = typeof window !== 'undefined' ? window.__dshWePetCtl : null;
     return ctl && typeof ctl === 'object' ? ctl : null;
   } catch { return null; }
 }
@@ -1266,8 +1266,86 @@ async function petLinkMascotDrop(alive, started, releaseAt, config) {
   return petLinkGlide(rect, landing.x, landing.y, config.dropMs, alive);
 }
 
-/** 所有关键时刻均从跳抓点播确认开始，不再早于点播确认启动。 */
+/** 有播放回执时，绳子与下落共用视频时钟；卡帧不前进，旧播放不能继续写。 */
+async function petLinkMascotPlaybackMotion(ctl, initial, alive, state, landingBase) {
+  const el = petLinkRopeEl();
+  if (!el || !el.style) return false;
+  if (petLinkState.ropeRelease) petLinkState.ropeRelease();
+  const keys = ['transform', 'transitionProperty', 'transitionDuration', 'transitionTimingFunction'];
+  const original = Object.fromEntries(keys.map(key => [key, el.style[key] || '']));
+  const tune = key => Math.max(0, petLinkTune(key, 'mascot'));
+  const grabAt = tune('mascotGrabAtMs'), pullMs = tune('mascotRopePullMs');
+  const releaseAt = Math.max(grabAt + pullMs, tune('mascotReleaseAtMs'));
+  const backMs = tune('mascotRopeBackMs'), openAt = tune('mascotOpenAtMs');
+  const distance = tune('mascotDropPx'), dropMs = tune('mascotDropMs');
+  const down = tune('mascotRopeDownPx');
+  const endAt = Math.max(openAt, releaseAt + backMs, releaseAt + (distance > 0 ? dropMs : 0));
+  const epoch = petLinkState.epoch, started = petLinkNow();
+  const playbackId = initial.id, playbackName = initial.name;
+  const progress = (time, start, duration) => duration > 0 ? Math.min(1, Math.max(0, (time - start) / duration)) : time >= start ? 1 : 0;
+  const ease = (t, kind) => kind === 0 ? t : kind === 2 ? 1 - Math.pow(1 - t, 3) : t * t * (3 - 2 * t);
+  let opened = false, drop = null, released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    if (petLinkState.ropeRelease !== release) return;
+    for (const key of keys) el.style[key] = original[key];
+    petLinkState.ropeRelease = null;
+  };
+  petLinkState.ropeRelease = release;
+  try {
+    while (!released && alive() && epoch === petLinkState.epoch) {
+      const p = ctl.getPlayback();
+      if (!p || p.id !== playbackId || p.name !== playbackName || !['playing', 'ended'].includes(p.phase)) return false;
+      if (el.isConnected === false || petLinkRopeEl() !== el) return false;
+      if (Number.isFinite(p.currentTime)) {
+        const time = p.currentTime * 1000;
+        if (time >= grabAt) {
+          state.phase = 'mascot-drag';
+          const y = time < releaseAt
+            ? down * ease(progress(time, grabAt, pullMs), petLinkTune('mascotRopePullEase', 'mascot'))
+            : down * (1 - ease(progress(time, releaseAt, backMs), petLinkTune('mascotRopeBackEase', 'mascot')));
+          el.style.transitionProperty = 'none';
+          el.style.transform = (original.transform ? original.transform + ' ' : '') + 'translate(0px,' + y.toFixed(1) + 'px)';
+        }
+        if (!opened && time >= openAt) { opened = true; petLinkSnapOpenSidebar(); }
+        if (distance > 0 && time >= releaseAt) {
+          if (!drop) {
+            const rect = petLinkPetRect(), off = petLinkState.offset || { x: 0, y: 0 };
+            if (rect && petLinkPetEl()) {
+              const to = landingBase ? { x: landingBase.x, y: landingBase.y + distance }
+                : { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 + distance };
+              drop = { x: off.x, y: off.y, dx: to.x - rect.left - rect.width / 2, dy: to.y - rect.top - rect.height / 2 };
+            }
+          }
+          if (drop) {
+            const t = progress(time, releaseAt, dropMs);
+            const k = t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+            petLinkState.offset = { x: drop.x + drop.dx * k, y: drop.y + drop.dy * k };
+            petLinkElStyleX(petLinkState.offset.x, petLinkState.offset.y);
+          }
+        }
+        if (time >= endAt) return true;
+      }
+      if (p.phase === 'ended') return false;
+      const budget = Math.min(120000, Math.max(25000, (p.duration || 0) * 1000 + 3000));
+      if (petLinkNow() - started >= budget) return false;
+      await new Promise(resolve => petLinkFrame(() => resolve(true), resolve));
+    }
+    return false;
+  } catch { return false; }
+  finally { release(); }
+}
+
+/** 当前回执可用时从视频起点计时；旧控制面无回执时保留定时兼容。 */
 function petLinkRunMascotMotion(alive, state, landingBase) {
+  const ctl = petLinkPetCtl();
+  if (ctl && typeof ctl.getPlayback === 'function') {
+    let initial;
+    try { initial = ctl.getPlayback(); } catch { return Promise.resolve(false); }
+    if (!initial || initial.name !== PET_ANIM.mascotTumble || initial.phase !== 'playing') return Promise.resolve(false);
+    return petLinkMascotPlaybackMotion(ctl, initial, alive, state, landingBase);
+  }
   const tune = key => Math.max(0, petLinkTune(key, 'mascot'));
   const started = petLinkNow();
   const grabAt = tune('mascotGrabAtMs');

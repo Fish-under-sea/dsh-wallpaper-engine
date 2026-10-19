@@ -27,11 +27,22 @@ const EXTRA_GLASS_TAG_ID = "dsh-wallpaper-engine/extra-glass";
 /**
  * 清单 → 规则文本。**空清单返回空串**（= 一条规则都不生成 ⇒ 与未接本功能时逐字节一致）。
  *
- * 选择器只在**组前缀**下生效：`body[data-we-glass-page]:not([data-we-glass-fallback])`
+ * 每个选择器生成 **4 条规则**（2 档主题 × 正常/软渲两档所有权）：
+ *   · 浅色正常档 = 霜（backdrop-filter 读全局 --we-blur 滑杆）+ 完整两段 color-mix 底色
+ *     （styles-chrome 设置窗同一张配方表：tint×alpha 段 + (1 - readability-floor) 地板段）；
+ *   · 深色正常档 = 只覆盖底色（tint-dark），霜从浅色规则**级联**（两档同时匹配同一 ::before，
+ *     深色规则特异性更高 ⇒ 底色深色赢、霜无人覆盖照旧）；
+ *   · 软渲两档（resolver 打 data-we-surface-runtime="extra-fallback" 时才匹配）= 无霜、
+ *     不透明可读底色（tint 满量，形态同 styles-chrome 的 @supports 回退别名），浅色档显式
+ *     backdrop-filter:none，深色档靠级联继承 none —— 软渲环境不保留也不会生效的模糊。
+ *
+ * 组前缀（四把门）：
  *   · `data-we-glass-page`：与其余玻璃规则同一道"玻璃在算值"闸门（皮肤让路态下整族摘属性，
  *     本通道跟着一起失效 —— 不留"别人让路了、这层还在画"的半截状态）；
- *   · `:not([data-we-glass-fallback])`：软件光栅档下整组不匹配（与 #95 同政策 ——
- *     不会生效的 backdrop-filter 不留着，也不在软渲环境里白付合成代价）。
+ *   · 正常档 `:not([data-we-glass-fallback])` / 软渲档 `[data-we-glass-fallback]`：
+ *     与 #95 同政策 —— 不会生效的 backdrop-filter 不留在软渲环境里白付合成代价，
+ *     但底色可读性仍由 extra-fallback 规则兜住（不是整组裸奔）；
+ *   · `body[data-ds-dark-theme]`：深色配方分叉（tint/base/floor 全套换深色值）。
  */
 function weExtraGlassCss(selection) {
   const list = typeof sanitizeExtraGlassSelectors === "function"
@@ -39,17 +50,46 @@ function weExtraGlassCss(selection) {
     : "";
   if (!list) return "";
   const gate = "body[data-we-glass-page]:not([data-we-glass-fallback]) ";
-  const body = " content: \"\"; position: absolute; inset: 0; border-radius: inherit;"
-    + " z-index: -1; pointer-events: none;"
-    + " -webkit-backdrop-filter: blur(var(--we-blur, 16px)) saturate(var(--we-saturate, 1.8))"
+  const darkGate = "body[data-ds-dark-theme][data-we-glass-page]:not([data-we-glass-fallback]) ";
+  const softGate = "body[data-we-glass-page][data-we-glass-fallback] ";
+  const softDarkGate = "body[data-ds-dark-theme][data-we-glass-page][data-we-glass-fallback] ";
+  const base = " content: \"\"; position: absolute; inset: 0; border-radius: inherit;"
+    + " z-index: -1; pointer-events: none;";
+  // 霜只在浅色正常档声明一次（深色/软渲靠级联）⇒ 产物里 blur( 恒为每前缀一份。
+  const frost = " -webkit-backdrop-filter: blur(var(--we-blur, 16px)) saturate(var(--we-saturate, 1.8))"
     + " brightness(var(--we-glass-brightness, 1.04)) contrast(1.01);"
     + " backdrop-filter: blur(var(--we-blur, 16px)) saturate(var(--we-saturate, 1.8))"
-    + " brightness(var(--we-glass-brightness, 1.04)) contrast(1.01); }";
+    + " brightness(var(--we-glass-brightness, 1.04)) contrast(1.01);";
+  // 完整两段配方：地板段 readability-floor + tint 段（权重 0.9 与 chrome 设置窗 layer-1 同值）。
+  const mixLight = " background-color: color-mix(in srgb, var(--we-readability-base, #ffffff)"
+    + " calc(var(--we-readability-floor, 0.45) * 100%),"
+    + " color-mix(in srgb, var(--we-surface-tint-light, #ffffff)"
+    + " calc(var(--we-settings-window-alpha, 0.15) * 0.9 * 100%), transparent)"
+    + " calc((1 - var(--we-readability-floor, 0.45)) * 100%));";
+  const mixDark = " background-color: color-mix(in srgb, var(--we-readability-base, #0d1524)"
+    + " calc(var(--we-readability-floor, 0.59) * 100%),"
+    + " color-mix(in srgb, var(--we-surface-tint-dark, #0d1524)"
+    + " calc(var(--we-settings-window-alpha, 0.15) * 0.9 * 100%), transparent)"
+    + " calc((1 - var(--we-readability-floor, 0.59)) * 100%));";
+  // 软渲回退底色 = tint 满量（styles-chrome @supports 回退同形态），恒不透明、恒可读。
+  const opaqueLight = " -webkit-backdrop-filter: none; backdrop-filter: none;"
+    + " background-color: var(--we-surface-tint-light, #ffffff);";
+  const opaqueDark = " background-color: var(--we-surface-tint-dark, #0d1524);";
   // 拼接处的**前置不变量**：list 由 sanitizeExtraGlassSelectors 产出，只可能是"整条白名单
   // 选择器 + ', ' 分隔"（逗号不在单条白名单里，所以 ", " 只可能是分隔符）⇒ 这里按 ", " 拆出来
   // 的每一段都是**完整**选择器，不存在半截（总量上限与"超限整体作废"见 lib/settings-schema.js
   // 的 EXTRA_GLASS_SELECTORS_MAX 注释：旧版 400 字上限的 slice 会在这里切出半截选择器）。
-  const rules = list.split(", ").map((sel) => gate + sel + ":where([data-we-surface-runtime=\"extra\"])::before {" + body);
+  const ownExtra = ":where([data-we-surface-runtime=\"extra\"])::before {";
+  const ownFallback = ":where([data-we-surface-runtime=\"extra-fallback\"])::before {";
+  const rules = [];
+  for (const sel of list.split(", ")) {
+    rules.push(
+      gate + sel + ownExtra + base + frost + mixLight + " }",
+      darkGate + sel + ownExtra + base + mixDark + " }",
+      softGate + sel + ownFallback + base + opaqueLight + " }",
+      softDarkGate + sel + ownFallback + base + opaqueDark + " }",
+    );
+  }
   // ⚠️ 这条注释**只许用 ASCII**：它落在 JS 字符串字面量里（不是 styles.js 的模板），
   //    i18n 判据要求"字符串里的中文必须包 weT(...)"—— 生成出来的 CSS 注释不是 UI 文案，
   //    塞中文只会让守卫判红（实测踩过：`每条中文都进了 weT` 报 src/glass-extra.js 那一行）。

@@ -48,7 +48,8 @@
  *  · mock 宿主逐字照抄出货 `dsh-host-webserver` 的 register 判重顺序；`tapIndex()`、升级路由
  *    （`registerUpgrade`）与 `registerFallback` 不在 `apply()` 的注册面上，未建模。
  */
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cp } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { functionBodyOf, stripComments } from './tools/js-text.mjs';
@@ -394,9 +395,12 @@ check('判据②前置：场景成立（真的注册到一半被判重抛错、e
     if (oldSrc !== null) {
       rmSync(mirrorDir, { recursive: true, force: true });
       mkdirSync(mirrorDir, { recursive: true });
-      cpSync(join(ROOT, 'lib'), join(mirrorDir, 'lib'), { recursive: true });
-      cpSync(join(ROOT, 'package.json'), join(mirrorDir, 'package.json'));
-      cpSync(join(ROOT, 'cordis.patch.yml'), join(mirrorDir, 'cordis.patch.yml'));
+      // 镜像构建用标准异步 cp（t9 修订 2，captain 获批 C2 对照 pwsh-7 后授权）：
+      // 同源（lib/、package.json、cordis.patch.yml）同目标（old-order/）同递归选项，
+      // 仅 API 形态 sync → await；清单复制为逐文件非递归，await cp 同样适用。
+      await cp(join(ROOT, 'lib'), join(mirrorDir, 'lib'), { recursive: true });
+      await cp(join(ROOT, 'package.json'), join(mirrorDir, 'package.json'));
+      await cp(join(ROOT, 'cordis.patch.yml'), join(mirrorDir, 'cordis.patch.yml'));
       writeFileSync(join(mirrorDir, 'lib', 'index.js'), oldSrc);
       mirrorBuilt = true;
       const oldMod = await import(pathToFileURL(join(mirrorDir, 'lib', 'index.js')).href);

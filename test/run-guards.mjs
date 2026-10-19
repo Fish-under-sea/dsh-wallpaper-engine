@@ -218,6 +218,13 @@ const VERIFY_STEPS = [
   step('test/verify-pet-sidebar-rebound.mjs'),
   step('test/verify-pet-egg2-motion.mjs'),
   step('test/verify-pet-follow.mjs'),
+  // ⑫ P1 内置桌宠（upstream-fork `dsh-we-pet-builtin`，2026-10-19）：一条**装配/消费链**的验收判据
+  //    （派生身份与来源登记、root 接线、内置 provider 五类故障 reason、九动画五气泡可达与只追加 main、
+  //    浏览器换血、生命周期七项、负控七项）。归 hard：它是"内置包真的接上了 main"的唯一证据。
+  //    ⚠️ 它的静态兼容姊妹 `test/verify-pet-eslint-compat.mjs` **有意脱链**（它 `import { ESLint }
+  //    from 'eslint'`，而链的口径是零裸依赖 —— 见 `test/tools/guard-chain.mjs` 的 OFF_CHAIN_WHY；
+  //    与 `verify-static.mjs` 同理，devDependencies 只能由独立 CI 步骤消费）。
+  step('test/verify-pet-builtin.mjs'),
   // ⑥ 包发现层 `test/tools/packages.mjs` 的**自检**（P-B 基石）：上面这一批"包面"判据
   //    （client-sync 的产物集合 / bundle-rows 的行⇄包对账 / subpackage-manifests 的清单面 /
   //    host-route-index 一族的行·包解析）与 `scripts/build-client.mjs` 都读它 ⇒ 它自己坏了会
@@ -240,6 +247,15 @@ const VERIFY_STEPS = [
   //    第一条 npm run 之前），正判据与 10 条负对照共用一个纯函数（变异喂内存文本，不碰真 workflow）。
   //    与 ⑧ 同理归硬档：删掉 `verify:static` 或 `verify:bridge` 这类改动只有它能拦。
   step('test/verify-ci-steps.mjs'),
+  // ⑩ CI 分流接线最小守卫（CI 阶段一）：verify.yml 必须带固定名 `ci/result` 汇总且真的在跑
+  //    `scripts/ci-routing.mjs` —— 工作流被整体换回旧单 verify 矩阵时，只有它能当场红。
+  //    归硬档：分支保护的勾被静默摘走 = 全部 CI 判据无声脱离 PR 门禁（发布面）。
+  step('test/tools/ci-routing-red.mjs'),
+  // ⑪ ci-routing CLI 的隔离 git 库端到端（CI 阶段一）：`os.tmpdir()` 现造一次性仓库驱动
+  //    `scripts/ci-routing.mjs` 的真实管道（staged / unstaged / untracked 三通道、docs 于 full
+  //    差异 exit 3 拒绝、git 取不到差异 exit 2 阻断、judgeResult 放行/拒绝、参数严格解析）。
+  //    归硬档：分类器误判 docs / fail-closed 失效 = 代码改动走快通道绕过全量门禁（安全面）。
+  step('test/verify-ci-routing.mjs'),
 ];
 
 /** `npm run verify:docs` —— 软档（只出声）。全部经 warn-only 降级。 */

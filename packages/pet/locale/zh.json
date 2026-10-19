@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "内置桌宠（dsh-we-pet-builtin）",
+    "description": "上游 dsh-pet@0.3.7 的受控派生副本，作为 wallpaper bundle 的 upstream-fork 子包内置：宿主半边 lib/index.js（桌面透明窗 + AI 对话 + pet pack + 多实例控制面），浏览器半边 lib/client.js（预构建派生产物，注册 id dsh-we-pet-builtin）。与活动 dsh-pet 身份完全隔离（app.setName / userData / 数据根 $DSH_HOME/dsh-we-pet-builtin 均不共用）。"
+  }
+}

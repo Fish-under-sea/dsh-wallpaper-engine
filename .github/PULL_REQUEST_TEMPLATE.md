@@ -7,8 +7,10 @@
 
 ## 自测（必填）
 
-- [ ] 本地跑过 `npm run verify:all` 并全绿（改过 `src/**` 的话，已先跑 `npm run build` ——
-      产物不入库，重建后无需提交）
+- 验证路径：<!-- docs / docs-assets / full；CI 的 changes 作业会按完整 PR 差异自动分类，此处填写你预期的分类与原因；混入代码或分类不确定时必须 full，差异取不全时 CI 一律 fail-closed 按 full 处理 -->
+- [ ] 纯文档 / 展示素材：已运行文档快通道，记录实际命令和结果；不以 `verify:docs` 代替文档检查
+- [ ] 代码 / schema / 依赖 / CI / 测试 / 未知路径：已运行 `npm run verify:all`，记录硬档结果及软档、平台跳过；改过 `src/**` 时先构建，生成产物不入库
+- 未通过或未执行项：<!-- 如实记录；未执行不等于通过，文档快通道不解决此前代码门禁失败 -->
 - [ ] 没有手改 `lib/client.js`（它是构建产物）
 - [ ] 新增 `lib/` 文件已加进 `package.json` 的 `files`；新增 `src/` 文件已登记 `INLINE_MODULES`
 

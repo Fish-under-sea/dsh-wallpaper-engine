@@ -9,13 +9,16 @@
 > **无门控** = 两者都不挂（共存审计 M1 的全部暴露面 —— 白名单见下表，新增一条守卫即红）。
 > JS 侧的令牌写入（`src/font/apply.js` 的 label 族等）不在本契约口径内，见 `docs/DSH-UI-INTERFACES.md`。
 
-共 **173** 条声明 / **59** 个不同令牌。门控归属：
-玻璃 **142** 条 · 壁纸 **12** 条 · 无门控 **19** 条。
+共 **179** 条声明 / **59** 个不同令牌。门控归属：
+玻璃 **148** 条 · 壁纸 **12** 条 · 无门控 **19** 条。
 
 ## 无门控声明（白名单 —— M1 的全部暴露面）
 
-除下列两处封闭白名单外，**任何新的无门控 `--dsw-*` 声明都会让 `verify-token-contract` 变红**
-（按宿主规范消费 token 的第三方插件无法区分「玻璃开/关」，只能拿到配方本身 —— 见 `docs/COEXISTENCE.md`）。
+除下列封闭白名单外，**任何新的无门控 `--dsw-*` 声明都会让 `verify-token-contract` 变红**
+（白名单 = `body[data-we-thinking-native]` 思考块自带开关 + 插件自有 bare roots 封闭集
+`{.we-layer, .we-picker, .we-picker__modal, .we-qp}` —— 整条选择器链必须是纯逗号列表、
+每段 trim 后精确命中集合成员，不认 `.we-*` 前缀/子串，拒未知根/混组；
+按宿主规范消费 token 的第三方插件无法区分「玻璃开/关」，只能拿到配方本身 —— 见 `docs/COEXISTENCE.md`）。
 
 | 令牌 | 行 | 选择器链 | 归属 |
 |---|---|---|---|
@@ -44,9 +47,9 @@
 | 令牌 | 条数 | 门控 | 行号 | 消费者注记 |
 |---|---|---|---|---|
 | `--dsw-alias-bg-base` | 2 | 壁纸(2) | src/styles-base.js:223, src/styles-base.js:344 | 页面基底 —— 壁纸可见性的关键前提（transparent） |
-| `--dsw-alias-bg-layer-1` | 11 | 玻璃(10) + 无门控(1) | src/styles-base.js:97, src/styles-base.js:249, src/styles-base.js:356, src/styles-chrome.js:90, src/styles-chrome.js:151, src/styles-chrome.js:173, src/styles-chrome.js:178, src/styles-chrome.js:187, src/styles-ext.js:84, src/styles-ext.js:91, src/styles-ext.js:102 | 面板层次 1（宿主对话框/侧栏底）；better-sidebar 亦按它上色 |
-| `--dsw-alias-bg-layer-2` | 11 | 玻璃(11) | src/styles-base.js:252, src/styles-base.js:359, src/styles-shell.js:355, src/styles-chrome.js:93, src/styles-chrome.js:154, src/styles-chrome.js:174, src/styles-chrome.js:179, src/styles-chrome.js:188, src/styles-ext.js:85, src/styles-ext.js:92, src/styles-ext.js:103 | 面板层次 2 |
-| `--dsw-alias-bg-layer-3` | 10 | 玻璃(10) | src/styles-base.js:255, src/styles-base.js:362, src/styles-chrome.js:96, src/styles-chrome.js:157, src/styles-chrome.js:175, src/styles-chrome.js:180, src/styles-chrome.js:189, src/styles-ext.js:86, src/styles-ext.js:93, src/styles-ext.js:104 | 面板层次 3 |
+| `--dsw-alias-bg-layer-1` | 13 | 玻璃(12) + 无门控(1) | src/styles-base.js:97, src/styles-base.js:249, src/styles-base.js:356, src/styles-chrome.js:90, src/styles-chrome.js:151, src/styles-chrome.js:173, src/styles-chrome.js:178, src/styles-chrome.js:187, src/styles-panel.js:378, src/styles-panel.js:391, src/styles-ext.js:84, src/styles-ext.js:91, src/styles-ext.js:102 | 面板层次 1（宿主对话框/侧栏底）；better-sidebar 亦按它上色 |
+| `--dsw-alias-bg-layer-2` | 13 | 玻璃(13) | src/styles-base.js:252, src/styles-base.js:359, src/styles-shell.js:355, src/styles-chrome.js:93, src/styles-chrome.js:154, src/styles-chrome.js:174, src/styles-chrome.js:179, src/styles-chrome.js:188, src/styles-panel.js:381, src/styles-panel.js:394, src/styles-ext.js:85, src/styles-ext.js:92, src/styles-ext.js:103 | 面板层次 2 |
+| `--dsw-alias-bg-layer-3` | 12 | 玻璃(12) | src/styles-base.js:255, src/styles-base.js:362, src/styles-chrome.js:96, src/styles-chrome.js:157, src/styles-chrome.js:175, src/styles-chrome.js:180, src/styles-chrome.js:189, src/styles-panel.js:384, src/styles-panel.js:397, src/styles-ext.js:86, src/styles-ext.js:93, src/styles-ext.js:104 | 面板层次 3 |
 | `--dsw-alias-bg-module-platform` | 2 | 玻璃(2) | src/styles-base.js:270, src/styles-base.js:372 |  |
 | `--dsw-alias-bg-multi-select` | 2 | 玻璃(2) | src/styles-base.js:273, src/styles-base.js:375 |  |
 | `--dsw-alias-bg-overlay` | 2 | 玻璃(2) | src/styles-base.js:267, src/styles-base.js:369 | 弹层/浮出层底（issue #71 全表面玻璃） |

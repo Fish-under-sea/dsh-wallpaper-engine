@@ -124,10 +124,30 @@ function scanEdges(code) {
  * 开发面（`scripts/` / `test/`）的说明符抽取：只认**语句位置**的 import/export，外加
  * `new URL('…', import.meta.url)`。守卫与冒烟的负对照里大量存在**合成字符串**
  *（如 `"import a from '../../src/a.js';"`），全量正则会把它们当成真依赖（实测 16 条假阳性）。
+ *
+ * 第三类字段 `createsDir`：`new URL('…/', import.meta.url)` 常常是**准备写给本文件创建**的输出
+ * 目录（`.artifacts/pet-tuner/` 一类），此刻还不存在是正常的 —— 判据按"本文件会不会 mkdir 它"
+ * 识别，而不是要求目录先存在（下面 ④ 的 `resolvesDirOk` 仍要求其余目录真实存在）。
+ * 口径**收紧**在两点：① 只认同一行里直接 `mkdirSync(…)`，或 `const X = new URL(…)` 后文
+ * 有 `mkdirSync(X`（名字必须对上，不按"文件里出现过 mkdirSync"就放行）；② 条目数在判据侧
+ * 记分母，全部命中反而说明豁免被写宽了。
  */
+/**
+ * `new URL('…', import.meta.url)` 出现的那一行，是不是**本文件自己创建**这个目录？
+ * 两种形态：同行直接 `mkdirSync(…)`，或 `const X = new URL(…)` 之后出现 `mkdirSync(X`。
+ * 名字必须对上 —— 不按"文件里出现过 mkdirSync"就放行（那会把整类变成免检）。
+ */
+function createsDirOf(line, code) {
+  if (line.includes('mkdirSync(')) return true;
+  const bind = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*new URL\(\s*['"][^'"]+['"]\s*,\s*import\.meta\.url\s*\)/.exec(line);
+  return !!bind && code.includes('mkdirSync(' + bind[1]);
+}
+
 function devSpecifiers(text) {
   const out = [];
-  for (const line of stripComments(text).split('\n')) {
+  const code = stripComments(text);
+  const lines = code.split('\n');
+  for (const line of lines) {
     // 合成夹具一律以引号开头（`"import a from '…';",`）—— 跳过，否则负对照会被算成真依赖。
     if (/^\s*['"`]/.test(line)) continue;
     const m = /^\s*(?:import|export)\b[^;'"]*?\bfrom\s*['"]([^'"]+)['"]/.exec(line)
@@ -135,7 +155,7 @@ function devSpecifiers(text) {
     if (m) out.push({ form: '语句位置 import/export', spec: m[1] });
     for (const u of line.matchAll(/new URL\(\s*['"]([^'"]+)['"]\s*,\s*import\.meta\.url\s*\)/g)) {
       // `new URL('..', import.meta.url)` 指的是**目录**（仓库根），所以这一类允许目录命中。
-      out.push({ form: 'new URL(…, import.meta.url)', spec: u[1], allowDir: true });
+      out.push({ form: 'new URL(…, import.meta.url)', spec: u[1], allowDir: true, createsDir: createsDirOf(line, code) });
     }
   }
   return out;
@@ -358,11 +378,20 @@ console.log('\n④ 相对说明符必须解析到真实文件');
   const specsOf = (rel, text) => (rel.startsWith('lib/') ? scanEdges(stripComments(text)) : devSpecifiers(text));
   // 目录也算命中（`new URL('..', import.meta.url)` 指的就是目录；模块说明符另有 index 探测）。
   const resolvesDirOk = (rel) => resolves(rel) || (() => { try { return existsSync(join(ROOT, rel)) && statSync(join(ROOT, rel)).isDirectory(); } catch { return false; } })();
+  // `new URL(…, import.meta.url)` 的第三种合法形态：那是**本文件将要创建**的输出目录
+  //（`.artifacts/pet-tuner/` 一类，跑起来才 mkdir）。它此刻不存在是正常的，判据看的是
+  // "本文件确实会创建它"（`createsDir`，见 `devSpecifiers` 的口径），而不是"目录先存在"。
+  // ⚠️ 豁免必须**可对账**：下面同时记 `specs.length`，并断言"豁免严格少于全部 `new URL` 条目"——
+  //    否则一处写宽就会把所有 `new URL` 都变成免检（那等于删掉这条判据）。
+  const dirSpecs = allSources.flatMap(({ rel, text }) => specsOf(rel, text)
+    .filter((s) => s.allowDir).map((s) => ({ rel, ...s })));
   const missing = [];
+  const exempted = [];
   for (const { rel, text } of allSources) {
-    for (const { form, spec, allowDir } of specsOf(rel, text)) {
+    for (const { form, spec, allowDir, createsDir } of specsOf(rel, text)) {
       const resolved = resolveRelative(spec, rel);
       if (!resolved) continue; // node: 内置 / 裸包名：不由本判据负责
+      if (createsDir && !resolvesDirOk(resolved)) { exempted.push({ rel, spec }); continue; }
       const ok = allowDir ? resolvesDirOk(resolved) : resolves(resolved);
       if (!ok) missing.push(`${rel} → ${spec}（${form}）`);
     }
@@ -375,7 +404,15 @@ console.log('\n④ 相对说明符必须解析到真实文件');
   check('覆盖面：开发面也被扫到（scripts/ + test/ 至少 30 个 .mjs）', devSources.length >= 30,
     devSources.length + ' 个开发面 .mjs');
   check('lib/ 与开发面的每条相对路径都指向存在的文件', missing.length === 0,
-    missing.length ? missing.join('; ') : relativeEdges.length + ' 条全部可解析');
+    missing.length ? missing.join('; ')
+      : relativeEdges.length + ' 条全部可解析'
+        + (exempted.length ? '（其中 ' + exempted.length + ' 条是"本文件自己 mkdir 的输出目录"）' : ''));
+  // 豁免面可对账：① 只放行**确实会 mkdir** 的那几条；② 绝不等于全部 `new URL` 条目
+  //（全等说明一处写宽就把整类变成免检 —— 那等于删掉这条判据）。
+  check('覆盖面：豁免（"自己 mkdir 的输出目录"）严格少于全部 new URL 条目',
+    exempted.length < dirSpecs.length,
+    '豁免 ' + exempted.length + ' / new URL 条目 ' + dirSpecs.length
+      + (exempted.length ? '：' + exempted.map((e) => e.rel + ' → ' + e.spec).join('; ') : ''));
   // 负对照：同一条判据喂给一条指向不存在文件的相对边，必须报出来
   const probe = scanEdges("const m = await import('./does-not-exist.js');")
     .map(({ spec }) => resolveRelative(spec, 'lib/routes/probe.js'))
@@ -390,6 +427,17 @@ console.log('\n④ 相对说明符必须解析到真实文件');
   check('负对照：守卫负对照里的合成 import 字符串不会被误判',
     devSpecifiers('    "import a from \'../../src/a.js\';",').length === 0
       && devSpecifiers("import { x } from './real.js';").length === 1);
+  // 负对照 4：`createsDir` 的口径 —— **只有**"本文件真的 mkdir 它"才免检。
+  // 这是"豁免不写宽"的关键对照：同一行 `new URL` 换个用法就必须照旧被判缺失。
+  const dirOf = (text) => devSpecifiers(text).find((s) => s.allowDir) || {};
+  check('negative control: 同行直接 mkdirSync ⇒ 认作"自己创建的输出目录"',
+    dirOf("const d=new URL('../.artifacts/x/',import.meta.url);mkdirSync(d,{recursive:true});").createsDir === true);
+  check('negative control: 具名绑定后 mkdirSync(同名) 也算',
+    dirOf("const art = new URL('../.artifacts/x/', import.meta.url);\nif (x) mkdirSync(art, { recursive: true });").createsDir === true);
+  check('negative control: 只读不建（无 mkdirSync）⇒ 不豁免',
+    dirOf("const art = new URL('../.artifacts/x/', import.meta.url);\nreadFileSync(new URL('a.png', art));").createsDir === false);
+  check('negative control: mkdir 的是别的名字 ⇒ 不豁免（名字必须对上）',
+    dirOf("const art = new URL('../.artifacts/x/', import.meta.url);\nmkdirSync(otherDir, { recursive: true });").createsDir === false);
 
   // `test/tools/` 比 `scripts/`、`test/` **深一层** ⇒ 用 `import.meta.url` 推仓库根必须退**两层**。
   // 这是搬迁最容易漏的一处，且症状离奇：退一层会把 ROOT 解析成 `test/`，于是 buildIndex 读
@@ -535,7 +583,6 @@ console.log('⑥ `src/` 子目录成员数 ≥3');
   const NAIVE_ALLOWED = [
     'test/tools/js-text.mjs',             // 共享实现内含一条**反面参照**（证明缺陷真实存在）
     'test/tools/audit-guard-teeth.mjs',    // 判据 F 的**检测器**：就是靠这个正则找可疑区间
-    'test/tools/token-contract.mjs',       // CSS 专用（`stripCssComments`：剥 `src/styles.js` 的 CSS 模板体）
     'test/verify-glass-compositing.mjs',   // CSS 专用
     'test/verify-glass-surfaces.mjs',      // CSS 专用（玻璃面登记表：同样从产物取样式表并剥注释）
     'test/verify-readability.mjs',         // CSS 专用

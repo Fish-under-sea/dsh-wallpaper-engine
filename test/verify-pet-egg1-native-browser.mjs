@@ -59,7 +59,7 @@ try{
       };
       const media=new Function('env','with(env){'+${JSON.stringify(driver+'\n'+switchCode)}+';const startThrowLatestRef={current:startThrow};return {switchTo,ctl:{'+${JSON.stringify(ctlCode)}+'}};}')(env);
       const ctl=media.ctl;const throwNative=ctl.throwNative;ctl.throwNative=function(point,velocity){record('throw',{point,velocity,edge:sidebar.getBoundingClientRect().left,contact:stage.getBoundingClientRect().left+size*370/640});return throwNative(point,velocity);};
-      Object.assign(ctl,{lock(){locked=true;return true;},unlock(){locked=false;record('unlock');},lockBubbles(){bubbleLocked=true;return true;},unlockBubbles(){bubbleLocked=false;record('bubble-unlock');},isBubbleLocked:()=>bubbleLocked,pollState(){},hideBubble(){},setBubbleDuration(){}});window.__dshPetCtl=ctl;
+      Object.assign(ctl,{lock(){locked=true;return true;},unlock(){locked=false;record('unlock');},lockBubbles(){bubbleLocked=true;return true;},unlockBubbles(){bubbleLocked=false;record('bubble-unlock');},isBubbleLocked:()=>bubbleLocked,pollState(){},hideBubble(){},setBubbleDuration(){}});window.__dshWePetCtl=ctl;
       const move=(open,ms)=>{opened=open;sidebar.style.transition='left '+ms+'ms linear';sidebar.style.left=(open?innerWidth-Math.min(320,innerWidth*.4):innerWidth)+'px';record(open?'open':'close',{ms});};
       const module=new Function('weT','root','media','record','move','sidebar',${JSON.stringify(moduleSource+`\npetLinkPetEl=()=>root;petLinkProbe=async()=>true;petLinkSay=async()=>true;
         petLinkPost=async(url,body)=>{if(url.includes('/anim')){record('post',{name:body.name});media.switchTo(body.name,true);}return true;};

@@ -46,6 +46,51 @@ const NODE_GLOBALS = {
 };
 
 /**
+ * 上游预构建字节里的一条**指向不存在规则**的行内指令 —— 只在 ESLint 分析期抹掉，不改字节。
+ *
+ * `packages/pet/lib/**` 是 `dsh-pet@0.3.7` 的**已核预构建出口**：字节由
+ * `packages/pet/client.build.json`（两半 sha256 锚点）与 `test/tools/subpackage-shapes.mjs`
+ * （来源登记）双向钉住，并由 `node test/verify-pet-builtin.mjs` 逐字节对账 —— **改一个字节就红**。
+ *
+ * 上游 bundle 自带 6 行 `// eslint-disable-next-line @typescript-eslint/no-explicit-any`，
+ * 而本仓**不装** `@typescript-eslint/*`（也不该为一条注释去装依赖）⇒ 每条被报成
+ * `Definition for rule '@typescript-eslint/no-explicit-any' was not found.`
+ * （**6 条假错误，不是 6 个 `any`**）。
+ *
+ * 三条更粗的办法都被排除：改字节破坏 sha256 锚点；扩 `ignores` 把 `filesLinted` 从 354 压到
+ * 348（缩扫描面，等于让这三份产物脱离门禁）；提基线等于把 6 条假错误固化成欠账。
+ *
+ * 所以用**窄作用域 processor**：仅这三份已核文件、仅这一条指令、仅在分析用的文本里把该行
+ * 换成**等长空白**（保留缩进、长度与换行 ⇒ 行号不变，诊断位置不漂）。语义上等价于「这行注释
+ * 在 ESLint 眼里不存在」，而**文件本身一个字节都不动**。副作用边界：
+ * - 其它任何未知规则（如 `some-scope/unknown-rule`）仍照报「Definition for rule … was not found」；
+ * - `no-unused-vars` 等真实诊断仍照报（掩掉的只是注释行，不是代码）；
+ * - 作用域外的文件完全不受影响（`processor` 按 `files` 精确匹配）。
+ * 这三条边界由 `test/verify-pet-eslint-compat.mjs` 逐条真实反证。
+ */
+const UPSTREAM_PREBUILT_FILES = [
+  'packages/pet/lib/index.js',
+  'packages/pet/lib/standalone.js',
+  'packages/pet/lib/pet-link-backups/2026-10-17T17-57-50-362Z/index.js',
+];
+const UPSTREAM_UNSUPPORTED_DIRECTIVE = '// eslint-disable-next-line @typescript-eslint/no-explicit-any';
+
+const upstreamInlineDirectiveCompat = {
+  meta: { name: 'pet-upstream-inline-directive-compat', version: '1.0.0' },
+  // 只按**整行 trim 后逐字相等**判定：字符串/模板串里的同样文本带着引号反引号，不会命中。
+  preprocess(text) {
+    const lines = text.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].trim() === UPSTREAM_UNSUPPORTED_DIRECTIVE) lines[i] = ' '.repeat(lines[i].length);
+    }
+    return [lines.join('\n')];
+  },
+  postprocess(messageLists) {
+    return messageLists[0] ?? [];
+  },
+};
+
+/**
  * 浏览器全局名 —— 只给**躺在 `lib/` 里、运行期却在页面上**的那几个文件用。
  *
  * `lib/webwallgl/**` 是引擎的浏览器侧产物（经路由原样发给页面），`lib/we-focus-guard.js`
@@ -80,9 +125,13 @@ export default [
     // 不忽略它会把本机 lint 面从 ~260 撑到 ~1470（其中还有 `(fatal) Parsing error` 的历史探针），
     // 于是 `verify-static` 的棘轮在本机量与 CI 量之间对不上 —— 与 `repo-face.mjs` 的"脏扫描面"
     // （假绿）同一族：**扫描面必须来自 git 视角**。CI 上没有该目录 ⇒ CI 结论不变。
+    // `.artifacts/**`：`.gitignore` 里的**本地取证/实验产物**（宠物解包副本、README 预览的
+    // 浏览器 profile 快照等，git ls-files 为空）。不忽略它会把本机 lint 面撑到 ~4900 个 JS
+    // （含多份 8.5MB 扩展 bundle），实测完整扫描在 80s 后以 0xC0000005 原生崩溃 —— 与
+    // `.integration-notes/**` 同族：**扫描面必须来自 git 视角**。CI 上没有该目录 ⇒ CI 结论不变。
     ignores: [
       'lib/client.js', 'node_modules/**', '.npm-cache/**', '.test-cache/**', 'assets/**', 'lib/types/**',
-      '.integration-notes/**',
+      '.integration-notes/**', '.artifacts/**',
     ],
   },
 
@@ -222,5 +271,12 @@ export default [
     // **契约的形状**，与 `src/**` 的 `no-var` 同性质 ⇒ 形态级豁免，真正的判据在守卫里。
     files: ['src/panel-tabs.js'],
     rules: { 'no-empty-pattern': 'off' },
+  },
+  {
+    // 见文件头 `UPSTREAM_PREBUILT_FILES` 那段理由：三份**已核上游预构建字节**里各含 2 行指向
+    // 不存在插件的行内指令。只在分析期把该注释行抹成等长空白（行号/长度/字节全不变），
+    // 不注册伪造规则、不 ignore 文件、不动基线。边界由 `test/verify-pet-eslint-compat.mjs` 反证。
+    files: UPSTREAM_PREBUILT_FILES,
+    processor: upstreamInlineDirectiveCompat,
   },
 ];

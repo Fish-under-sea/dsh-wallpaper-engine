@@ -64,6 +64,15 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 // 发现层（task-1 冻结接口）：枚举面 ⇄ 发现层的发散判据靠它，不写死包名单。
 import { discoverPackages } from './tools/packages.mjs';
+// fork 形态真源（P1 upstream-fork）：形态判定只读这张表，不读清单里的任何"自称"字段。
+import {
+  isUpstreamFork,
+  upstreamForkViolations,
+  upstreamForkKeyOrderViolations,
+  UPSTREAM_FORKS,
+} from './tools/subpackage-shapes.mjs';
+/** fork 目录全集（S3.8 ③ 的排除面必须与它逐字相等；多一个/少一个都判红）。 */
+const UPSTREAM_FORK_DIRS_EXPECTED = UPSTREAM_FORKS.map((f) => f.dir);
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PATCH_REL = 'cordis.patch.yml';
@@ -495,6 +504,28 @@ const RECIPE_INLINE_FIELDS = ['file', 'why', 'markers'];
 function recipeShapeProblems(dir, obj) {
   const out = [];
   const at = dir + '/' + RECIPE_REL;
+  // upstream-fork 形态的配方是**预构建登记**：它不描述"怎么编"，而描述"产物必须长这样"。
+  // 因此 entry/inline 都不适用，改判 prebuilt 的四个字段（落点 / sha256 / 注册 id / 配对宿主半边）。
+  if (obj && obj.prebuilt != null) {
+    const pre = obj.prebuilt;
+    if (!pre || typeof pre !== 'object' || Array.isArray(pre)) { out.push(dir + '：S10.4 ' + at + ' 的 prebuilt 不是对象'); return out; }
+    if (obj.entry != null || obj.inline != null) {
+      out.push(dir + '：S10.4 ' + at + ' 同时给了 prebuilt 与 entry/inline（预构建形态不消费源码，两种形态只能选一种）');
+    }
+    for (const [key, lead] of [['entry', '产物落点'], ['hostEntry', '配对宿主半边落点']]) {
+      const rel = pre[key];
+      if (typeof rel !== 'string' || !rel.trim()) { out.push(dir + '：S10.4 ' + at + ' 的 prebuilt.' + key + '（' + lead + '）缺失'); continue; }
+      if (!fileExists(dir + '/' + dropDot(rel))) out.push(dir + '：S10.4 ' + at + ' 的 prebuilt.' + key + ' 不在盘：' + dir + '/' + dropDot(rel));
+    }
+    for (const [key, lead] of [['sha256', '产物字节'], ['hostSha256', '宿主半边字节']]) {
+      const v = pre[key];
+      if (typeof v !== 'string' || !/^[0-9a-f]{64}$/i.test(v)) {
+        out.push(dir + '：S10.4 ' + at + ' 的 prebuilt.' + key + '（' + lead + '）不是 64 位十六进制：' + JSON.stringify(v === undefined ? null : v));
+      }
+    }
+    if (typeof pre.moduleId !== 'string' || !pre.moduleId.trim()) out.push(dir + '：S10.4 ' + at + ' 的 prebuilt.moduleId（产物注册 id）缺失');
+    return out;
+  }
   const entry = typeof obj.entry === 'string' ? obj.entry.trim() : '';
   if (!entry) out.push(dir + '：S10.3 ' + at + ' 没有 entry（子包浏览器入口）');
   else if (!fileExists(dir + '/' + dropDot(entry))) out.push(dir + '：S10.3 ' + at + ' 的 entry 不在盘：' + dir + '/' + dropDot(entry));
@@ -619,9 +650,17 @@ function packagesViolations(input) {
     if (!m || typeof m !== 'object' || Array.isArray(m)) { add(dir, 'S3.7 清单不是 JSON 对象'); continue; }
 
     // S3.1 / S3.2 身份：name = 根名 + '-' + 目录名；version 与根同号
-    const wantName = rootPkg.name + '-' + leaf;
-    if (m.name !== wantName) add(dir, 'S3.1 name=' + JSON.stringify(m.name) + ' ≠ ' + JSON.stringify(wantName) + '（= 根包名 + "-" + 目录名）');
-    if (m.version !== rootPkg.version) add(dir, 'S3.2 version=' + JSON.stringify(m.version) + ' ≠ 根 version ' + JSON.stringify(rootPkg.version) + '（主包与所有子包同号）');
+    // ⚠️ upstream-fork（packages/pet）走**另一套**身份判据（固定派生身份 + 与已核来源同号版本，
+    // 见 S12）：它不是本仓自己写的 `<主包名>-<leaf>` 包，硬套这两条只会逼出"改名字/改版本"的假绿。
+    // 判据没有放宽：S12 对 fork 的 name/version 反而更严（必须与 UPSTREAM_SOURCES 逐字对上）。
+    if (!isUpstreamFork(dir)) {
+      const wantName = rootPkg.name + '-' + leaf;
+      if (m.name !== wantName) add(dir, 'S3.1 name=' + JSON.stringify(m.name) + ' ≠ ' + JSON.stringify(wantName) + '（= 根包名 + "-" + 目录名）');
+      if (m.version !== rootPkg.version) add(dir, 'S3.2 version=' + JSON.stringify(m.version) + ' ≠ 根 version ' + JSON.stringify(rootPkg.version) + '（主包与所有子包同号）');
+    } else {
+      for (const p of upstreamForkViolations(dir, m)) add(dir, p.slice(dir.length + 4));
+      for (const p of upstreamForkKeyOrderViolations(dir, m)) add(dir, p.slice(dir.length + 4));
+    }
 
     // S2.2 / S3.3 入口：main 在盘、exports['.'] 在盘、两者落点一致、files 覆盖每个具名出口
     const exp = (m.exports && typeof m.exports === 'object' && !Array.isArray(m.exports)) ? m.exports : {};
@@ -669,12 +708,18 @@ function packagesViolations(input) {
     }
 
     // S3.5 依赖方向：peer ⊆ 根 peer、@deepseek-ai/* 范围逐字取根、依赖里不得出现主包 / 子包名
+    // ⚠️ upstream-fork 走 **S12 的另一条判据**：它是独立 npm 包，宿主提供面来自上游自己的 peer
+    // 声明（dsh-llm / dsh-credentials / dsh-home-paths / dsh-client-ui-primitives 根 peer 里根本没有），
+    // 硬套「⊆ 根 peer + 逐字取根范围」只会逼出"删掉真实依赖"或"改写上游范围"两种假绿。
+    // S12 对它更严：三族依赖面必须与形态登记表**逐字相等**（多一个/少一个都判红）。
     const peers = (m.peerDependencies && typeof m.peerDependencies === 'object') ? m.peerDependencies : {};
-    for (const [n, range] of Object.entries(peers)) {
-      if (!(n in rootPeers)) { add(dir, 'S3.5 peer ' + n + ' 不在根 peerDependencies 里'); continue; }
-      if (n.startsWith('@deepseek-ai/') && range !== rootPeers[n]) {
-        add(dir, 'S3.5 peer ' + n + ' 范围 ' + JSON.stringify(range) + ' ≠ 根 ' + JSON.stringify(rootPeers[n])
-          + '（范围不逐字等同 ⇒ 宿主整次安装被拒 + 回滚）');
+    if (!isUpstreamFork(dir)) {
+      for (const [n, range] of Object.entries(peers)) {
+        if (!(n in rootPeers)) { add(dir, 'S3.5 peer ' + n + ' 不在根 peerDependencies 里'); continue; }
+        if (n.startsWith('@deepseek-ai/') && range !== rootPeers[n]) {
+          add(dir, 'S3.5 peer ' + n + ' 范围 ' + JSON.stringify(range) + ' ≠ 根 ' + JSON.stringify(rootPeers[n])
+            + '（范围不逐字等同 ⇒ 宿主整次安装被拒 + 回滚）');
+        }
       }
     }
     for (const field of ['dependencies', 'peerDependencies']) {
@@ -855,6 +900,11 @@ function manifestTemplateViolations({ dirs, texts }) {
 
   for (const [dir, m] of parsed) {
     // ① 顶层键序：必选键全在、模板外键判红、相对顺序落在模板序里。
+    // ⚠️ upstream-fork（packages/pet）**不套这 12 键模板**：它必须带 _derived / _upstream 来源登记、
+    // bin、engines、dependencies 等上游 npm 字段，硬套模板只会逼人删掉来源登记（那是把判据换成假绿）。
+    // 它走 S12 自己的键序表（FORK_KEY_ORDER，见 test/tools/subpackage-shapes.mjs），
+    // 且模板外键**只许**是登记白名单里的那些 —— 判据没有放宽，只是换了一套更贴合该形态的表。
+    if (isUpstreamFork(dir)) continue;
     const keys = Object.keys(m);
     for (const slot of MANIFEST_TOP_KEY_TEMPLATE) {
       if (!slot.optional && !keys.includes(slot.key)) {
@@ -876,12 +926,43 @@ function manifestTemplateViolations({ dirs, texts }) {
     }
 
     // ② files：规范单行字面量（多行 / 内容漂移都在这里判红），且位置在 dsh 块之后。
+    // fork 形态的发布白名单与一般子包**不同**（它要带 assets/、src/、runtime/、README.upstream.md、
+    // LICENSE 等上游面），所以不走这条单行字面量；它走下面 ② fork 段的**覆盖判据**：
+    // files 必须逐条覆盖 exports 的每个非通配目标，且必须覆盖 icon.png / locale / cordis.patch.yml /
+    // package.json 与登记的资源面（少一条 = 发出去的包缺东西，比"排版不逐字"更该红）。
     const lines = linesOf.get(dir);
     const filesAt = lines.findIndex((l) => /^\s*"files"\s*:/.test(l));
+    if (isUpstreamFork(dir)) {
+      if (filesAt < 0) add(dir, '顶层没有 files 键（fork 形态同样要有发布白名单）');
+      else {
+        const files = Array.isArray(m.files) ? m.files.map(String) : null;
+        if (!files) add(dir, 'files 不是数组');
+        else {
+          const norm = files.map((f) => dropDot(f).replace(/\/$/, ''));
+          const neg = files.filter((f) => String(f).startsWith('!')).map((f) => dropDot(f.slice(1)));
+          const covered = (rel) => norm.some((p) => p === rel || rel.startsWith(p + '/'));
+          const excluded = (rel) => neg.some((p) => rel === p || rel.startsWith(p + '/'));
+          for (const [key, spec] of Object.entries(m.exports || {})) {
+            const target = exportTarget(spec);
+            if (!target || target.includes('*')) continue;
+            const rel = dropDot(target);
+            if (!covered(rel)) add(dir, 'files 没覆盖 exports[' + JSON.stringify(key) + ']=' + JSON.stringify(target));
+          }
+          for (const f of ['package.json', 'icon.png', 'cordis.patch.yml', 'locale', 'LICENSE']) {
+            if (!norm.includes(f)) add(dir, 'files 缺 ' + f);
+          }
+          // 备份探针必须在发布面外（验收①：排备份探针，且必须**显式**排除，不是靠"没列进去"）。
+          const backups = 'lib/pet-link-backups';
+          if (fileExists(dir + '/' + backups) && !excluded(backups)) {
+            add(dir, 'files 没有排除 ' + backups + '（工具备份不许进发布面；写 "!' + backups + '"）');
+          }
+        }
+      }
+    }
     const expectedFilesLine = m.exports?.['./install'] ? MANIFEST_INSTALLER_FILES_LINE : MANIFEST_FILES_LINE;
     if (filesAt < 0) {
-      add(dir, '顶层没有 files 键（模板要求；发布白名单）');
-    } else if (lines[filesAt] !== expectedFilesLine) {
+      if (!isUpstreamFork(dir)) add(dir, '顶层没有 files 键（模板要求；发布白名单）');
+    } else if (!isUpstreamFork(dir) && lines[filesAt] !== expectedFilesLine) {
       add(dir, 'files 不是规范单行字面量：实际 L' + (filesAt + 1) + ' ' + JSON.stringify(lines[filesAt])
         + '（应为 ' + JSON.stringify(expectedFilesLine) + '；改回单行数组，键值行样式与 S3.8 模板逐字相同）');
     }
@@ -896,8 +977,14 @@ function manifestTemplateViolations({ dirs, texts }) {
   }
 
   // ③ 同形态逐字对账：掩掉 name / description / exports['./client'] 目标 + peer 两块后整份字符串必须相等。
+  // ⚠️ upstream-fork（packages/pet）**不进任何同形态组**：它本来就与一般子包不同形态
+  // （固定派生身份、独立版本号、上游 npm 字段、预构建产物），把它塞进 client-half 组做逐字对账，
+  // 结果只能是"要么把 pet 改成一般子包（丢来源登记），要么给整组开洞"。它的"同形态"对账在
+  // S12 里做（对**登记表**逐字对账，比对一个现成清单更严）。它是否真的被判过，由调用方
+  // （生产路径）单独钉一条覆盖面地板 —— 不放在本函数里，因为负对照喂的是合成 dirs。
   const byHalf = new Map();
   for (const [dir, m] of parsed) {
+    if (isUpstreamFork(dir)) continue;
     const half = manifestHalfOf(m);
     if (!byHalf.has(half)) byHalf.set(half, []);
     byHalf.get(half).push(dir);
@@ -1006,6 +1093,21 @@ for (const dir of packageDirs.filter(dir => JSON.parse(packageTexts.get(dir)).ex
 }
 const templateProblems = manifestTemplateViolations({ dirs: packageDirs, texts: packageTexts });
 const packageProblems = [...packagesViolations(packagesInput), ...templateProblems];
+
+// fork 覆盖面地板（只在生产路径判）：S3.8 ③ 把 fork 排除在同形态组之外，排除**不许**变成漏判 ——
+// 登记表里的每个 fork 目录都必须在盘上被枚举到，且盘上每个 fork 形态目录都必须在登记表里。
+// 放在这里而不是 manifestTemplateViolations 里：那个函数会被负对照喂合成 dirs，放进去会误报。
+{
+  const onDisk = packageDirs.filter((d) => isUpstreamFork(d));
+  const registered = UPSTREAM_FORK_DIRS_EXPECTED;
+  const missing = registered.filter((d) => !onDisk.includes(d));
+  const extra = onDisk.filter((d) => !registered.includes(d));
+  check('fork 覆盖面：登记表 ⇄ 盘上 fork 形态目录 互为双射（排除同形态对账 ≠ 漏判）',
+    missing.length === 0 && extra.length === 0,
+    [missing.length ? '登记了但盘上不是 fork 形态（或目录没落盘）：' + missing.join(' ') : '',
+      extra.length ? '盘上是 fork 形态却没登记（S3.8 ③ 会静默跳过它）：' + extra.join(' ') : '']
+      .filter(Boolean).join('；') || ('登记 ' + registered.length + ' 个 · 盘上 ' + onDisk.length + ' 个：[' + onDisk.join(' ') + ']'));
+}
 const scoped = new Map(packageDirs.map((d) => [d, []]));
 const unscoped = [];
 for (const p of packageProblems) {

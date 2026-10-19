@@ -39,7 +39,10 @@ function load(options = {}) {
     petLinkState.offset = { x: 35, y: 20 };
     petLinkState.available = true;
     petLinkState.runner = { busy: true };
+    const playback = options.playback;
+    if (playback) petLinkPetCtl = () => ({ getPlayback: () => playback });
     return { tuner: petLinkTuner, state: petLinkState, ropeStyle, petStyle,
+      motion: alive => petLinkRunMascotMotion(alive, petLinkState.runner),
       run: () => petLinkRunInner('mascot', petLinkState.epoch),
       pull: alive => petLinkPullRopeDown(alive), dispose: () => petLink.dispose() };
   `)(...Object.values(env));
@@ -216,5 +219,52 @@ await check('跳抓播放中取消清理位移且不得晚启动下落', async (
   assert.deepEqual(h.state.offset, { x: 0, y: 0 });
   assert.equal(h.events.filter(e => e.type === 'pet').length, count);
   assert.equal(ropeMoves(h).length, 0);
+});
+await check('真实视频停帧时抓绳不抢跑，迟到回执按视频进度跟上', async () => {
+  const playback = { id: 71, name: '吉祥物-跳抓眩晕落地起身-dshwe', phase: 'playing', currentTime: 0, duration: 8 };
+  const h = load({ playback }); timing(h);
+  let live = true;
+  const pending = h.motion(() => live);
+  await h.advance(2000);
+  assert.equal(ropeMoves(h).length, 0, '视频未到抓握点，墙钟不能拉绳');
+  assert.equal(h.events.filter(e => e.type === 'open').length, 0);
+  playback.currentTime = .4;
+  await h.advance(2010);
+  assert.match(h.ropeStyle.transform, /75(?:\.0)?px/, '视频已在拉取中点，不能从零重新计时');
+  const paused = h.ropeStyle.transform;
+  await h.advance(2400);
+  assert.equal(h.ropeStyle.transform, paused, '停帧后保持手部对应位置');
+  playback.currentTime = 1.15;
+  await h.advance(2410);
+  assert.equal(h.events.filter(e => e.type === 'open').length, 1);
+  assert.ok(h.state.offset.y > 20, '脱手下落也使用视频进度');
+  playback.id++;
+  await h.advance(2420); await pending;
+  assert.equal(h.ropeStyle.transform, 'translateX(3px)', '视频替换立即归还绳子');
+  const count = ropeMoves(h).length;
+  live = false; await h.advance(3000);
+  assert.equal(ropeMoves(h).length, count, '旧播放不再写入');
+});
+await check('视频时钟到脱手和落点后归还绳子，取消不留旧帧', async () => {
+  const name = '吉祥物-跳抓眩晕落地起身-dshwe';
+  const playback = { id: 72, name, phase: 'playing', currentTime: .4, duration: 8 };
+  const h = load({ playback }); timing(h);
+  const pending = h.motion(() => true);
+  await h.advance(10);
+  assert.match(h.ropeStyle.transform, /75(?:\.0)?px/);
+  playback.currentTime = 1.4;
+  await h.advance(20); await pending;
+  assert.equal(h.ropeStyle.transform, 'translateX(3px)');
+  assert.equal(h.state.offset.y, 100);
+  assert.equal(h.events.filter(e => e.type === 'open').length, 1);
+  const p2 = { id: 73, name, phase: 'playing', currentTime: .4, duration: 8 };
+  const c = load({ playback: p2 }); timing(c);
+  const cancelled = c.motion(() => true);
+  await c.advance(10); c.dispose(); await c.advance(30); await cancelled;
+  assert.equal(c.ropeStyle.transform, 'translateX(3px)');
+  assert.deepEqual(c.state.offset, { x: 0, y: 0 });
+  const count = c.events.length;
+  p2.currentTime = 1.4; await c.advance(2000);
+  assert.equal(c.events.length, count, '卸载后没有迟到抓握、侧栏或下落');
 });
 if (failures) process.exitCode = 1;

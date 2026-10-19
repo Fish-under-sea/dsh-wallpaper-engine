@@ -57,7 +57,7 @@ try {
       const videoApi=new Function('env','with(env){'+${JSON.stringify(switchCode)}+';return{switchTo};}')(media);
       const ctl=new Function('env','with(env){return({'+${JSON.stringify(controlCode)}+'});}')(media);
       Object.assign(ctl,{lock(){locked=true;events.push({type:'lock',at:performance.now()});return true;},unlock(){locked=false;events.push({type:'unlock',at:performance.now()});},pollState(){}});
-      window.__dshPetCtl=ctl;
+      window.__dshWePetCtl=ctl;
       const module=new Function('el','videoApi',${JSON.stringify(tuner+'\n'+pet+`\npetLinkPetEl=()=>el;petLinkProbe=async()=>true;petLinkPost=async(url,body)=>{if(url.includes('/anim')){videoApi.switchTo(body.name,true);}return true;};petLinkState.offset={x:0,y:0};return{state:petLinkState,back:(home)=>petLinkReturnHomeWalk(600,()=>true,home),dispose:()=>petLink.dispose()};`)})(root,videoApi);
       const initial=root.getBoundingClientRect().toJSON(),trace={root,media,ctl,module,events,frames,home,initial,done:false};window.__phase=trace;
       function sample(){if(trace.done)return;const r=root.getBoundingClientRect(),p=ctl.getPlayback();frames.push({at:performance.now(),x:r.left+r.width/2,y:r.top+r.height/2,phase:p.phase,currentTime:p.currentTime});requestAnimationFrame(sample);}sample();

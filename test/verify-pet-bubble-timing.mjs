@@ -99,7 +99,7 @@ const screenshotValues = {
     egg1FlingMs: 520, egg1PostLandMs: 600 },
   egg2: { egg2LeadMs: 600, egg2HissMs: 5167 },
   mascot: { mascotWalkMs: 0, mascotTumbleMs: 8000, mascotOpenAtMs: 2500,
-    mascotRopeDownPx: 90, mascotRopePullMs: 420, mascotRopeBackMs: 260,
+    mascotRopeDownPx: 40, mascotRopePullMs: 800, mascotRopeBackMs: 260,
     mascotReleaseAtMs: 2920, mascotDropPx: 90, mascotDropMs: 520,
     mascotRopePullEase: 1, mascotRopeBackEase: 2 },
 };
@@ -373,7 +373,7 @@ await check('独立支线参数全部导出，旧21键默认值保留', () => {
   const h = load(); h.state.tuning = {};
   const values = h.tuner.snapshot().values;
   const expected = { mascotWalkMs: 0, mascotTumbleMs: 8000, mascotOpenAtMs: 2500,
-    mascotRopeDownPx: 90, mascotRopePullMs: 420, mascotRopeBackMs: 260,
+    mascotRopeDownPx: 40, mascotRopePullMs: 800, mascotRopeBackMs: 260,
     egg1WalkMs: 0, egg1LeadMs: 600, egg1KickMs: 5167, egg1FlungMs: 10125,
     egg1LandMs: 5167, egg1FlingPx: 420, egg1FlingMs: 520, egg2LeadMs: 600, egg2HissMs: 5167 };
   for (const [key, value] of Object.entries(expected)) assert.equal(values[key], value, key);

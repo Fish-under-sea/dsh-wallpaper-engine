@@ -48,7 +48,7 @@ async function evaluate(expression) {
 async function until(expression, label, ms = 12000) {
   const end = Date.now() + ms;
   while (Date.now() < end) { if (await evaluate(expression)) return; await delay(50); }
-    throw Error(label + '\n' + JSON.stringify(await evaluate(`({ctl:!!window.__dshPetCtl,videos:[...document.querySelectorAll('video')].map(v=>({front:v.classList.contains('is-front'),ready:v.readyState,network:v.networkState,error:v.error?.message,paused:v.paused,time:v.currentTime,src:v.currentSrc.slice(0,100)})),playback:window.__dshPetCtl?.getPlayback(),log:window.__log,errors:window.__errors,phase:window.__link?.state.runner})`)));
+    throw Error(label + '\n' + JSON.stringify(await evaluate(`({ctl:!!window.__dshWePetCtl,videos:[...document.querySelectorAll('video')].map(v=>({front:v.classList.contains('is-front'),ready:v.readyState,network:v.networkState,error:v.error?.message,paused:v.paused,time:v.currentTime,src:v.currentSrc.slice(0,100)})),playback:window.__dshWePetCtl?.getPlayback(),log:window.__log,errors:window.__errors,phase:window.__link?.state.runner})`)));
 }
 try {
   let port; const deadline = Date.now() + 20000;
@@ -79,7 +79,7 @@ try {
       animations:{idle:['待机呼吸休闲'],turn:[],drag:['被鼠标拖拽悬空反馈'],clicks:['点击回应-开心跃动'],moves:{default:{minDist:20,maxDist:40,margin:20,leadSec:0,tailSec:0},actions:[]},categories:[],events:{DSHWE:${JSON.stringify(PET_NAMES)},balance:[],whisper:[],workStatus:[]}},
       animationWeights:{idle:100,turn:0,move:0},physics:{gravity:1400,restitution:.78,groundFriction:2.5,ceilingBounce:true,throwPower:1,petCollision:false},eventsRefreshSec:{whisper:300,balance:1800},workStatusTexts:[],confineToScreen:true}};
     const assets=${JSON.stringify(assets)};
-    window.__cap={protocol:1,generation:'initial',enabled:true,linkEnabled:true,available:true,ttlMs:1500,target:'main',petBase:'/dsh-pet-7340',names:${JSON.stringify(PET_NAMES)}};
+    window.__cap={protocol:1,generation:'initial',enabled:true,linkEnabled:true,available:true,ttlMs:1500,target:'main',petBase:'/dsh-we-pet-builtin',names:${JSON.stringify(PET_NAMES)}};
     window.fetch=async (input,init={})=>{
       if(init.signal?.aborted)throw new DOMException('cancelled','AbortError');
       const path=String(input),pathname=new URL(path,'https://fixture.invalid').pathname;const json=value=>new Response(JSON.stringify(value),{headers:{'Content-Type':'application/json'}});
@@ -102,7 +102,7 @@ try {
   })()`);
   await evaluate(client);
   await evaluate(`window.__reactRoot=ReactDOM.createRoot(document.getElementById('pet'));window.__mount=()=>ReactDOM.flushSync(()=>__reactRoot.render(React.createElement(__overlay)));__mount();`);
-  await until(`window.__dshPetCtl?.getRoot()?.isConnected && document.querySelector('video.is-front')?.readyState>=2`, '完整原版准备客户端必须真实挂载并解码原生待机');
+  await until(`window.__dshWePetCtl?.getRoot()?.isConnected && document.querySelector('video.is-front')?.readyState>=2`, '完整原版准备客户端必须真实挂载并解码原生待机');
   const pixels = await evaluate(`(()=>{const v=document.querySelector('video.is-front'),c=document.createElement('canvas');c.width=160;c.height=90;const x=c.getContext('2d');x.drawImage(v,0,0,160,90);const p=x.getImageData(0,0,160,90).data;let count=0;for(let i=3;i<p.length;i+=4)if(p[i]>30)count++;return count;})()`);
   assert.ok(pixels > 80, '实际视频 canvas 不能空白：' + pixels);
   await evaluate(`window.__makeLink=()=>new Function('env','with(env){'+${JSON.stringify(link)}+';return {...petLink,state:petLinkState,runtime:petLinkRuntime,eligible:petLinkEligible,set:petLinkSetLogicTune};}')( {window,document,location,performance,Date,getComputedStyle:el=>window.getComputedStyle(el),AbortController,fetch,apiUrl:p=>'/wallpaper-engine'+p,weT:s=>s,wallSidebarToggle:()=>{window.__toggles=(window.__toggles||0)+1;return true;},wallSidebarOpen:()=>{},wallSidebarClose:()=>{},setTimeout:(fn,ms)=>window.setTimeout(fn,ms),clearTimeout:id=>window.clearTimeout(id),setInterval:(fn,ms)=>window.setInterval(fn,ms),clearInterval:id=>window.clearInterval(id),requestAnimationFrame:fn=>window.requestAnimationFrame(fn),cancelAnimationFrame:id=>window.cancelAnimationFrame(id),apiFetch:async(path,init)=>{const r=await fetch(path,init);return {ok:r.ok,data:await r.json()};}});window.__link=__makeLink();__link.warmup();`);
@@ -121,13 +121,13 @@ try {
   await until('__link.eligible()', '实际当前桌宠与桥接共同取得资格');
   assert.equal(await evaluate(`document.querySelector('[data-tuner="run"]').disabled`), false);
   await evaluate(`__link.tuner.open();__link.set('mascot','mascotWalkMs',600);void(window.__run=__link.tuner.run('mascot'));`);
-  await until(`__log.some(e=>e.path.includes('/anim')&&e.data.name==='吉祥物-跳抓眩晕落地起身-dshwe')&&window.__dshPetCtl.getPlayback().name==='吉祥物-跳抓眩晕落地起身-dshwe'&&window.__dshPetCtl.getPlayback().phase==='playing'`, '真实左蟹步后进入跳抓视频');
-  await until(`window.__dshPetCtl.getPlayback().name==='吉祥物-跳抓眩晕落地起身-dshwe'&&document.querySelector('video.is-front')?.currentTime>2.65&&!!__link.state.ropeRelease`, '真实抓绳下拉阶段必须已开始');
+  await until(`__log.some(e=>e.path.includes('/anim')&&e.data.name==='吉祥物-跳抓眩晕落地起身-dshwe')&&window.__dshWePetCtl.getPlayback().name==='吉祥物-跳抓眩晕落地起身-dshwe'&&window.__dshWePetCtl.getPlayback().phase==='playing'`, '真实左蟹步后进入跳抓视频');
+  await until(`window.__dshWePetCtl.getPlayback().name==='吉祥物-跳抓眩晕落地起身-dshwe'&&document.querySelector('video.is-front')?.currentTime>2.65&&!!__link.state.ropeRelease`, '真实抓绳下拉阶段必须已开始');
   await evaluate('__link.tuner.close()');
   const art = new URL('../.artifacts/pet-hotplug/', import.meta.url); mkdirSync(art, { recursive: true });
   const shot = await send('Page.captureScreenshot', { format: 'png' }); writeFileSync(new URL('mounted-' + width + 'x' + height + '.png', art), Buffer.from(shot.data, 'base64'));
   await evaluate(`__cap.linkEnabled=false;`);
-  await until(`!__link.eligible()&&!__link.state.runner?.busy&&!window.__dshPetLock&&!window.__dshPetBubbleLock`, '关闭联动必须终止真实跳抓');
+  await until(`!__link.eligible()&&!__link.state.runner?.busy&&!window.__dshWePetLock&&!window.__dshWePetBubbleLock`, '关闭联动必须终止真实跳抓');
   const stopped = await evaluate(`({posts:__log.length,frames:__link.runtime.frames.size,waits:__link.runtime.waits.size,requests:__link.runtime.requests.size,panel:!!document.querySelector('[data-pet-tuner]')})`);
   assert.equal(stopped.frames, 0); assert.equal(stopped.waits, 0); assert.equal(stopped.requests, 0); assert.equal(stopped.panel, true);
   assert.equal(await evaluate(`document.querySelector('[data-tuner="run"]').disabled`), true);
@@ -149,7 +149,7 @@ try {
   }
   await verifyEgg2Browser({ evaluate, until, send, width, height, art });
   await evaluate(`__link.dispose();ReactDOM.flushSync(()=>__reactRoot.unmount());for(const fn of __cleanups.reverse())fn();`);
-  const clean = await evaluate(`({frames:__link.runtime.frames.size,waits:__link.runtime.waits.size,requests:__link.runtime.requests.size,started:__link.runtime.started,action:!!window.__dshPetLock,bubble:!!window.__dshPetBubbleLock,root:!!document.querySelector('.dsh-pet-root'),errors:__errors})`);
+  const clean = await evaluate(`({frames:__link.runtime.frames.size,waits:__link.runtime.waits.size,requests:__link.runtime.requests.size,started:__link.runtime.started,action:!!window.__dshWePetLock,bubble:!!window.__dshWePetBubbleLock,root:!!document.querySelector('.dsh-pet-root'),errors:__errors})`);
   assert.deepEqual(clean, { frames: 0, waits: 0, requests: 0, started: false, action: false, bubble: false, root: false, errors: [] });
   assert.equal(await evaluate(`!!document.querySelector('[data-pet-tuner]')`), false);
   assert.deepEqual(errors, []);

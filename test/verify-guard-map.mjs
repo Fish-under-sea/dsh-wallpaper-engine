@@ -121,6 +121,10 @@ const NO_MODULE_TARGET_WHY = {
   'verify-eol.mjs': '管的是**行尾契约**（`.gitattributes` 的 `* text=auto eol=lf`）：扫 `git ls-files` 的全部入库文件，判"文本文件字节里零 `0x0D`"，目标是"整棵入库树必须是 LF"，不针对某个模块',
   // PR #5：可选桌宠联动离线回归的**聚合入口**（逐个 spawn 上面那批 `verify-pet-*.mjs`，自身不读源文件）。
   'verify-pet-link.mjs': '管的是**可选桌宠联动离线回归的整组**（聚合入口：按清单 spawn `test/verify-pet-*.mjs`，自身不直读任何源模块）；组内每条各自在链上，入口只是手动/包内便利入口',
+  // CI 阶段一：ci-routing CLI 的**隔离 git 库端到端**（`os.tmpdir()` 现造一次性仓库驱动
+  // `scripts/ci-routing.mjs` 的真实管道：staged/unstaged/untracked 三通道、docs 于 full 差异
+  // exit 3 拒绝、judgeResult 汇总核验），目标是 CLI 行为与分类器的 fail-closed 语义，不读 lib/src 源模块。
+  'verify-ci-routing.mjs': '管的是 **ci-routing CLI 的端到端行为**（隔离 git 库：staged/unstaged/untracked 三通道、full 误调 docs ⇒ exit 3、judgeResult 汇总），读的是 `scripts/ci-routing.mjs` 与临时仓库，不针对某个 lib/src 模块',
 };
 
 const map = buildMap(ROOT);

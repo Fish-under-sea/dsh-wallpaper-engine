@@ -28,7 +28,11 @@ assert.equal(first.headers['cache-control'], 'no-store');
 assert.equal(first.data.protocol, 1);
 assert.equal(first.data.enabled, true);
 assert.equal(first.data.linkEnabled, true);
-assert.equal(first.data.available, false);
+// P1：就绪面换成**内置 provider**。可用性来自内置包（`dsh-we-pet-builtin` 在盘 + 两半产物
+// 字节锚点 + 内置资源面九动画五气泡），不再来自"用户是否跑过外部安装器"。所以干净 home
+// 里 available 就是 true —— 这正是内置化的目的：用户不需要准备任何东西。
+assert.equal(first.data.available, true);
+assert.equal(first.data.reason, '');
 assert.equal(first.data.ttlMs, 1500);
 assert.equal(typeof first.data.generation, 'string');
 config.linkEnabled = false;
@@ -48,11 +52,13 @@ nextUnmount();
 assert.equal(routes.size, 0);
 console.log('PASS 协议、短期资格、无缓存、独立联动开关、代际和迟到退出');
 
+// P1：数据根是 `$DSH_HOME/dsh-we-pet-builtin`（本插件产品数据面），外部 `dsh-pet` 目录
+// 里的东西**不参与**就绪判定 —— 写一份"外部链看起来都齐了"的假安装记录，就绪面必须无视它。
 const data = join(home, 'dsh-pet');
 mkdirSync(join(data, 'animation-ext'), { recursive: true });
-writeFileSync(join(data, 'animation-ext/leash-bridge-ext.json'), JSON.stringify({ target: 'main', animations: { events: { DSHWE: ['通用-右侧螃蟹步-dshwe', '侧边栏-蓄力准备往后拉-dshwe', '侧边栏-后拉接疲态结束-dshwe'] } } }));
+writeFileSync(join(data, 'animation-ext/leash-bridge-ext.json'), JSON.stringify({ target: 'main', animations: { events: { DSHWE: ['通用-右侧螃蟹步-dshwe'] } } }));
 const stop = mount();
-assert.equal(get().data.available, false, '仅有扩展文件不得认定已准备');
-assert.ok(get().data.reason);
+assert.equal(get().data.available, true, '就绪面只看内置包，不受外部 dsh-pet 目录影响');
+assert.equal(get().data.reason, '');
 stop();
-console.log('PASS 缺少完整安装凭据时拒绝接管');
+console.log('PASS 外部 dsh-pet 残留目录不参与就绪判定（内置 provider 只看内置包）');

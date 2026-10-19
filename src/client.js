@@ -4832,89 +4832,313 @@ function RopeDock() {
   }, [hidden]);
 
   const petOfficialMode = sidebarRightMode() === "official";
-  // 桌宠联动编排用的侧栏控制面（pet-link 子包）。旧版抽屉已删除，所以只有官方态。
-  // 官方侧栏是**宿主自己的** CSS Grid 第三列，列宽由 React 内联样式写，且宿主自带
-  // `transition: grid-template-columns var(--ds-transition-duration-slow)`。
-  // 我们**绝不改写它的 grid-template-columns**（实测那样会覆盖宿主三列定义、
-  // 把左列冻结成错误宽度，面板会跑到屏幕左侧）；只把它的过渡时长临时调长，
-  // 让宿主**自己的**展开动画变慢 —— 这就是"缓慢拉出"，且不碰它的布局。
+  // 只接管过渡时序，不改宿主列宽值；新版须同时控制外层 grid 与 panel 内的 DockKit。
   const officialPull = {
     saved: null,
     savedOverflow: null,
-    /** 调长宿主过渡并触发展开。 */
-    begin(ms, expanded = true) {
-      const frame = typeof document !== "undefined" && document.querySelector
-        ? document.querySelector(".dshDesktopFrame") : null;
-      if (!frame) { if (expanded) wallSidebarOpen(); else wallSidebarClose(); return 0; }
-      if (officialPull.saved === null) {
-        officialPull.saved = frame.style.getPropertyValue("--ds-transition-duration-slow") || "";
+    savedFrame: null,
+    savedSurface: null,
+    savedTransition: null,
+    savedPriority: "",
+    motionRun: null,
+    // 临时现场诊断：最多24组，不采文本/URL/会话标识。定位完成后移除。
+    traceLeft: 24,
+    trace(stage, target, progress) {
+      if (officialPull.traceLeft <= 0 || typeof apiPostJson !== "function") return;
+      officialPull.traceLeft--;
+      try {
+        const panel = target && target.surface;
+        const round = value => Number.isFinite(value) ? Math.round(value) : null;
+        const rectOf = node => {
+          if (!node || typeof node.getBoundingClientRect !== "function") return null;
+          const r = node.getBoundingClientRect();
+          return [round(r.left), round(r.top), round(r.width), round(r.height)];
+        };
+        const clipOf = node => node && node.style ? node.style.getPropertyValue("clip-path") : "";
+        const record = panel && typeof weSurfaceRuntime !== "undefined" && weSurfaceRuntime
+          ? weSurfaceRuntime.records.get(panel) : null;
+        const docks = panel ? Array.from(panel.querySelectorAll('[data-dockkit-host="dock"], [data-dockkit-empty]')).slice(0, 3) : [];
+        const data = { s: stage, q: progress, m: !!(target && target.modern),
+          o: !!(panel && panel.hasAttribute("data-sidebar-right-open")), p: rectOf(panel), c: clipOf(panel),
+          d: docks.map(node => [...rectOf(node), !!(node.closest && node.closest('[hidden], [aria-hidden="true"]'))]),
+          g: record ? rectOf(record.plate) : null, gc: record ? clipOf(record.plate) : "" };
+        const detail = JSON.stringify(data);
+        if (detail.length <= 300) apiPostJson("/client-diag", {
+          event: "sidebar-paint-v4", type: "sidebar-motion", detail,
+        }, { keepalive: true }).catch(() => {});
+        if (target && target.frame && typeof getComputedStyle === "function") {
+          const frame = target.frame, style = getComputedStyle(frame);
+          const column = panel && panel.closest("[data-rightbar-col]");
+          const animations = typeof frame.getAnimations === "function" ? frame.getAnimations() : [];
+          const data = { s: stage, q: progress, f: rectOf(frame), c: rectOf(column),
+            g: style.gridTemplateColumns, d: style.transitionDuration,
+            v: style.getPropertyValue("--ds-transition-duration-slow"),
+            a: animations.filter(animation => animation.effect?.target === frame).slice(0, 2).map(animation => [
+              animation.transitionProperty || "waapi", round(animation.effect?.getTiming?.().duration),
+              round(animation.currentTime), animation.playState,
+            ]) };
+          const detail = JSON.stringify(data);
+          if (detail.length <= 300) apiPostJson("/client-diag", {
+            event: "sidebar-grid-v6", type: "sidebar-motion", detail,
+          }, { keepalive: true }).catch(() => {});
+        }
+        if (stage === "moving" && (progress === 0 || progress === 1)
+          && panel && typeof document.elementsFromPoint === "function") {
+          const r = panel.getBoundingClientRect();
+          const x = Math.max(0, r.left + r.width * .1), y = Math.max(0, r.top + r.height * .9);
+          const layers = document.elementsFromPoint(x, y).slice(0, 3).map(node => {
+            const style = getComputedStyle(node), before = getComputedStyle(node, "::before");
+            return [String(node.tagName || "").toLowerCase(), String(node.className || "").slice(0, 42),
+              style.backgroundColor, before.content !== "none" ? before.backgroundColor : ""];
+          });
+          const data = { q: progress, x: round(x), y: round(y), e: layers };
+          while (JSON.stringify(data).length > 300 && data.e.length) data.e.pop();
+          apiPostJson("/client-diag", { event: "sidebar-layers-v5", type: "sidebar-motion", detail: JSON.stringify(data) },
+            { keepalive: true }).catch(() => {});
+        }
+      } catch { /* 诊断失败不影响动画与宿主 */ }
+    },
+    motionElements(panel, dividers = false) {
+      const selector = '[data-dockkit-host="dock"], [data-dockkit-empty]'
+        + (dividers ? ', [data-dockkit-divider]' : '');
+      return Array.from(panel.querySelectorAll(selector)).filter(node => {
+        if (node.isConnected === false || (typeof node.closest === "function"
+          && node.closest('[hidden], [aria-hidden="true"]'))) return false;
+        if (typeof node.getBoundingClientRect === "function") {
+          const rect = node.getBoundingClientRect();
+          if (rect.width <= 0 || rect.height <= 0) return false;
+        }
+        if (typeof getComputedStyle === "function") {
+          const style = getComputedStyle(node);
+          if (style.display === "none" || style.visibility === "hidden") return false;
+        }
+        return true;
+      });
+    },
+    armMotion(target, ms, expanded) {
+      if (officialPull.motionRun) officialPull.motionRun.cancel();
+      if (!target.modern || typeof MutationObserver !== "function") return;
+      const panel = target.surface;
+      const wasOpen = typeof panel.hasAttribute === "function" ? panel.hasAttribute("data-sidebar-right-open") : null;
+      if (wasOpen === expanded) return;
+      const animations = new Set(), seen = new Set(), clips = new Map();
+      let disposed = false, frameId = null, reached = false, tracePhase = -1, tracedWait = false;
+      const traceStart = Date.now();
+      const clip = (node, inset) => {
+        if (!node || !node.style) return;
+        if (!clips.has(node)) clips.set(node, {
+          before: node.style.getPropertyValue("clip-path"),
+          priority: typeof node.style.getPropertyPriority === "function" ? node.style.getPropertyPriority("clip-path") : "",
+          written: null,
+        });
+        const record = clips.get(node), value = "inset(0px 0px 0px " + inset + "px)";
+        if (record.inset !== inset || node.style.getPropertyValue("clip-path") !== record.written) {
+          node.style.setProperty("clip-path", value);
+          record.written = node.style.getPropertyValue("clip-path");
+          record.inset = inset;
+        }
+      };
+      const syncClip = initial => {
+        const rect = panel.getBoundingClientRect();
+        if (!(rect.width > 0)) return;
+        let inset = expanded ? rect.width : 0;
+        if (!initial) {
+          const edges = officialPull.motionElements(panel)
+            .map(node => node.getBoundingClientRect().left).filter(Number.isFinite);
+          if (edges.length) inset = Math.max(0, Math.min(rect.width, Math.min(...edges) - rect.left));
+        }
+        clip(panel, inset);
+        // 霜层是独立根叶，不能只裁宿主外壳；从当前区域记录取，避免碰其他会话。
+        const surface = typeof weSurfaceRuntime !== "undefined" && weSurfaceRuntime
+          && weSurfaceRuntime.records.get(panel);
+        if (surface && surface.plate) {
+          if (!clips.has(surface.plate)) observer.observe(surface.plate, { attributes: true, attributeFilter: ["style"] });
+          clip(surface.plate, inset);
+        }
+      };
+      const scan = () => {
+        if (disposed) return;
+        if (officialPull.targets()?.surface !== panel) { run.cancel(); return; }
+        if (typeof panel.hasAttribute === "function" && panel.hasAttribute("data-sidebar-right-open") !== expanded) {
+          // React 可延迟提交；首次到达目标状态前不是取消，不能先撤底板裁剪。
+          if (!tracedWait) { officialPull.trace("waiting", target); tracedWait = true; }
+          if (reached) run.cancel();
+          return;
+        }
+        reached = true;
+        const reduced = typeof window !== "undefined" && typeof window.matchMedia === "function"
+          && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        const column = target.frame !== panel && panel.closest("[data-rightbar-col]");
+        for (const element of officialPull.motionElements(panel, true)) {
+          if (seen.has(element) || typeof element.animate !== "function") continue;
+          seen.add(element);
+          // 已有过渡由宿主管；首次挂载没有旧样式，只补本次位移动画。
+          const native = typeof element.getAnimations === "function" && element.getAnimations().some(animation =>
+            animation.transitionProperty === "transform" && !["idle", "finished"].includes(animation.playState));
+          if (native || reduced) continue;
+          const width = panel.getBoundingClientRect().width;
+          if (!(width > 0)) continue;
+          const closed = "translateX(" + width + "px)";
+          const animation = element.animate([
+            { transform: expanded ? closed : "none" },
+            { transform: expanded ? "none" : closed },
+          ], { duration: ms, easing: column ? "linear" : "ease-in-out" });
+          if (column) animation.pause();
+          animations.add(animation);
+        }
+        if (column && animations.size) {
+          // 直接锁到宿主整列的实时边缘；不同缓动/掉帧/暂停都不能再让内容抢跑。
+          const rect = panel.getBoundingClientRect(), edge = column.getBoundingClientRect().left;
+          if (rect.width > 0 && Number.isFinite(edge)) {
+            const closed = Math.max(0, Math.min(1, (edge - rect.left) / rect.width));
+            for (const animation of animations) animation.currentTime = ms * (expanded ? 1 - closed : closed);
+          }
+        }
+        syncClip(false);
+        const phase = Math.min(4, Math.floor((Date.now() - traceStart) / Math.max(1, ms) * 4));
+        if (phase !== tracePhase) { tracePhase = phase; officialPull.trace("moving", target, phase); }
+      };
+      const observer = new MutationObserver(scan);
+      observer.observe(panel, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-sidebar-right-open"] });
+      const body = panel.ownerDocument ? panel.ownerDocument.body : document.body;
+      if (body) observer.observe(body, { childList: true, subtree: true });
+      const run = {
+        animations,
+        cancel() {
+          if (disposed) return;
+          disposed = true;
+          observer.disconnect();
+          if (frameId !== null) cancelAnimationFrame(frameId);
+          for (const animation of animations) animation.cancel();
+          for (const [node, record] of clips) {
+            if (node.style.getPropertyValue("clip-path") !== record.written) continue;
+            if (record.before) node.style.setProperty("clip-path", record.before, record.priority);
+            else node.style.removeProperty("clip-path");
+          }
+          if (officialPull.motionRun === run) officialPull.motionRun = null;
+        },
+      };
+      officialPull.motionRun = run;
+      syncClip(true);
+      const tick = () => {
+        scan();
+        if (!disposed) frameId = requestAnimationFrame(tick);
+      };
+      if (typeof requestAnimationFrame === "function") frameId = requestAnimationFrame(tick);
+    },
+    targets() {
+      if (typeof document === "undefined" || !document.querySelector) return null;
+      if (typeof document.querySelectorAll === "function") {
+        const panels = Array.from(document.querySelectorAll("[data-sidebar-right-panel]"));
+        const active = panels.filter(panel => !panel.closest("[hidden]"));
+        const ours = active.filter(panel => panel.querySelector(".we-qp--official"));
+        const panel = ours.length === 1 ? ours[0] : ours.length === 0 && active.length === 1 ? active[0] : null;
+        if (panel) {
+          // 新宿主把类名模块化；稳定标记所在列的父节点才拥有整层 grid 过渡。
+          const column = panel.closest("[data-rightbar-col]");
+          return { frame: column && column.parentElement || panel, surface: panel, modern: true };
+        }
+        if (panels.length) return null;
       }
-      // 面板内容**固定渲染在最终位置**（x=面板最终左边缘），只把列宽变慢会出现
-      // "容器慢慢开、内容早就到位"的错位（用户："侧边栏其他部分会先动"）。
-      // 拉出期间把表面裁剪到列边界，内容就随边缘一起露出 —— 这才是"贴着边缘拉出来"。
-      // 只动 overflow（用完还原），不碰宿主的任何尺寸/网格定义。
-      const surf = typeof document !== "undefined" && document.querySelector
-        ? document.querySelector(".dshDesktopRightbarSurface") : null;
-      if (surf && officialPull.savedOverflow === null) {
-        officialPull.savedOverflow = surf.style.getPropertyValue("overflow") || "";
-        try { surf.style.setProperty("overflow", "hidden"); } catch { /* ignore */ }
+      const frame = document.querySelector(".dshDesktopFrame");
+      return frame ? { frame, surface: document.querySelector(".dshDesktopRightbarSurface"), modern: false } : null;
+    },
+    begin(ms, expanded = true) {
+      const target = officialPull.targets();
+      officialPull.trace(expanded ? "begin-open" : "begin-close", target);
+      if (!target) { if (expanded) wallSidebarOpen(); else wallSidebarClose(); return 0; }
+      const { frame, surface } = target;
+      if (officialPull.savedFrame && officialPull.savedFrame !== frame) officialPull.restore();
+      if (officialPull.saved === null) {
+        officialPull.savedFrame = frame;
+        officialPull.saved = frame.style.getPropertyValue("--ds-transition-duration-slow") || "";
+        officialPull.savedPriority = frame.style.getPropertyPriority?.("--ds-transition-duration-slow") || "";
+      }
+      if (surface && officialPull.savedOverflow === null) {
+        officialPull.savedSurface = surface;
+        officialPull.savedOverflow = surface.style.getPropertyValue("overflow") || "";
+        try { surface.style.setProperty("overflow", "hidden"); } catch { /* ignore */ }
       }
       frame.style.setProperty("--ds-transition-duration-slow", ms + "ms");
+      const reduced = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      const instant = frame.hasAttribute && ["data-dragging", "data-rightbar-fullscreen", "data-rightbar-instant"]
+        .some(name => frame.hasAttribute(name));
+      if (target.modern && frame !== surface && !reduced && !instant) {
+        // 宿主在 600ms 后撤掉 data-animating；仅延长变量会被中途切断。
+        if (!officialPull.savedTransition) officialPull.savedTransition = {
+          value: frame.style.getPropertyValue("transition"),
+          priority: frame.style.getPropertyPriority?.("transition") || "",
+        };
+        frame.style.setProperty("transition", "grid-template-columns var(--ds-transition-duration-slow) var(--ds-ease-in-out, ease-in-out)");
+      }
+      officialPull.armMotion(target, ms, expanded);
+      // 开合前结算已有节点的旧样式，否则与 React 提交合并时也可能没有过渡。
+      if (surface && typeof surface.getBoundingClientRect === "function") surface.getBoundingClientRect();
       if (expanded) wallSidebarOpen(); else wallSidebarClose();
       return ms;
     },
-    /** 动画结束后把时长与裁剪还回去（宿主后续的开合恢复原样）。 */
     restore() {
-      const frame = typeof document !== "undefined" && document.querySelector
-        ? document.querySelector(".dshDesktopFrame") : null;
+      if (officialPull.motionRun) officialPull.motionRun.cancel();
+      // 还给本次实际改过的节点，不能重查 DOM 后误改新会话或替换后的面板。
+      const frame = officialPull.savedFrame, surface = officialPull.savedSurface;
       if (frame && officialPull.saved !== null) {
-        if (officialPull.saved) frame.style.setProperty("--ds-transition-duration-slow", officialPull.saved);
+        if (officialPull.saved) frame.style.setProperty("--ds-transition-duration-slow", officialPull.saved, officialPull.savedPriority);
         else frame.style.removeProperty("--ds-transition-duration-slow");
+        if (officialPull.savedTransition) {
+          const { value, priority } = officialPull.savedTransition;
+          if (value) frame.style.setProperty("transition", value, priority);
+          else frame.style.removeProperty("transition");
+        }
       }
-      officialPull.saved = null;
-      const surf = typeof document !== "undefined" && document.querySelector
-        ? document.querySelector(".dshDesktopRightbarSurface") : null;
-      if (surf && officialPull.savedOverflow !== null) {
+      if (surface && officialPull.savedOverflow !== null) {
         try {
-          if (officialPull.savedOverflow) surf.style.setProperty("overflow", officialPull.savedOverflow);
-          else surf.style.removeProperty("overflow");
+          if (officialPull.savedOverflow) surface.style.setProperty("overflow", officialPull.savedOverflow);
+          else surface.style.removeProperty("overflow");
         } catch { /* ignore */ }
       }
+      officialPull.saved = null;
       officialPull.savedOverflow = null;
+      officialPull.savedFrame = null;
+      officialPull.savedSurface = null;
+      officialPull.savedTransition = null;
+      officialPull.savedPriority = "";
     },
-    /** 只接管本次新建的原生过渡；视频进度推进它，真实 ended 才 finish。 */
     syncOpen() {
       if (officialPull.syncOwner) officialPull.syncOwner.cancel();
-      const frame = typeof document !== "undefined" && document.querySelector
-        ? document.querySelector(".dshDesktopFrame") : null;
-      const before = new Set(frame && typeof frame.getAnimations === 'function' ? frame.getAnimations() : []);
-      let animation = null;
+      const target = officialPull.targets(), frame = target && target.frame;
+      const list = () => frame && typeof frame.getAnimations === 'function'
+        ? frame.getAnimations(target.modern ? { subtree: true } : undefined) : [];
+      const before = new Set(list()), owned = new Set();
       const current = () => officialPull.syncOwner === session;
       const capture = () => {
-        if (!animation && frame && typeof frame.getAnimations === 'function') {
-          animation = frame.getAnimations().find(item => !before.has(item)
-            && item.transitionProperty === 'grid-template-columns') || null;
-          if (animation) {
-            animation.pause();
-            animation.effect.updateTiming({ easing: 'linear' });
-          }
+        for (const animation of list()) {
+          const element = animation.effect && animation.effect.target;
+          const mountedMotion = officialPull.motionRun && officialPull.motionRun.animations.has(animation);
+          const matches = target.modern
+            ? (frame !== target.surface && element === frame && animation.transitionProperty === 'grid-template-columns')
+              || (animation.transitionProperty === 'transform' || mountedMotion) && element && typeof element.matches === 'function'
+                && element.matches('[data-dockkit-host="dock"], [data-dockkit-empty], [data-dockkit-divider]')
+            : animation.transitionProperty === 'grid-template-columns';
+          if (before.has(animation) || owned.has(animation) || !matches) continue;
+          owned.add(animation);
+          animation.pause();
+          animation.effect.updateTiming({ easing: 'linear' });
         }
-        return animation;
+        return owned;
       };
-      const release = (complete) => {
+      const release = complete => {
         if (!current()) return;
         officialPull.syncOwner = null;
-        const owned = capture();
-        if (owned) { if (complete) owned.finish(); else owned.cancel(); }
+        for (const animation of capture()) { if (complete) animation.finish(); else animation.cancel(); }
         officialPull.restore();
       };
       const session = {
         seek(progress) {
           if (!current() || !Number.isFinite(progress)) return;
-          const owned = capture();
-          if (!owned) return;
-          const duration = Number(owned.effect.getComputedTiming().duration);
-          if (Number.isFinite(duration)) owned.currentTime = duration * Math.max(0, Math.min(.999, progress));
+          for (const animation of capture()) {
+            const duration = Number(animation.effect.getComputedTiming().duration);
+            if (Number.isFinite(duration)) animation.currentTime = duration * Math.max(0, Math.min(.999, progress));
+          }
         },
         finish() { release(true); },
         cancel() { release(false); },
@@ -4923,13 +5147,23 @@ function RopeDock() {
       officialPull.begin(1000);
       return session;
     },
-    /** 侧边栏**左边缘**的实时 x（宠物拉着它一起往左走）。 */
     edgeX() {
-      const surf = typeof document !== "undefined" && document.querySelector
-        ? document.querySelector(".dshDesktopRightbarSurface") : null;
-      if (!surf) return null;
-      const r = surf.getBoundingClientRect();
-      return Number.isFinite(r.left) ? r.left : null;
+      const target = officialPull.targets();
+      if (!target || !target.surface) return null;
+      const surfaces = target.modern
+        ? officialPull.motionElements(target.surface)
+        : [target.surface];
+      let edge = null;
+      for (const surface of surfaces) {
+        const rect = surface.getBoundingClientRect();
+        if (Number.isFinite(rect.left) && (edge === null || rect.left < edge)) edge = rect.left;
+      }
+      // 收起时 dock 由 aria-hidden 隐藏，仍须给彩蛋一提供首次弹出的碰撞起点。
+      if (edge === null && target.modern) {
+        const rect = target.surface.getBoundingClientRect();
+        if (Number.isFinite(rect.right)) return rect.right;
+      }
+      return edge;
     },
   };
   React.useEffect(() => {
@@ -4950,6 +5184,7 @@ function RopeDock() {
         edgeX: () => officialPull.edgeX(),
         commit: () => { officialPull.restore(); },
       });
+      officialPull.trace("ready", officialPull.targets());
     } catch { /* 注册失败不影响面板本身 */ }
     return () => {
       try { petLink.mascot.registerSidebar(null); } catch { /* ignore */ }

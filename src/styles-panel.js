@@ -366,11 +366,37 @@ const CSS_PANEL = `  /* ── 吉祥物形态**3D 圆环转盘**（四次返工
   }
 
   /* 本插件自有控件的局部表面：宿主别名只在宿主壳或已知 chat-flow 内接管，
-     picker/快捷面板不能因此退回宿主默认实底。令牌仅挂在本插件根节点，第三方内容不会继承。 */
-  .we-picker, .we-picker__modal, .we-qp {
-    --dsw-alias-bg-layer-1: color-mix(in srgb, var(--we-readability-base, #ffffff) 92%, transparent);
-    --dsw-alias-bg-layer-2: color-mix(in srgb, var(--we-readability-base, #ffffff) 94%, transparent);
-    --dsw-alias-bg-layer-3: color-mix(in srgb, var(--we-readability-base, #ffffff) 96%, transparent);
+     picker/快捷面板不能因此退回宿主默认实底。令牌仅挂在本插件根节点，第三方内容不会继承。
+     别名取完整两段玻璃配方（styles-chrome 设置窗同一张配方表）：tint×alpha 段 +
+     (1 - readability-floor) 地板段，随「设置窗口·透明度」滑杆变化。挂 data-we-glass-page
+     门（applyGlass 恒挂 ⇒ 规则匹配时 --we-settings-window-alpha 必已写出，按面变量零兜底，
+     与 ⑬ 契约同判据）；readability-base/floor 无兜底（styles-base 声明、F1c 锁定），
+     tint 保留缺省形态。深色整组分叉（tint-dark/floor-deep）。 */
+  body[data-we-glass-page] .we-picker,
+  body[data-we-glass-page] .we-picker__modal,
+  body[data-we-glass-page] .we-qp {
+    --dsw-alias-bg-layer-1: color-mix(in srgb,
+        var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
+        color-mix(in srgb, var(--we-surface-tint-light, #ffffff) calc(var(--we-settings-window-alpha) * 0.9 * 100%), transparent) calc((1 - var(--we-readability-floor)) * 100%));
+    --dsw-alias-bg-layer-2: color-mix(in srgb,
+        var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
+        color-mix(in srgb, var(--we-surface-tint-light, #ffffff) calc(var(--we-settings-window-alpha) * 1.0 * 100%), transparent) calc((1 - var(--we-readability-floor)) * 100%));
+    --dsw-alias-bg-layer-3: color-mix(in srgb,
+        var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
+        color-mix(in srgb, var(--we-surface-tint-light, #ffffff) calc(var(--we-settings-window-alpha) * 1.1 * 100%), transparent) calc((1 - var(--we-readability-floor)) * 100%));
+  }
+  body[data-ds-dark-theme][data-we-glass-page] .we-picker,
+  body[data-ds-dark-theme][data-we-glass-page] .we-picker__modal,
+  body[data-ds-dark-theme][data-we-glass-page] .we-qp {
+    --dsw-alias-bg-layer-1: color-mix(in srgb,
+        var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
+        color-mix(in srgb, var(--we-surface-tint-dark, #0d1524) calc(var(--we-settings-window-alpha) * 0.9 * 100%), transparent) calc((1 - var(--we-readability-floor)) * 100%));
+    --dsw-alias-bg-layer-2: color-mix(in srgb,
+        var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
+        color-mix(in srgb, var(--we-surface-tint-dark, #0d1524) calc(var(--we-settings-window-alpha) * 1.0 * 100%), transparent) calc((1 - var(--we-readability-floor)) * 100%));
+    --dsw-alias-bg-layer-3: color-mix(in srgb,
+        var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
+        color-mix(in srgb, var(--we-surface-tint-dark, #0d1524) calc(var(--we-settings-window-alpha) * 1.1 * 100%), transparent) calc((1 - var(--we-readability-floor)) * 100%));
   }
   /* Motion tokens: one shared ease (expo-out) + two durations. */
   .we-picker, .we-picker__modal {

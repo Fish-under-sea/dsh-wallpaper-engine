@@ -16,8 +16,14 @@ function weResolveSurface(id, selection, facts) {
   if (id === "content") return { mode: "content", reason: "known-canvas" };
   if (id === "settings-window" || id === "declared") return facts.safeLocal
     ? { mode: "local", reason: "native-context" } : native("unsafe-local-carrier");
-  if (id === "extra") return facts.safeLocal && !facts.software
-    ? { mode: "local", reason: "native-context" } : native("unsafe-local-carrier");
+  if (id === "extra") {
+    // 拒绝次序不放宽：unsafe-local-carrier 仍先于软渲档 —— 非安全上下文照旧完整原生。
+    if (!facts.safeLocal) return native("unsafe-local-carrier");
+    // 软渲档显式回退（G6）：resolver 打出 extra-fallback 标记 ⇒ glass-extra 的无霜
+    // 不透明底色规则（body[data-we-glass-fallback] 组）才有着力点；非安全上下文不进这里。
+    if (facts.software) return { mode: "extra-fallback", reason: "software-fallback" };
+    return { mode: "local", reason: "native-context" };
+  }
   if (!facts.safeRoot) return native("unsafe-root-geometry");
   return { mode: facts.software ? "plate" : "root", reason: facts.software ? "software-fallback" : "page-region" };
 }
@@ -31,7 +37,10 @@ function weSurfaceOwnNode(node) {
 }
 
 function weSurfaceUnmark(record) {
-  if (record.marked && record.target.getAttribute(WE_SURFACE_MARKER) === record.id) {
+  // 摘除判值用本 record 实际写过的标记值（markValue），不能假定它等于 record.id：
+  // 软渲档把 extra 面标记跟走为 "extra-fallback"，按 id 判会永久摘不掉。
+  const markValue = record.markValue || record.id;
+  if (record.marked && record.target.getAttribute(WE_SURFACE_MARKER) === markValue) {
     if (record.before === null) record.target.removeAttribute(WE_SURFACE_MARKER);
     else record.target.setAttribute(WE_SURFACE_MARKER, record.before);
   }
@@ -52,19 +61,38 @@ function weSurfaceGeometry(target, id, owned) {
   const visible = target.isConnected && rect.width > 0 && rect.height > 0
     && style.display !== "none" && style.visibility === "visible" && Number(style.opacity) > 0;
   const nativeBlur = [style.backdropFilter, style.webkitBackdropFilter].some(v => v && v !== "none");
-  let safeRoot = visible && rect.left >= 0 && rect.top >= 0
-    && rect.right <= win.innerWidth + 1 && rect.bottom <= win.innerHeight + 1;
+  const root = target.ownerDocument.documentElement;
+  const rootStyle = root && win.getComputedStyle(root);
+  // 根平移同时作用于宿主与装饰叶；在共同坐标系内验界，不把哈气位移误判为越界。
+  const translated = rootStyle && rootStyle.translate && rootStyle.translate !== "none";
+  const origin = translated ? root.getBoundingClientRect() : { left: 0, top: 0 };
+  const x = translated ? origin.left + (win.scrollX || 0) : 0;
+  const y = translated ? origin.top + (win.scrollY || 0) : 0;
+  let safeRoot = visible && rect.left >= x && rect.top >= y
+    && rect.right <= x + win.innerWidth + 1 && rect.bottom <= y + win.innerHeight + 1;
   // 宿主明确声明的 push/fullscreen 才进入右栏安全几何路径；未知模式继续原生回退。
   if (id === "right-sidebar" && !['push', 'fullscreen'].includes(target.getAttribute("data-sidebar-right-panel"))) safeRoot = false;
+  const column = id === "right-sidebar" && target.closest("[data-rightbar-col]");
+  const pureRootTranslation = animation => {
+    if (animation.effect?.target !== root || !animation.effect.getKeyframes) return false;
+    const keys = animation.effect.getKeyframes();
+    return keys.length > 0 && keys.every(key => "translate" in key && Object.keys(key)
+      .every(name => ["translate", "offset", "computedOffset", "easing", "composite"].includes(name)));
+  };
   for (let el = target; safeRoot && el; el = el.parentElement) {
     const cs = win.getComputedStyle(el);
     if (Number(cs.opacity) < 1 || cs.transform !== "none" || cs.perspective !== "none"
       || cs.filter !== "none" || (cs.backdropFilter && cs.backdropFilter !== "none")
       || cs.isolation === "isolate" || cs.mixBlendMode !== "normal" || cs.contain !== "none"
       || /transform|filter|opacity|perspective|contain/.test(cs.willChange)
-      || [cs.translate, cs.rotate, cs.scale].some(v => v && v !== "none")
+      || [el === root ? "none" : cs.translate, cs.rotate, cs.scale].some(v => v && v !== "none")
       || el.closest('[role="dialog"], dialog, [aria-modal="true"]')
-      || (el.getAnimations && el.getAnimations().length)) safeRoot = false;
+      || (el.getAnimations && el.getAnimations().some(animation => {
+        // 列宽不会建立新的合成上下文；仅认领该侧栏直接所属网格的原生列宽过渡。
+        if (column && column.parentElement === el && animation.effect?.target === el
+          && animation.transitionProperty === "grid-template-columns") return false;
+        return el !== root || !pureRootTranslation(animation);
+      }))) safeRoot = false;
     if (el !== target && (el.scrollTop || el.scrollLeft || /auto|scroll/.test(cs.overflow + cs.overflowX + cs.overflowY))) safeRoot = false;
     const clip = el.getBoundingClientRect();
     if (el !== target && /hidden|clip/.test(cs.overflow + cs.overflowX + cs.overflowY)
@@ -161,9 +189,23 @@ function weSurfaceRefresh(state) {
     Object.assign(record, resolved);
     if (resolved.mode === "native") weSurfaceUnmark(record);
     else {
-      if (!record.marked) { target.setAttribute(WE_SURFACE_MARKER, entry.id); record.marked = true; }
+      // 标记值跟走 resolver（t9-001）：软渲档把 extra 面标记从 "extra" 切到
+      // "extra-fallback"，解除时切回；weSurfaceUnmark 按 record.markValue 判摘。
+      // 不跟走时软渲专属 CSS 规则（:where([data-we-surface-runtime="extra-fallback"])）
+      // 永不匹配，无霜不透明可读底色落空。
+      const markValue = resolved.mode === "extra-fallback" ? "extra-fallback" : entry.id;
+      if (!record.marked) {
+        target.setAttribute(WE_SURFACE_MARKER, markValue);
+        record.markValue = markValue;
+        record.marked = true;
+      } else if (target.getAttribute(WE_SURFACE_MARKER) !== markValue) {
+        target.setAttribute(WE_SURFACE_MARKER, markValue);
+        record.markValue = markValue;
+      }
       if (entry.id === "settings-window" || entry.id === "declared") weSurfaceLayouts(record);
-      if (resolved.mode !== "local" && resolved.mode !== "content") {
+      // extra/extra-fallback 只借用目标原生定位/层叠上下文的 ::before，不建 plate
+      // （契约：不为其制造上下文/节点；plate 属于页面区域根叶形态）。
+      if (resolved.mode !== "local" && resolved.mode !== "content" && entry.id !== "extra") {
         if (!state.root) {
           state.root = state.doc.createElement("div");
           state.root.setAttribute("data-we-surface-root", "v1");
@@ -176,9 +218,14 @@ function weSurfaceRefresh(state) {
           record.plate.setAttribute("data-we-surface-plate", entry.id);
           state.root.appendChild(record.plate);
         }
-        const r = facts.rect;
-        const text = "left:" + r.left + "px;top:" + r.top + "px;width:" + r.width + "px;height:" + r.height + "px;border-radius:" + facts.radius + ";";
-        if (record.plate.style.cssText !== text) record.plate.style.cssText = text;
+        const r = facts.rect, origin = state.root.getBoundingClientRect();
+        // 共同根平移已经作用于装饰叶，viewport 测量须换算到该叶的本地坐标。
+        // 只维护几何属性；cssText 会清掉联动持有的 clip-path，造成展开中漏底。
+        const geometry = { left: (r.left - origin.left) + "px", top: (r.top - origin.top) + "px",
+          width: r.width + "px", height: r.height + "px", borderRadius: facts.radius };
+        for (const [name, value] of Object.entries(geometry)) {
+          if (record.plate.style[name] !== value) record.plate.style[name] = value;
+        }
       }
     }
     for (let el = target; el; el = el.parentElement) observed.add(el);

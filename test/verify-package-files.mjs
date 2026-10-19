@@ -360,7 +360,14 @@ async function main() {
     // `-egg1-motion` / `-egg1-rebound` / `-sidebar-rebound` / `-egg2-motion` / `-follow`，见 run-guards.mjs
     // 的 VERIFY_STEPS 清单）。合并时按实测重取：原 PR 基于 P-F 批 1c 之前的树，写的是 84/97。
     // 统一表面层新增策略、生命周期与真实浏览器三项硬档回归。
-    const CHAIN_FLOOR = { verify: 88, docs: 6, smoke: 6, all: 101 };
+    //  再：verify 88→90 / all 101→103 —— CI 分流第一阶段挂两硬档：`test/tools/ci-routing-red.mjs`
+    //（⑩ 固定 ci/result + 真跑 scripts/ci-routing.mjs 的最小接线守卫）与 `test/verify-ci-routing.mjs`
+    //（⑪ 隔离 git 库端到端：staged/unstaged/untracked 三通道、full 误调 docs exit 3、judgeResult 汇总）。
+    //  再：verify 90→91 / all 103→104 —— P1 内置桌宠挂一硬档 `test/verify-pet-builtin.mjs`
+    //（⑫ 内置 provider 装配/消费链与阶段诊断）。它的静态兼容姊妹 `test/verify-pet-eslint-compat.mjs`
+    // 有意脱链（`import { ESLint } from 'eslint'` ⇒ 违反本段 P5 的零裸依赖口径），理由在
+    // `test/tools/guard-chain.mjs` 的 OFF_CHAIN_WHY 里，与 `verify-static.mjs` 同族。
+    const CHAIN_FLOOR = { verify: 91, docs: 6, smoke: 6, all: 104 };
     /** 地板表与 GROUPS 的对齐体检：键名必须与**组名**逐一对齐（纯函数 ⇒ 负对照可直接喂）。 */
     const floorGaps = (groups, floors) => groups.map(([, g]) => g).filter((g) => !Number.isInteger(floors[g]));
     const problems = floorGaps(GROUPS, CHAIN_FLOOR).map((g) => '地板表缺组 ' + g

@@ -113,7 +113,7 @@ function main() {
   };
 
   const windowStub = {
-    __dshPetCtl: null, innerWidth: 1280, innerHeight: 800, handlers: {},
+    __dshWePetCtl: null, innerWidth: 1280, innerHeight: 800, handlers: {},
     addEventListener(type, fn) { (this.handlers[type] ||= []).push(fn); },
     removeEventListener(type, fn) { this.handlers[type] = (this.handlers[type] || []).filter(f => f !== fn); },
     dispatch(type) { for (const fn of this.handlers[type] || []) fn(); },
@@ -183,6 +183,19 @@ function main() {
       const got = PET_TUNE_DEFAULTS[key];
       check('覆盖层默认值等于常量 ' + constName, got === want, '面板=' + got + ' 常量=' + want);
     }
+
+    // 用户确认的逻辑二截图基准；不能只比较常量与自身，防止两边一起漂移。
+    const mascotScreenshot = { mascotGrabAtMs: 2500, mascotWalkMs: 0, mascotTumbleMs: 8000,
+      mascotOpenAtMs: 2500, mascotRopeDownPx: 40, mascotRopePullMs: 800, mascotRopeBackMs: 260,
+      mascotRopePullEase: 1, mascotRopeBackEase: 2, mascotReleaseAtMs: 2920, mascotDropPx: 90, mascotDropMs: 520 };
+    check('逻辑二默认值逐项符合用户截图', Object.entries(mascotScreenshot)
+      .every(([key, value]) => PET_TUNE_DEFAULTS[key] === value), JSON.stringify(PET_TUNE_DEFAULTS));
+    petLinkState.tuning.mascotRopeDownPx = 66;
+    petLinkState.tuning.mascotRopePullMs = 777;
+    check('逻辑二仍优先使用手动覆盖', petLinkTune('mascotRopeDownPx') === 66 && petLinkTune('mascotRopePullMs') === 777);
+    petLinkTuner.reset();
+    check('重置后逻辑二回到截图基准', Object.entries(mascotScreenshot)
+      .every(([key, value]) => petLinkTune(key) === value));
 
     // ── 二、覆盖层语义 ────────────────────────────────────────────────────
     check('未覆盖时返回默认值（默认行为与没有面板时逐字相同）',

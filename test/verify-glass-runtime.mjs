@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { cssBodyOf } from './tools/src-scope.mjs';
+// 剥 CSS 注释走共享实现（此前这里是一行朴素正则 —— 模块布局守卫规则 ⑦ 的针眼）。
+import { stripCssComments } from './tools/css-text.mjs';
 
 const root = resolve('.');
 const bundle = readFileSync(resolve(root, 'lib/client.js'), 'utf8');
-const css = cssBodyOf(bundle).replace(/\/\*[\s\S]*?\*\//g, '');
+const css = stripCssComments(cssBodyOf(bundle));
 const left = css.match(/body\[data-we-glass-page\]\[data-we-left-sidebar\] div:has\(> \[data-slot="sidebar"\]\)[^{]*\{([^}]+)\}/)?.[1] || '';
 assert.ok(left, '必须读取真实构建的左栏绘制规则');
 assert.ok(!/(?:^|[;\s])z-index:\s*0\b/.test(left), '左栏不得为负层载体新增 z-index:0 围栏');

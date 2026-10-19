@@ -31,6 +31,7 @@
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Script } from 'node:vm';
@@ -576,6 +577,17 @@ function loadSubpackageRecipes() {
         + '两者必须一致（否则构建出的产物没人加载，按产物名对账的守卫也会红）。');
       process.exit(1);
     }
+    // upstream-fork 形态（P1）：预构建产物。它没有本仓的构建链（源码是上游 .ts 体系），
+    // 所以这里**不读源码重编**，只做「登记字节 ⇄ 盘上字节」的对账（见 assertPrebuiltBundle）。
+    if (recipe.prebuilt != null) {
+      if (recipe.entry != null || recipe.inline != null) {
+        console.error(`[build-client] ${p.name}（${relDir}）${RECIPE_FILE} 同时给了 prebuilt 与 entry/inline：`
+          + '预构建形态不消费源码（entry/inline 会被忽略），两种形态只能选一种，混写等于让人误以为它在编译。');
+        process.exit(1);
+      }
+      recipes.push({ dir: relDir, dirAbs: resolve(root, relDir), name: p.name, artifact: recipe.artifact, prebuilt: recipe.prebuilt });
+      continue;
+    }
     recipes.push({
       dir: relDir,
       dirAbs: resolve(root, relDir),
@@ -624,16 +636,25 @@ const DECL_RE = /^([ \t]*)(?:async\s+)?(?:const|let|var|function|class)\s+([A-Za
 // 主 bundle 与子包 bundle 走**同一套**注入 / 浏览器安全 / 撞名判据（`readInlinedPrelude` /
 // `assertNoShadowedScopeDecls` 都参数化了模块表与基准目录）：判据只有一份，只有模块表不同。
 const OUTPUTS = [
-  { label: 'lib/client.js', target: resolve(root, 'lib', 'client.js'), inlined: INLINE_MODULES, text: buildMainBundle() },
-  ...loadSubpackageRecipes().map((recipe) => ({
-    label: `${recipe.dir}/${recipe.artifact}`,
-    target: resolve(recipe.dirAbs, recipe.artifact),
-    inlined: recipe.inline,
-    text: buildSubpackageBundle(recipe),
-  })),
+  { kind: 'compiled', label: 'lib/client.js', target: resolve(root, 'lib', 'client.js'), inlined: INLINE_MODULES, text: buildMainBundle() },
+  ...loadSubpackageRecipes().map((recipe) => (recipe.prebuilt != null
+    ? { kind: 'prebuilt', label: `${recipe.dir}/${recipe.artifact}`, dirAbs: recipe.dirAbs, name: recipe.name, artifact: recipe.artifact, prebuilt: recipe.prebuilt }
+    : {
+      kind: 'compiled',
+      label: `${recipe.dir}/${recipe.artifact}`,
+      target: resolve(recipe.dirAbs, recipe.artifact),
+      inlined: recipe.inline,
+      text: buildSubpackageBundle(recipe),
+    })),
 ];
 
 for (const out of OUTPUTS) {
+  if (out.kind === 'prebuilt') {
+    // 预构建形态：只对账、不写盘。为什么**不**写盘：这份字节是上游派生世代的产物证据，
+    // 构建期重写它会让「登记值 ⇄ 盘上值」这条判据变成自证（写什么都是对的）。
+    assertPrebuiltBundle(out);
+    continue;
+  }
   // 产物必须可解析 —— 内联后出现重复声明/括号错配时在这里就红，而不是等到用户页面白屏。
   try {
     new Script(out.text, { filename: out.label });
@@ -647,6 +668,63 @@ for (const out of OUTPUTS) {
   // `npm pack` / `npm publish` 的 stdout，而它们的 `--json` 要求 stdout 上**只有 JSON**
   // （实测：`npm pack --dry-run --json` 原本因这一行而无法解析）。错误本就打 stderr。
   console.error(`built ${out.target} (${Buffer.byteLength(out.text)} bytes; inlined: ${out.inlined.map((m) => m.file).join(' + ')})`);
+}
+
+/**
+ * 预构建 bundle 的对账（upstream-fork 形态专用）：配方登记的字节必须真的在盘上。
+ *
+ * 判据四条，缺一条就红：
+ *   ① 产物与宿主半边都在盘（fork 的两半同批派生，缺一半就是半个包）；
+ *   ② 两半的 sha256 逐字等于登记值（**这是"受控派生"的唯一机器证据**：任何手改/重编都会红）；
+ *   ③ 产物里 `__ModuleLoader__` 的注册 id 等于登记值（防止拿错世代的文件冒充）；
+ *   ④ 产物可被解析（与编译路径同一条语法底线）。
+ * ⚠️ 本函数**不改盘**：登记值不是"构建输出"，而是"输入必须长这样"。要让这条通过，只能改来源或改登记。
+ */
+function assertPrebuiltBundle(out) {
+  const pre = out.prebuilt;
+  const want = String(pre.sha256 || '').toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(want)) {
+    console.error(`[build-client] ${out.label}：prebuilt.sha256 不是 64 位十六进制（${JSON.stringify(pre.sha256)}）`);
+    process.exit(1);
+  }
+  const pairs = [
+    { rel: pre.entry, hash: want, what: '浏览器半边' },
+    { rel: pre.hostEntry, hash: String(pre.hostSha256 || '').toLowerCase(), what: '宿主半边' },
+  ];
+  for (const pair of pairs) {
+    if (typeof pair.rel !== 'string' || !pair.rel) {
+      console.error(`[build-client] ${out.label}：prebuilt.${pair.what} 的落点没登记`);
+      process.exit(1);
+    }
+    const abs = resolve(out.dirAbs, pair.rel);
+    if (!existsSync(abs)) {
+      console.error(`[build-client] ${out.label}：登记的${pair.what} ${pair.rel} 不在盘上`);
+      process.exit(1);
+    }
+    const got = createHash('sha256').update(readFileSync(abs)).digest('hex');
+    if (got !== pair.hash) {
+      console.error(`[build-client] ${out.label}：${pair.rel} 字节与登记值不符（受控派生被改动过）——\n`
+        + `  登记 ${pair.hash}\n  实际 ${got}\n`
+        + '  要么恢复上游派生产物，要么连同来源登记一起改（不许只改一边）。');
+      process.exit(1);
+    }
+  }
+  const artAbs = resolve(out.dirAbs, pre.entry);
+  const artText = readFileSync(artAbs, 'utf8');
+  const marker = `id: ${JSON.stringify(pre.moduleId)}`;
+  const at = artText.indexOf('__ModuleLoader__');
+  if (at < 0 || artText.slice(at, at + 400).indexOf(marker) < 0) {
+    console.error(`[build-client] ${out.label}：产物里没有 __ModuleLoader__.load({ ${marker} … }) 注册`
+      + `（登记的 moduleId 与实际注册 id 不一致 ⇒ 宿主加载的是别的东西）`);
+    process.exit(1);
+  }
+  try {
+    new Script(artText, { filename: out.label });
+  } catch (err) {
+    console.error(`[build-client] 预构建产物语法错误（${out.label}）：${err && err.message}`);
+    process.exit(1);
+  }
+  console.error(`verified ${artAbs} (prebuilt; sha256 ${want.slice(0, 12)}…; 宿主半边同批登记)`);
 }
 
 function indent(text) {

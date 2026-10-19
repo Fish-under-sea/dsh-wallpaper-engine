@@ -3,6 +3,7 @@ import { readFileSync, existsSync, mkdirSync, mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 const root = new URL('../', import.meta.url);
 const pkg = JSON.parse(readFileSync(new URL('packages/pet-link/package.json', root), 'utf8'));
 assert.equal(pkg.name, 'dsh-plugin-wallpaper-engine-pet-link');
@@ -41,3 +42,57 @@ const hostTest = spawnSync(process.execPath, [fileURLToPath(new URL('test/verify
 assert.ifError(hostTest.error);
 assert.equal(hostTest.status, 0, '热插拔宿主测试必须在无产物目录的干净环境独立通过');
 console.log('PASS 干净工作目录无需预存.artifacts即可运行宿主测试');
+
+// ── compatibility.js 公开 API 的行为断言（GUARD-MAP 真实覆盖，revision4 验收 7）────────
+// 该模块是安装兼容层的唯一版本判据与补丁摘要来源：断言的是**行为**（拒绝形态、下界语义、
+// 摘要公式、防篡改），不是"文件存在"。sha() 是模块私有 ⇒ 期望值按同一公式在测试内独立重算。
+const compat = await import('../packages/pet-link/lib/compatibility.js');
+
+// 版本判据：只接受 >=0.3.6 的稳定 SemVer，构建元数据不参与排序。
+assert.equal(compat.MIN_PET_VERSION, '0.3.6', 'MIN_PET_VERSION 下界常量');
+assert.equal(compat.isSupportedPetVersion('0.3.6'), true, '下界本身（0.3.6）必须被接受');
+assert.equal(compat.isSupportedPetVersion('0.3.7'), true, '下界之上的稳定版本被接受');
+assert.equal(compat.isSupportedPetVersion('1.0.0'), true, '更高 major 稳定版本被接受（无版本上限）');
+assert.equal(compat.isSupportedPetVersion('0.3.6+build.7'), true, '构建元数据不影响接受判定');
+assert.equal(compat.isSupportedPetVersion('0.3.5'), false, '下界之下拒绝');
+assert.equal(compat.isSupportedPetVersion('0.4.0-rc.1'), false, '预发行（-rc.1）一律拒绝');
+assert.equal(compat.isSupportedPetVersion('0.3.6-dev'), false, '预发行（-dev）一律拒绝');
+assert.equal(compat.isSupportedPetVersion('v0.3.6'), false, '非 SemVer 前缀（v 前缀）拒绝');
+assert.equal(compat.isSupportedPetVersion('01.3.6'), false, 'SemVer 禁止前导零');
+assert.equal(compat.isSupportedPetVersion('0.3'), false, '两段版本拒绝');
+assert.equal(compat.isSupportedPetVersion(''), false, '空串拒绝');
+assert.equal(compat.isSupportedPetVersion(null), false, 'null 拒绝（不抛）');
+assert.equal(compat.isSupportedPetVersion(0.36), false, '数字输入拒绝');
+assert.equal(compat.isSupportedPetVersion('0.3.6'.repeat(50)), false, '超长输入（>128 字符）拒绝');
+assert.throws(() => compat.assertPetVersion('0.3.5'), /需要 >=0\.3\.6/, 'assertPetVersion 对不支持版本抛出');
+assert.doesNotThrow(() => compat.assertPetVersion('0.3.6'), 'assertPetVersion 对受支持版本不抛');
+
+// 补丁摘要：seal 追加「来源 + kind 标记 + sha256(来源)」；期望值独立重算，不引模块内部。
+const sealSha = (source) => createHash('sha256').update(source).digest('hex');
+const sample = 'module.exports = { wallpaper: true };\n';
+for (const kind of ['index', 'sidebar', 'tuner']) {
+  const sealed = compat.sealPetPatch(sample, kind);
+  assert.ok(sealed.startsWith(sample), 'sealPetPatch 保留原始来源原文');
+  assert.equal(
+    sealed,
+    sample + '\n// pet-link-' + kind + '-v1 sha256:' + sealSha(sample) + '\n',
+    'sealPetPatch(' + kind + ') 摘要公式：source + 换行 + kind 标记 + sha256(source)',
+  );
+}
+// hasSealed：未盖章 ⇒ false；盖章正确 ⇒ true（幂等可重复安装）；
+// kind 不匹配 ⇒ false（前缀按 kind 拼接找不到，不算盖章也不误报）；
+// 章存在但内容被篡改 ⇒ throw 不放行。
+assert.equal(compat.hasSealedPetPatch(sample, 'index'), false, '未盖章来源 ⇒ false（不抛）');
+assert.equal(compat.hasSealedPetPatch(compat.sealPetPatch(sample, 'index'), 'index'), true, '正确盖章 ⇒ true');
+assert.equal(
+  compat.hasSealedPetPatch(compat.sealPetPatch(sample, 'index'), 'sidebar'),
+  false,
+  'kind 不匹配（对 sidebar 判 index 章）⇒ false（前缀按 kind 拼接，找不到不算盖章）',
+);
+const tampered = compat.sealPetPatch(sample, 'index').replace('wallpaper: true', 'wallpaper: false');
+assert.throws(
+  () => compat.hasSealedPetPatch(tampered, 'index'),
+  /摘要不匹配/,
+  '盖章后正文被篡改 ⇒ throw（本地完整性判据，保留现有代码）',
+);
+console.log('PASS compatibility 版本下界/预发行拒绝/补丁摘要与篡改防护');

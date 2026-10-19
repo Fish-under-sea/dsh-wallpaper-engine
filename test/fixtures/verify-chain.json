@@ -681,6 +681,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-pet-builtin.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/tools/packages.mjs",
           "args": [
             "selftest"
@@ -710,6 +718,22 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-ci-steps.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/tools/ci-routing-red.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-ci-routing.mjs",
           "args": [],
           "tier": "hard",
           "probe": false
@@ -1510,6 +1534,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-pet-builtin.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/tools/packages.mjs",
           "args": [
             "selftest"
@@ -1539,6 +1571,22 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-ci-steps.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/tools/ci-routing-red.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-ci-routing.mjs",
           "args": [],
           "tier": "hard",
           "probe": false

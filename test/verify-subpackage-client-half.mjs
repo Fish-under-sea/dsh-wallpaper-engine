@@ -27,6 +27,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripComments } from './tools/js-text.mjs';
+import { isUpstreamFork, upstreamForkOf } from './tools/subpackage-shapes.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SHORT_PREFIX = 'dsh-plugin-wallpaper-engine-';
@@ -101,12 +102,31 @@ function registers(text, name) {
   return new RegExp('id\\s*:\\s*["' + "'" + ']' + name + '["' + "'" + ']').test(head);
 }
 
+/** `exports['./client']` 取路径：字符串，或条件对象里的 default/import/require/node/browser。 */
+function clientTargetOf(exp) {
+  const v = exp ? exp['./client'] : undefined;
+  if (typeof v === 'string') return v.replace(/^\.\//, '');
+  if (v && typeof v === 'object') {
+    for (const k of ['default', 'import', 'require', 'node', 'browser']) {
+      if (typeof v[k] === 'string') return v[k].replace(/^\.\//, '');
+    }
+    return '';
+  }
+  return null;
+}
+
 /** 判据核心（纯函数）。 */
 function clientHalfViolations(inp) {
   const bad = [];
   const name = inp.name, dir = inp.dir, manifest = inp.manifest || {};
   const exp = manifest.exports || {};
   const dc = manifest.dsh && manifest.dsh.client;
+  // upstream-fork 形态（P1：packages/pet）：独立派生身份 + 预构建产物 + **零主包绑定**。
+  // 它与一般子包的三处差异都在这里显式分叉（不是放宽，是换判据，且每处都有负控）：
+  //   · 包名不带 SHORT_PREFIX ⇒ 产物名不套 client.<short>.js，改由注册表登记的落点定；
+  //   · exports['./client'] 是条件对象（types + default）⇒ 取 default；
+  //   · 产物**不许** require 主包（它是独立插件，不是主包服务面的消费者）⇒ 这一条反向判红。
+  const fork = isUpstreamFork(dir) ? upstreamForkOf(dir) : null;
   // 6) 必被覆盖（P-C 契约 §1 / ADR-0014 S3.1）：清单里的包**不声明 dsh.client 就是违规** ——
   //    必须放在下面的提前返回之前，否则"字体包被明确排除"会静默地一直成立（这正是本轮要堵的洞）。
   const required = Array.isArray(inp.requiredCovered) ? inp.requiredCovered : [];
@@ -121,16 +141,29 @@ function clientHalfViolations(inp) {
   // 1) dsh.client 形状与根一致
   if (!inp.rootDshClient) bad.push('根 package.json 没有 dsh.client（基准缺失）');
   else {
-    for (const k of Object.keys(inp.rootDshClient)) if (!(k in dc)) bad.push(dir + ' 的 dsh.client 缺键 ' + k);
+    for (const k of Object.keys(inp.rootDshClient)) {
+      // fork 的 inject 面是它自己的（dsh-client-connection），与根 bundle 的 inject 不同源；
+      // 但 platform / immediately 这类「装载时机」键必须与根一致（否则浏览器半边不会被立刻发现）。
+      if (k === 'inject' && fork) continue;
+      if (!(k in dc)) bad.push(dir + ' 的 dsh.client 缺键 ' + k);
+    }
     if (dc.platform !== 'web') bad.push(dir + ' 的 dsh.client.platform=' + JSON.stringify(dc.platform) + ' 不等于 "web"');
     if (dc.immediately !== true) bad.push(dir + ' 的 dsh.client.immediately=' + JSON.stringify(dc.immediately) + ' 不等于 true');
   }
   // 2) exports["./client"] 落点规则
-  const target = typeof exp['./client'] === 'string' ? exp['./client'].replace(/^\.\//, '') : null;
-  if (!short) bad.push(name + ' 不是 ' + SHORT_PREFIX + '<short> 形态的包名，无法推导产物名');
-  const want = short ? dir + '/lib/client.' + short + '.js' : null;
-  if (!target) bad.push(dir + ' 声明了 dsh.client 却没有 exports["./client"]');
-  else if (want && dir + '/' + target !== want) bad.push(dir + ' 的 exports["./client"]=' + JSON.stringify(exp['./client']) + '，必须指向 ' + want);
+  const target = clientTargetOf(exp);
+  if (fork) {
+    if (!target) bad.push(dir + ' 声明了 dsh.client 却没有 exports["./client"] 的可解析落点');
+    else if (target !== fork.clientArtifact.slice(dir.length + 1)) {
+      bad.push(dir + ' 的 exports["./client"] 落点=' + JSON.stringify(target) + '，与形态登记表登记的 '
+        + fork.clientArtifact.slice(dir.length + 1) + ' 不一致（预构建产物的落点必须与登记表逐字相等）');
+    }
+  } else if (!short) bad.push(name + ' 不是 ' + SHORT_PREFIX + '<short> 形态的包名，无法推导产物名');
+  const want = (!fork && short) ? dir + '/lib/client.' + short + '.js' : null;
+  if (!fork) {
+    if (!target) bad.push(dir + ' 声明了 dsh.client 却没有 exports["./client"]');
+    else if (want && dir + '/' + target !== want) bad.push(dir + ' 的 exports["./client"]=' + JSON.stringify(exp['./client']) + '，必须指向 ' + want);
+  }
   // 3/4) 产物与注册唯一性
   if (target) {
     const rel = dir + '/' + target;
@@ -152,7 +185,12 @@ function clientHalfViolations(inp) {
   if (artRel && typeof artText === 'string' && artText.length >= 1000) {
     const rootEsc = String(inp.rootName || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const bound = new RegExp('require\\s*\\(\\s*[\'"]' + rootEsc + '[\'"]\\s*\\)').test(stripComments(artText));
-    if (!bound) {
+    if (fork && bound) {
+      // 反向判据：fork 是**独立插件**（自带 patch 行 + 自己的 inject 面），它不消费主包服务面。
+      // 产物里出现主包绑定 = 它偷偷挂到主包模块图上（关掉主包后仍握旧代 exports，ADR-0014 §5.2 反模式）。
+      bad.push(artRel + ' 里出现了主包绑定 require("' + inp.rootName + '")'
+        + '（upstream-fork 是独立插件，不消费主包服务面；不许给它伪造 root 通道，见合同第 6 条）');
+    } else if (!fork && !bound) {
       bad.push(artRel + ' 里没有构建期的主包绑定 require("' + inp.rootName + '")'
         + '（P-C 契约 §2 / ADR-0014 S5.2：浏览器半边唯一跨包通道；产物由 npm run build 发出，勿手改）');
     }
@@ -270,6 +308,53 @@ check('负对照：未声明 dsh.client 的包不产生任何违反项（范围�
   clientHalfViolations(mkIn((o) => { delete o.manifest.dsh.client; })).some((s) => /必须声明 dsh.client/.test(s)) === false);
 check('负对照：清单外的包声明了 dsh.client 也不额外报"必须声明"',
   !clientHalfViolations(mkIn()).some((s) => /必须声明 dsh.client/.test(s)));
+
+// -- upstream-fork（P1：packages/pet）的独立判据面 ----------------------------------
+// fork 与一般子包的三处差异各有正/负两向，缺任一向都等于"这条分叉没被判过"。
+const FORK_DIR = 'packages/pet';
+check('形态登记表里确实登记了 ' + FORK_DIR + '（否则下面整组负对照恒真）', isUpstreamFork(FORK_DIR));
+const forkOf = upstreamForkOf(FORK_DIR);
+const mkFork = (over) => {
+  const pre = forkOf.prebuilt;
+  const o = {
+    name: forkOf.name, dir: FORK_DIR,
+    manifest: {
+      name: forkOf.name,
+      dsh: { client: { inject: ['@deepseek-ai/dsh-client-connection'], platform: 'web', immediately: true } },
+      exports: { './client': { types: './lib/types/client/index.d.ts', default: './' + pre.entry } },
+    },
+    rowNames: [rootName, forkOf.name],
+    rootName,
+    artifacts: {
+      [forkOf.clientArtifact]: 'window.__ModuleLoader__.load({ id: "' + forkOf.name + '", factory: () => {} });' + PAD,
+      'lib/client.js': 'window.__ModuleLoader__.load({ id: "' + rootName + '", factory: () => {} });',
+    },
+    rootClientRel: 'lib/client.js', rootDshClient,
+  };
+  if (over) over(o);
+  return o;
+};
+check('正对照：fork 正确形态（条件对象 exports + 无主包绑定 + 自有 inject）0 违反项',
+  clientHalfViolations(mkFork()).length === 0, JSON.stringify(clientHalfViolations(mkFork())));
+{
+  const v = clientHalfViolations(mkFork((o) => { o.artifacts[forkOf.clientArtifact] = 'window.__ModuleLoader__.load({ id: "' + forkOf.name + '", factory: (require) => { require("' + rootName + '"); } });' + PAD; }));
+  check('负对照：fork 产物里出现主包绑定 require("<主包名>") 判红（不许伪造 root 通道）',
+    v.some((s) => /upstream-fork 是独立插件/.test(s)), JSON.stringify(v));
+}
+{
+  const v = clientHalfViolations(mkFork((o) => { delete o.manifest.dsh.client.immediately; }));
+  check('负对照：fork 缺 immediately 判红（装载时机键与根同判据）', v.some((s) => /immediately/.test(s)), JSON.stringify(v));
+}
+{
+  const v = clientHalfViolations(mkFork((o) => { o.manifest.exports['./client'] = './lib/client.pet.js'; }));
+  check('负对照：fork 的 exports["./client"] 落点偏离登记表判红', v.some((s) => /形态登记表登记/.test(s)), JSON.stringify(v));
+}
+{
+  // 条件对象取值的正/负两向：字符串写法对 fork 同样可解析（不许因为"是对象"就漏判）。
+  const v = clientHalfViolations(mkFork((o) => { o.manifest.exports['./client'] = './' + forkOf.prebuilt.entry; }));
+  check('正对照：fork 用字符串写 exports["./client"] 也判过（条件对象取 default 的取值面有牙）',
+    v.length === 0, JSON.stringify(v));
+}
 
 if (failed) { console.log('SUBPACKAGE CLIENT-HALF CHECKS FAILED -- ' + failed + ' failed'); process.exit(1); }
 console.log('ALL SUBPACKAGE CLIENT-HALF CHECKS PASSED');

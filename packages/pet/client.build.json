@@ -1,0 +1,12 @@
+{
+  "_why": "upstream-fork 形态的浏览器半边**不编译**：本包的 lib/client.js 是上游 dsh-pet@0.3.7 的受控派生预构建产物（tsdown 出，含 .ts 源码面），本仓没有它的构建链。这里登记的是「产物必须是这一份字节」，构建期核对 sha256 而不是读源码重编。",
+  "_shape": "prebuilt：artifact 必须逐字等于清单 exports['./client'] 的落点；entry 是产物文件本身（相对包目录）；sha256 是产物字节的期望值；moduleId 是产物里 __ModuleLoader__ 注册的 id；hostEntry/hostSha256 是与之配对的宿主半边（同一派生世代的另一半，两半必须同批登记）。",
+  "artifact": "lib/client.js",
+  "prebuilt": {
+    "entry": "lib/client.js",
+    "sha256": "1bb340138c0f38a2833407ff9d90b82bc93c3eeb8aafd8e655d2a5911e062bad",
+    "moduleId": "dsh-we-pet-builtin",
+    "hostEntry": "lib/index.js",
+    "hostSha256": "49047662421d3a176e7ac7c62e37bf81212c8e91b54640d7bcddb67b1d7099dd"
+  }
+}
