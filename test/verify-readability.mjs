@@ -460,6 +460,32 @@ function main() {
         && /var\(--we-thinking-trigger-alpha/.test(r.body)));
     check('negative control: a tinted reasoning/file bar is not fully transparent',
       !clear('background: rgba(28, 28, 28, 0.19) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important;'));
+    // ── PR#1 ⑤（适配本仓）：三挡语义里「关」挡的交付物文件卡必须是**半透明** ────────────
+    // 三挡的真源在 src/effects.js：native ⇒ 挂 data-we-thinking-native；glass ⇒ 挂
+    // data-we-thinking-glass；**关 ⇒ 两个都不挂**。上面那组（`normal`，门 = data-we-thinking-glass）
+    // 只覆盖了「液态玻璃」挡：文件卡在那里被清成 transparent。
+    // 于是「关」挡下 `[data-presented-file]` 保留**宿主不透明的** --deliverable-fill
+    //（深色主题 = --dsw-static-neutral-850）⇒ 屏上一块实心深色卡，与旁边吃
+    // --we-chat-glass-fill 的半透明气泡**不是同一种材质**（用户原话："关闭挡位时应该是半透明的"）。
+    // 补的就是缺的那一档：**同一份 chat 釉、不加霜**（「关」= 无磨砂）。
+    // 判据两头钉：① 那条规则在位且门正是"两个属性都不挂"；② 它必须带 chat 釉、且**摘掉霜**
+    //（否则「关」挡会连磨砂一起带上，与"关 = 无霜"的挡位定义矛盾）。
+    const offGear = (r) => (r.header || '').includes('[data-presented-file]')
+      && (r.header || '').includes(':not([data-we-thinking-glass])')
+      && (r.header || '').includes(':not([data-we-thinking-native])');
+    const offRule = all.filter(offGear);
+    check('F2d4 「关」挡（两个属性都不挂）的交付物文件卡吃 chat 釉（半透明，与气泡同材质）',
+      offRule.length >= 1
+      && offRule.some((r) => /background-color: var\(--we-chat-glass-fill\)/.test(r.body)
+        && /background-image: none/.test(r.body)),
+      offRule.length ? offRule.map((r) => r.header).join(' | ') : '缺这一档的规则');
+    check('F2d4b 「关」挡那张卡**不加霜**（"关 = 无磨砂"，与另两挡的挡位定义一致）',
+      offRule.some((r) => /(?:^|[;\s])backdrop-filter: none/.test(r.body)
+        && /-webkit-backdrop-filter: none/.test(r.body)),
+      offRule.length ? offRule[0].body.replace(/\s+/g, ' ').slice(0, 120) : '缺规则');
+    check('negative control: 同一条判据对"带霜"与"不带 chat 釉"分别判假（有牙）',
+      offGear({ header: 'body[data-we-glass-page]:not([data-we-thinking-glass]):not([data-we-thinking-native]) [data-presented-file]' }) === true
+      && clear('background: transparent !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important;') === true);
     const chip = normal.find((r) => r.header.includes('[data-chat-flow] :not(pre) > code')
       && r.header.includes('[data-vcp-rawhtml] :not(pre) > code'));
     check('F2d3 inline capsules restore ten-percent white mist and independent 8px frost',
