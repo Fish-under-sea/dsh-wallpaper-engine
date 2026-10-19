@@ -34,10 +34,10 @@ const child = spawn(browser, [
 let socket, launchError, counter = 0;
 const pending = new Map(), failures = [], report = [];
 child.on('error', error => { launchError = error; });
-function send(method, params = {}) {
+function send(method, params = {}, timeoutMs = 15000) {
   return new Promise((resolve, reject) => {
     const id = ++counter;
-    const timer = setTimeout(() => { pending.delete(id); reject(Error('CDP timeout: ' + method)); }, 15000);
+    const timer = setTimeout(() => { pending.delete(id); reject(Error('CDP timeout: ' + method)); }, timeoutMs);
     pending.set(id, { resolve, reject, timer });
     socket.send(JSON.stringify({ id, method, params }));
   });
@@ -61,7 +61,9 @@ function check(name, passed, detail) {
   console.log((passed ? 'PASS' : 'FAIL') + ' | ' + name);
 }
 async function screenshot(name) {
-  const { data } = await send('Page.captureScreenshot', { format: 'png' });
+  // 大面积 backdrop-filter 光栅化在 1280 视口上实测可到 1~10 秒（与新加的
+  // 「动画跟随」判据无关；基线就有），15 秒的通用超时处在边缘 ⇒ 这里单独放宽。
+  const { data } = await send('Page.captureScreenshot', { format: 'png' }, 60000);
   writeFileSync(join(out, name + '.png'), Buffer.from(data, 'base64'));
   return data;
 }
@@ -170,6 +172,61 @@ try {
       await until('!!document.querySelector("[data-we-surface-plate=right-sidebar]")');
       check(tag + ' 隐藏会话的右栏面板不夺走接管资格', await evaluate(`document.querySelector('#right').getAttribute('data-we-surface-runtime')==='right-sidebar' && !document.querySelector('#ghost-right').hasAttribute('data-we-surface-runtime') && !!document.querySelector('[data-we-surface-plate="right-sidebar"]')`));
       await evaluate("document.querySelector('#ghost-session').remove();__glass.sync()");
+      // ── 宿主开合侧栏时的**祖先动画**（用户报障："侧边栏弹出时会出现丢失左右两侧的
+      //    玻璃效果…只出现在过程中"）──────────────────────────────────────────────
+      // 真实来源：ui-layout 的 AppFrame 在 `.frame[data-animating]` 上做
+      // `transition: grid-template-columns`，而 frame 是左右两侧栏共同的祖先。
+      // 旧判据把"祖先链上有任何 getAnimations()"当成 unsafeRoot ⇒ 动画期间两侧同时
+      // 退回原生、底板被撤掉，动画结束才回来。这里用**同样的机制**复现（grid 列宽过渡，
+      // 不是 transform —— transform 会把目标移出视口，那是合理的原生回退）。
+      await evaluate(`(() => {
+        const right=document.querySelector('#right');
+        document.querySelector('#app').append(right);   // 让两侧栏落在同一祖先之下
+        const st=document.createElement('style');st.id='motion';st.textContent=
+          '#app{display:grid;grid-template-columns:30% minmax(0,1fr);animation:weTrack 1200ms ease-out}'+
+          '@keyframes weTrack{from{grid-template-columns:38% minmax(0,1fr)}to{grid-template-columns:30% minmax(0,1fr)}}';
+        document.head.append(st);__glass.sync();return true;
+      })()`);
+      await until('document.querySelector("#app").getAnimations().length>0');
+      await evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+      check(tag + ' 祖先有限动画期间两侧仍接管（玻璃不闪退）', await evaluate(`(()=>{
+        const l=document.querySelector('[data-we-surface-runtime="left-sidebar"]');
+        const r=document.querySelector('#right');
+        return !!l && r.getAttribute('data-we-surface-runtime')==='right-sidebar'
+          && !!document.querySelector('[data-we-surface-plate="left-sidebar"]')
+          && !!document.querySelector('[data-we-surface-plate="right-sidebar"]');
+      })()`));
+      // 底板必须跟着动画中的几何走：等目标宽度真的变了（说明动画在推进），
+      // 同一时刻底板宽度必须与目标一致（不跟就会停在动画起点）。
+      const plateFollow = await evaluate(`(async()=>{
+        const plate=()=>document.querySelector('[data-we-surface-plate="left-sidebar"]');
+        const target=()=>document.querySelector('#left');
+        const w0=target().getBoundingClientRect().width;
+        const deadline=performance.now()+1200;
+        while (performance.now()<deadline) {
+          await new Promise(r=>requestAnimationFrame(r));
+          const tw=target().getBoundingClientRect().width;
+          if (Math.abs(tw-w0)>2) {
+            const pw=plate().getBoundingClientRect().width;
+            return { w0, target:tw, plate:pw, diff:Math.abs(pw-tw), changed:true };
+          }
+        }
+        return { w0, target:w0, plate:plate().getBoundingClientRect().width, diff:0, changed:false };
+      })()`);
+      check(tag + ' 动画期间底板跟住几何', plateFollow.changed === true && plateFollow.diff < 1.5, plateFollow);
+      await until('document.querySelector("#app").getAnimations().length===0');
+      check(tag + ' 动画结束后仍接管（不是动画结束才回来）', await evaluate(`document.querySelector('#right').getAttribute('data-we-surface-runtime')==='right-sidebar' && !!document.querySelector('[data-we-surface-plate="right-sidebar"]')`));
+      await delay(140);
+      const stillFrames = await evaluate('__frames');
+      await delay(140);
+      check(tag + ' 动画结束后停止续帧', await evaluate(`__frames===${stillFrames}`), { before: stillFrames, after: await evaluate('__frames') });
+      await evaluate(`(() => {
+        document.getElementById('motion').remove();
+        document.body.append(document.querySelector('#right'));
+        document.querySelector('#app').removeAttribute('style');
+        __glass.sync();return true;
+      })()`);
+      await until('!!document.querySelector("[data-we-surface-plate=right-sidebar]")');
       await evaluate("document.querySelector('#left').style.width='25%'");
       await until('Math.abs(document.querySelector("[data-we-surface-plate=left-sidebar]").getBoundingClientRect().width-document.querySelector("#left").getBoundingClientRect().width)<1');
       // 多 right 节点（G1 历史栏位）：后台保留节点（无 open 属性）+ 活动节点。
