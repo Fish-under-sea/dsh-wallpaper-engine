@@ -257,8 +257,26 @@ assert.ok(!code.includes(wallpaperGatedSidebarSelector), 'legacy wallpaper-gated
 // 把让开那两条挪进页面玻璃块 ⇒ 第二条红。
 // 朴素块体切片：实现在 `test/tools/assert-harness.mjs`（契约 = 两个 `indexOf`，不跳字符串/注释）。
 const blockBodyOf = (needle) => naiveBlockBody(code, needle);
-const pageGlassBlock = blockBodyOf('body[data-we-glass-page] :where([data-chat-flow]) {');
+// ── PR#1 ⑧⑨（口径迁移，用户已批准）：页面级令牌映射回到**整页**作用域 ───────────────
+// `5cabb9e1` 的「表面所有权」重构把这一族从 `body[data-we-glass-page]` 收窄成
+// `body[data-we-glass-page] :where([data-chat-flow])`，于是宿主自己的**侧栏「新建会话」按钮**
+//（读 --dsw-alias-button-elevated-fill）、**右栏页签栏**（--dsw-alias-bg-layer-2）、
+// **设置窗内的卡片**（--dsw-alias-bg-layer-1）都不在聊天流里 ⇒ 全部退回宿主实底
+//（用户原话："这些我用红色矩形框选的类型的组件的玻璃效果又丢失了"）。
+// 恢复为整页级；第三方内容的可读性由每条 color-mix 里的 --we-readability-floor 兜住，
+// 不是"无下限透明"。
+const pageGlassBlock = blockBodyOf('body[data-we-glass-page] {');
 const wallpaperBlock = blockBodyOf('body[data-we-wallpaper] {');
+assert.ok(pageGlassBlock && pageGlassBlock.includes('--dsw-alias-bg-layer-1')
+  && pageGlassBlock.includes('--dsw-alias-markdown-code-block'),
+  'page-glass token mapping must sit on body[data-we-glass-page] (glass works without a wallpaper)');
+assert.ok(pageGlassBlock && pageGlassBlock.includes('--dsw-alias-button-elevated-fill'),
+  'PR#1⑨ 页面级映射必须覆盖「抬高按钮」面（宿主侧栏「新建会话」读它）');
+// ⚠️ 负对照：把作用域**再收窄回聊天流**必须判红（这正是那次回归的形态）。
+assert.ok(!code.includes('body[data-we-glass-page] :where([data-chat-flow])'),
+  'PR#1⑨ 页面玻璃令牌映射必须是**整页**的（再收窄回 :where([data-chat-flow]) ⇒ 宿主侧栏按钮 / 右栏页签 / 设置窗卡片全退回实底）');
+assert.ok(!code.includes('body[data-ds-dark-theme][data-we-glass-page] :where([data-chat-flow])'),
+  'PR#1⑨ 深色档同样必须是整页的');
 assert.ok(pageGlassBlock && pageGlassBlock.includes('--dsw-alias-bg-layer-1')
   && pageGlassBlock.includes('--dsw-alias-markdown-code-block'),
   'page-glass token mapping must sit on body[data-we-glass-page] (glass works without a wallpaper)');

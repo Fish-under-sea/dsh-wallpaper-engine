@@ -233,7 +233,7 @@ const CSS_BASE = `
      "玻璃配方生效"。两者正交 —— 壁纸在场时同时成立，无壁纸时只有本锚点。
      raise border alpha for visibility, and apply the frosted-glass effect to
      opaque surfaces. */
-  body[data-we-glass-page] :where([data-chat-flow]) {
+  body[data-we-glass-page] {
     /* ── 表面令牌（#80）——在**令牌源头**接管，不逐面补选择器 ────────────────────
        宿主的对话框 / 面板 / 抬高按钮面读的都是别名层：--dsw-alias-bg-layer-1/2/3 是
        面板梯度（浅色三层同为白；深色 bluish-875/850/800 逐层抬亮），
@@ -352,7 +352,7 @@ const CSS_BASE = `
   }
   /* 深色档的**页面玻璃**映射：与上面那块逐条同形（同一张配方表、同一组层权重），
      只有玻璃色的**缺省值**不同：深色玻璃底色是深海军蓝。 */
-  body[data-ds-dark-theme][data-we-glass-page] :where([data-chat-flow]) {
+  body[data-ds-dark-theme][data-we-glass-page] {
     --dsw-alias-bg-layer-1: color-mix(in srgb,
       var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
       color-mix(in srgb, var(--we-surface-tint-dark, #0d1524) calc(var(--we-glass-alpha, 0.5) * 0.9 * 100%), transparent) calc((1 - var(--we-readability-floor)) * 100%));

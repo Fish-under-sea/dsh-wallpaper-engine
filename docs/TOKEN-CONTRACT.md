@@ -9,8 +9,8 @@
 > **无门控** = 两者都不挂（共存审计 M1 的全部暴露面 —— 白名单见下表，新增一条守卫即红）。
 > JS 侧的令牌写入（`src/font/apply.js` 的 label 族等）不在本契约口径内，见 `docs/DSH-UI-INTERFACES.md`。
 
-共 **179** 条声明 / **59** 个不同令牌。门控归属：
-玻璃 **148** 条 · 壁纸 **12** 条 · 无门控 **19** 条。
+共 **177** 条声明 / **59** 个不同令牌。门控归属：
+玻璃 **146** 条 · 壁纸 **12** 条 · 无门控 **19** 条。
 
 ## 无门控声明（白名单 —— M1 的全部暴露面）
 
@@ -47,9 +47,9 @@
 | 令牌 | 条数 | 门控 | 行号 | 消费者注记 |
 |---|---|---|---|---|
 | `--dsw-alias-bg-base` | 2 | 壁纸(2) | src/styles-base.js:223, src/styles-base.js:344 | 页面基底 —— 壁纸可见性的关键前提（transparent） |
-| `--dsw-alias-bg-layer-1` | 13 | 玻璃(12) + 无门控(1) | src/styles-base.js:97, src/styles-base.js:249, src/styles-base.js:356, src/styles-chrome.js:90, src/styles-chrome.js:151, src/styles-chrome.js:173, src/styles-chrome.js:178, src/styles-chrome.js:187, src/styles-panel.js:378, src/styles-panel.js:391, src/styles-ext.js:84, src/styles-ext.js:91, src/styles-ext.js:102 | 面板层次 1（宿主对话框/侧栏底）；better-sidebar 亦按它上色 |
-| `--dsw-alias-bg-layer-2` | 13 | 玻璃(13) | src/styles-base.js:252, src/styles-base.js:359, src/styles-shell.js:376, src/styles-chrome.js:93, src/styles-chrome.js:154, src/styles-chrome.js:174, src/styles-chrome.js:179, src/styles-chrome.js:188, src/styles-panel.js:381, src/styles-panel.js:394, src/styles-ext.js:85, src/styles-ext.js:92, src/styles-ext.js:103 | 面板层次 2 |
-| `--dsw-alias-bg-layer-3` | 12 | 玻璃(12) | src/styles-base.js:255, src/styles-base.js:362, src/styles-chrome.js:96, src/styles-chrome.js:157, src/styles-chrome.js:175, src/styles-chrome.js:180, src/styles-chrome.js:189, src/styles-panel.js:384, src/styles-panel.js:397, src/styles-ext.js:86, src/styles-ext.js:93, src/styles-ext.js:104 | 面板层次 3 |
+| `--dsw-alias-bg-layer-1` | 12 | 玻璃(11) + 无门控(1) | src/styles-base.js:97, src/styles-base.js:249, src/styles-base.js:356, src/styles-chrome.js:93, src/styles-chrome.js:164, src/styles-chrome.js:175, src/styles-chrome.js:201, src/styles-chrome.js:206, src/styles-chrome.js:215, src/styles-ext.js:86, src/styles-ext.js:95, src/styles-ext.js:106 | 面板层次 1（宿主对话框/侧栏底）；better-sidebar 亦按它上色 |
+| `--dsw-alias-bg-layer-2` | 12 | 玻璃(12) | src/styles-base.js:252, src/styles-base.js:359, src/styles-shell.js:376, src/styles-chrome.js:96, src/styles-chrome.js:165, src/styles-chrome.js:178, src/styles-chrome.js:202, src/styles-chrome.js:207, src/styles-chrome.js:216, src/styles-ext.js:87, src/styles-ext.js:96, src/styles-ext.js:107 | 面板层次 2 |
+| `--dsw-alias-bg-layer-3` | 11 | 玻璃(11) | src/styles-base.js:255, src/styles-base.js:362, src/styles-chrome.js:99, src/styles-chrome.js:166, src/styles-chrome.js:181, src/styles-chrome.js:203, src/styles-chrome.js:208, src/styles-chrome.js:217, src/styles-ext.js:88, src/styles-ext.js:97, src/styles-ext.js:108 | 面板层次 3 |
 | `--dsw-alias-bg-module-platform` | 2 | 玻璃(2) | src/styles-base.js:270, src/styles-base.js:372 |  |
 | `--dsw-alias-bg-multi-select` | 2 | 玻璃(2) | src/styles-base.js:273, src/styles-base.js:375 |  |
 | `--dsw-alias-bg-overlay` | 2 | 玻璃(2) | src/styles-base.js:267, src/styles-base.js:369 | 弹层/浮出层底（issue #71 全表面玻璃） |
@@ -57,21 +57,21 @@
 | `--dsw-alias-border-l2` | 2 | 玻璃(2) | src/styles-base.js:332, src/styles-base.js:422 | 边框强调 L2 |
 | `--dsw-alias-border-l2-darkmode-thin` | 2 | 玻璃(2) | src/styles-base.js:333, src/styles-base.js:423 | 深色细边框 |
 | `--dsw-alias-border-l3` | 1 | 玻璃(1) | src/styles-sidebar.js:60 |  |
-| `--dsw-alias-brand-primary` | 3 | 玻璃(3) | src/styles-sidebar.js:68, src/styles-sidebar.js:232, src/styles-chrome.js:109 |  |
-| `--dsw-alias-brand-text` | 3 | 玻璃(3) | src/styles-sidebar.js:69, src/styles-sidebar.js:233, src/styles-chrome.js:110 |  |
-| `--dsw-alias-button-elevated-fill` | 4 | 玻璃(4) | src/styles-base.js:258, src/styles-base.js:365, src/styles-chrome.js:190, src/styles-ext.js:105 | 抬高按钮实色（侧栏「新建会话」等） |
+| `--dsw-alias-brand-primary` | 3 | 玻璃(3) | src/styles-sidebar.js:68, src/styles-sidebar.js:232, src/styles-chrome.js:112 |  |
+| `--dsw-alias-brand-text` | 3 | 玻璃(3) | src/styles-sidebar.js:69, src/styles-sidebar.js:233, src/styles-chrome.js:113 |  |
+| `--dsw-alias-button-elevated-fill` | 5 | 玻璃(5) | src/styles-base.js:258, src/styles-base.js:365, src/styles-chrome.js:167, src/styles-chrome.js:218, src/styles-ext.js:109 | 抬高按钮实色（侧栏「新建会话」等） |
 | `--dsw-alias-button-floating-fill` | 3 | 玻璃(3) | src/styles-base.js:276, src/styles-base.js:378, src/styles-shell.js:378 |  |
 | `--dsw-alias-button-floating-hover` | 1 | 玻璃(1) | src/styles-shell.js:379 |  |
 | `--dsw-alias-button-ghost-active-fill` | 2 | 玻璃(2) | src/styles-base.js:279, src/styles-base.js:381 |  |
 | `--dsw-alias-button-info-fill` | 1 | 玻璃(1) | src/styles-base.js:514 |  |
 | `--dsw-alias-button-info-hover` | 1 | 玻璃(1) | src/styles-base.js:515 |  |
-| `--dsw-alias-button-primary-dimmed` | 1 | 玻璃(1) | src/styles-chrome.js:113 |  |
-| `--dsw-alias-button-primary-fill` | 1 | 玻璃(1) | src/styles-chrome.js:111 |  |
-| `--dsw-alias-button-primary-hover` | 1 | 玻璃(1) | src/styles-chrome.js:112 |  |
+| `--dsw-alias-button-primary-dimmed` | 1 | 玻璃(1) | src/styles-chrome.js:116 |  |
+| `--dsw-alias-button-primary-fill` | 1 | 玻璃(1) | src/styles-chrome.js:114 |  |
+| `--dsw-alias-button-primary-hover` | 1 | 玻璃(1) | src/styles-chrome.js:115 |  |
 | `--dsw-alias-button-tool-bar-fill` | 2 | 玻璃(2) | src/styles-base.js:282, src/styles-base.js:384 |  |
 | `--dsw-alias-interactive-bg-active` | 2 | 玻璃(2) | src/styles-base.js:285, src/styles-base.js:387 |  |
-| `--dsw-alias-interactive-bg-hover` | 6 | 玻璃(6) | src/styles-shell.js:377, src/styles-sidebar.js:65, src/styles-sidebar.js:100, src/styles-sidebar.js:229, src/styles-sidebar.js:267, src/styles-chrome.js:102 |  |
-| `--dsw-alias-interactive-bg-hover-accent` | 3 | 玻璃(3) | src/styles-sidebar.js:66, src/styles-sidebar.js:230, src/styles-chrome.js:103 |  |
+| `--dsw-alias-interactive-bg-hover` | 6 | 玻璃(6) | src/styles-shell.js:377, src/styles-sidebar.js:65, src/styles-sidebar.js:100, src/styles-sidebar.js:229, src/styles-sidebar.js:267, src/styles-chrome.js:105 |  |
+| `--dsw-alias-interactive-bg-hover-accent` | 3 | 玻璃(3) | src/styles-sidebar.js:66, src/styles-sidebar.js:230, src/styles-chrome.js:106 |  |
 | `--dsw-alias-interactive-bg-hover-solid` | 2 | 玻璃(2) | src/styles-base.js:288, src/styles-base.js:390 |  |
 | `--dsw-alias-label-caption` | 1 | 壁纸(1) | src/styles-base.js:454 |  |
 | `--dsw-alias-label-deep-diving` | 2 | 玻璃(2) | src/styles-base.js:489, src/styles-base.js:501 |  |
@@ -79,29 +79,29 @@
 | `--dsw-alias-label-dimmed` | 1 | 壁纸(1) | src/styles-base.js:455 |  |
 | `--dsw-alias-label-primary` | 1 | 壁纸(1) | src/styles-base.js:450 | 正文灰阶（壁纸激活时压暗提对比） |
 | `--dsw-alias-label-primary-dimmed` | 1 | 壁纸(1) | src/styles-base.js:451 |  |
-| `--dsw-alias-label-primary-foreground` | 1 | 玻璃(1) | src/styles-chrome.js:120 |  |
+| `--dsw-alias-label-primary-foreground` | 1 | 玻璃(1) | src/styles-chrome.js:123 |  |
 | `--dsw-alias-label-secondary` | 1 | 壁纸(1) | src/styles-base.js:452 | 次要文字灰阶 |
 | `--dsw-alias-label-tertiary` | 1 | 壁纸(1) | src/styles-base.js:453 |  |
 | `--dsw-alias-link` | 3 | 玻璃(3) | src/styles-base.js:488, src/styles-base.js:500, src/styles-base.js:520 |  |
 | `--dsw-alias-markdown-citation` | 4 | 玻璃(2) + 无门控(2) | src/styles-base.js:291, src/styles-base.js:393, src/styles-shell.js:552, src/styles-shell.js:566 |  |
-| `--dsw-alias-markdown-code-block` | 6 | 玻璃(4) + 无门控(2) | src/styles-base.js:309, src/styles-base.js:403, src/styles-shell.js:412, src/styles-shell.js:546, src/styles-shell.js:560, src/styles-chrome.js:193 | markdown 代码块底 |
-| `--dsw-alias-markdown-code-block-banner` | 6 | 玻璃(4) + 无门控(2) | src/styles-base.js:312, src/styles-base.js:406, src/styles-shell.js:413, src/styles-shell.js:547, src/styles-shell.js:561, src/styles-chrome.js:194 | markdown 代码条幅底 |
-| `--dsw-alias-markdown-code-segment-selected` | 5 | 玻璃(3) + 无门控(2) | src/styles-base.js:326, src/styles-base.js:418, src/styles-shell.js:551, src/styles-shell.js:565, src/styles-chrome.js:198 | 代码卡分段（选中） |
-| `--dsw-alias-markdown-code-segment-unselected` | 5 | 玻璃(3) + 无门控(2) | src/styles-base.js:321, src/styles-base.js:415, src/styles-shell.js:550, src/styles-shell.js:564, src/styles-chrome.js:197 | 代码卡分段（未选中） |
-| `--dsw-alias-markdown-inline-code` | 6 | 玻璃(4) + 无门控(2) | src/styles-base.js:315, src/styles-base.js:409, src/styles-shell.js:318, src/styles-shell.js:548, src/styles-shell.js:562, src/styles-chrome.js:195 | 行内代码底 |
+| `--dsw-alias-markdown-code-block` | 6 | 玻璃(4) + 无门控(2) | src/styles-base.js:309, src/styles-base.js:403, src/styles-shell.js:412, src/styles-shell.js:546, src/styles-shell.js:560, src/styles-chrome.js:221 | markdown 代码块底 |
+| `--dsw-alias-markdown-code-block-banner` | 6 | 玻璃(4) + 无门控(2) | src/styles-base.js:312, src/styles-base.js:406, src/styles-shell.js:413, src/styles-shell.js:547, src/styles-shell.js:561, src/styles-chrome.js:222 | markdown 代码条幅底 |
+| `--dsw-alias-markdown-code-segment-selected` | 5 | 玻璃(3) + 无门控(2) | src/styles-base.js:326, src/styles-base.js:418, src/styles-shell.js:551, src/styles-shell.js:565, src/styles-chrome.js:226 | 代码卡分段（选中） |
+| `--dsw-alias-markdown-code-segment-unselected` | 5 | 玻璃(3) + 无门控(2) | src/styles-base.js:321, src/styles-base.js:415, src/styles-shell.js:550, src/styles-shell.js:564, src/styles-chrome.js:225 | 代码卡分段（未选中） |
+| `--dsw-alias-markdown-inline-code` | 6 | 玻璃(4) + 无门控(2) | src/styles-base.js:315, src/styles-base.js:409, src/styles-shell.js:318, src/styles-shell.js:548, src/styles-shell.js:562, src/styles-chrome.js:223 | 行内代码底 |
 | `--dsw-alias-markdown-placeholder` | 4 | 玻璃(2) + 无门控(2) | src/styles-base.js:294, src/styles-base.js:396, src/styles-shell.js:553, src/styles-shell.js:567 |  |
-| `--dsw-alias-markdown-tag` | 5 | 玻璃(3) + 无门控(2) | src/styles-base.js:318, src/styles-base.js:412, src/styles-shell.js:549, src/styles-shell.js:563, src/styles-chrome.js:196 | markdown 标签底 |
+| `--dsw-alias-markdown-tag` | 5 | 玻璃(3) + 无门控(2) | src/styles-base.js:318, src/styles-base.js:412, src/styles-shell.js:549, src/styles-shell.js:563, src/styles-chrome.js:224 | markdown 标签底 |
 | `--dsw-alias-scrollbar-bg-l1` | 2 | 玻璃(2) | src/styles-shell.js:94, src/styles-shell.js:105 |  |
 | `--dsw-alias-scrollbar-bg-l2` | 2 | 玻璃(2) | src/styles-shell.js:95, src/styles-shell.js:106 |  |
 | `--dsw-alias-scrollbar-hover-l1` | 2 | 玻璃(2) | src/styles-shell.js:96, src/styles-shell.js:107 |  |
 | `--dsw-alias-scrollbar-hover-l2` | 2 | 玻璃(2) | src/styles-shell.js:97, src/styles-shell.js:108 |  |
-| `--dsw-alias-state-business-primary` | 5 | 玻璃(5) | src/styles-base.js:492, src/styles-base.js:503, src/styles-sidebar.js:67, src/styles-sidebar.js:231, src/styles-chrome.js:114 |  |
-| `--dsw-alias-turn-trigger-bg` | 3 | 玻璃(3) | src/styles-shell.js:179, src/styles-shell.js:189, src/styles-ext.js:116 |  |
-| `--dsw-alias-turn-trigger-bg-hover` | 3 | 玻璃(3) | src/styles-shell.js:182, src/styles-shell.js:192, src/styles-ext.js:117 |  |
+| `--dsw-alias-state-business-primary` | 5 | 玻璃(5) | src/styles-base.js:492, src/styles-base.js:503, src/styles-sidebar.js:67, src/styles-sidebar.js:231, src/styles-chrome.js:117 |  |
+| `--dsw-alias-turn-trigger-bg` | 3 | 玻璃(3) | src/styles-shell.js:179, src/styles-shell.js:189, src/styles-ext.js:120 |  |
+| `--dsw-alias-turn-trigger-bg-hover` | 3 | 玻璃(3) | src/styles-shell.js:182, src/styles-shell.js:192, src/styles-ext.js:121 |  |
 | `--dsw-mask-blur` | 1 | 玻璃(1) | src/styles-shell.js:81 |  |
 | `--dsw-specific-bubble` | 4 | 玻璃(2) + 无门控(2) | src/styles-shell.js:52, src/styles-shell.js:62, src/styles-shell.js:545, src/styles-shell.js:559 |  |
 | `--dsw-specific-input-major` | 2 | 玻璃(2) | src/styles-shell.js:49, src/styles-shell.js:59 |  |
-| `--dsw-specific-selector` | 1 | 玻璃(1) | src/styles-ext.js:106 |  |
+| `--dsw-specific-selector` | 1 | 玻璃(1) | src/styles-ext.js:110 |  |
 | `--dsw-specific-sidebar-fill` | 4 | 壁纸(4) | src/styles-base.js:224, src/styles-base.js:345, src/styles-base.js:439, src/styles-shell.js:582 | 侧栏填充（宿主 Mica/深色主题各有一份） |
-| `--dsw-specific-sidebar-nav-item-active` | 2 | 玻璃(2) | src/styles-chrome.js:100, src/styles-chrome.js:160 |  |
-| `--dsw-specific-sidebar-nav-item-hover` | 2 | 玻璃(2) | src/styles-chrome.js:101, src/styles-chrome.js:161 |  |
+| `--dsw-specific-sidebar-nav-item-active` | 2 | 玻璃(2) | src/styles-chrome.js:103, src/styles-chrome.js:184 |  |
+| `--dsw-specific-sidebar-nav-item-hover` | 2 | 玻璃(2) | src/styles-chrome.js:104, src/styles-chrome.js:185 |  |

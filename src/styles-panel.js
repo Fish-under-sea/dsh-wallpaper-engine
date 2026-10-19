@@ -365,39 +365,14 @@ const CSS_PANEL = `  /* ── 吉祥物形态**3D 圆环转盘**（四次返工
     padding-right: 24px;
   }
 
-  /* 本插件自有控件的局部表面：宿主别名只在宿主壳或已知 chat-flow 内接管，
-     picker/快捷面板不能因此退回宿主默认实底。令牌仅挂在本插件根节点，第三方内容不会继承。
-     别名取完整两段玻璃配方（styles-chrome 设置窗同一张配方表）：tint×alpha 段 +
-     (1 - readability-floor) 地板段，随「设置窗口·透明度」滑杆变化。挂 data-we-glass-page
-     门（applyGlass 恒挂 ⇒ 规则匹配时 --we-settings-window-alpha 必已写出，按面变量零兜底，
-     与 ⑬ 契约同判据）；readability-base/floor 无兜底（styles-base 声明、F1c 锁定），
-     tint 保留缺省形态。深色整组分叉（tint-dark/floor-deep）。 */
-  body[data-we-glass-page] .we-picker,
-  body[data-we-glass-page] .we-picker__modal,
-  body[data-we-glass-page] .we-qp {
-    --dsw-alias-bg-layer-1: color-mix(in srgb,
-        var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
-        color-mix(in srgb, var(--we-surface-tint-light, #ffffff) calc(var(--we-settings-window-alpha) * 0.9 * 100%), transparent) calc((1 - var(--we-readability-floor)) * 100%));
-    --dsw-alias-bg-layer-2: color-mix(in srgb,
-        var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
-        color-mix(in srgb, var(--we-surface-tint-light, #ffffff) calc(var(--we-settings-window-alpha) * 1.0 * 100%), transparent) calc((1 - var(--we-readability-floor)) * 100%));
-    --dsw-alias-bg-layer-3: color-mix(in srgb,
-        var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
-        color-mix(in srgb, var(--we-surface-tint-light, #ffffff) calc(var(--we-settings-window-alpha) * 1.1 * 100%), transparent) calc((1 - var(--we-readability-floor)) * 100%));
-  }
-  body[data-ds-dark-theme][data-we-glass-page] .we-picker,
-  body[data-ds-dark-theme][data-we-glass-page] .we-picker__modal,
-  body[data-ds-dark-theme][data-we-glass-page] .we-qp {
-    --dsw-alias-bg-layer-1: color-mix(in srgb,
-        var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
-        color-mix(in srgb, var(--we-surface-tint-dark, #0d1524) calc(var(--we-settings-window-alpha) * 0.9 * 100%), transparent) calc((1 - var(--we-readability-floor)) * 100%));
-    --dsw-alias-bg-layer-2: color-mix(in srgb,
-        var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
-        color-mix(in srgb, var(--we-surface-tint-dark, #0d1524) calc(var(--we-settings-window-alpha) * 1.0 * 100%), transparent) calc((1 - var(--we-readability-floor)) * 100%));
-    --dsw-alias-bg-layer-3: color-mix(in srgb,
-        var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
-        color-mix(in srgb, var(--we-surface-tint-dark, #0d1524) calc(var(--we-settings-window-alpha) * 1.1 * 100%), transparent) calc((1 - var(--we-readability-floor)) * 100%));
-  }
+  /* ⚠️ 这里**不要**再给 .we-picker / .we-picker__modal / .we-qp 覆盖 --dsw-alias-bg-layer-*：
+     0186c732 曾加过一条局部兜底，用来救"表面对齐重构把令牌映射收窄到聊天流之后、自有控件
+     退回宿主黑色令牌"。映射已恢复为**页面级**（见 src/styles-base.js 的 "body[data-we-glass-page]"），
+     那条兜底只会让自有面板变成**实心块**（它自带一条更硬的 tint 曲线，压过页面级映射）——
+     快捷面板的页签轨道（.we-tabs 读 layer-1）在真机上是整条深色实底。
+     自有控件现在与宿主面吃**同一份**玻璃令牌（继承即可），不再需要第二份声明。
+     ⚠️ 与 src/styles-base.js 的作用域恢复是**一对**：只删这条而不恢复整页，自有控件会直接
+        退回宿主实底（比改动前更差）——两条必须同行。 */
   /* Motion tokens: one shared ease (expo-out) + two durations. */
   .we-picker, .we-picker__modal {
     --we-ease: cubic-bezier(0.16, 1, 0.3, 1);
