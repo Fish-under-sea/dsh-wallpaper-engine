@@ -257,7 +257,7 @@ function avatarOverflowRow(sel, acts) {
  * @param {{sel:object}} ctx 见文件头契约
  */
 function renderAvatarIsland(ctx) {
-  const { sel, onAvatarEnabled, onAvatarSize, onAvatarRadius, onAvatarPick, onAvatarClear } = ctx;
+  const { sel, onAvatarEnabled, onAvatarSize, onAvatarRadius, onAvatarAiRepeatRows, onAvatarPick, onAvatarClear } = ctx;
   const on = sel.avatarEnabled === true;
   return React.createElement(React.Fragment, null,
     switchRow(weT("启用自定义会话头像"), on, onAvatarEnabled,
@@ -271,6 +271,12 @@ function renderAvatarIsland(ctx) {
     on && SliderRow(weT("头像大小"), AVATAR_SIZE_MIN, AVATAR_SIZE_MAX, 1, sel.avatarSize, onAvatarSize, "px", "avatar-size"),
     on && SliderRow(weT("圆角强度"), AVATAR_RADIUS_MIN, AVATAR_RADIUS_MAX, 1, sel.avatarRadius, onAvatarRadius, "%", "avatar-radius",
       { tooltip: weT("100% = 正圆（默认），50% = 大圆角方块，0% = 直角方形") }),
+    // 助手头像的**出现间隔**（PR#1 ② 的观感旋钮）：每过多少条可见流条目（思考 / 工具调用 /
+    // 回复都算）在下一条可见助手行上再露一次脸。1 = 每条助手行都露脸；越大越稀。
+    // 语义真源 = src/avatar-layer.js 的 avatarAiRepeatRows()（本行只负责画控件）。
+    on && SliderRow(weT("助手头像间隔"), AVATAR_AI_REPEAT_MIN, AVATAR_AI_REPEAT_MAX, 1,
+      sel.avatarAiRepeatRows, onAvatarAiRepeatRows, weT("条"), "avatar-ai-repeat",
+      { tooltip: weT("每过这么多条可见的思考 / 工具调用 / 回复，就在下一条助手消息前再显示一次头像。1 = 每条都显示，越大越稀。") }),
     on && avatarOverflowRow(sel, { onAutoCompress: ctx.onAvatarAutoCompress }),
     on && sel.avatarError
       && React.createElement("div", { className: "we-picker__hint we-avatar-error", key: "avatar-err" }, sel.avatarError),

@@ -2766,6 +2766,9 @@ async function postImageAsset(path, blob, what) {
 function onAvatarEnabled(e) { setSetting("avatarEnabled", e.target.checked); emit(); }
 function onAvatarSize(v, live) { commitLiveSetting("avatarSize", v, live); if (live) syncAvatarLayer(); }
 function onAvatarRadius(v, live) { commitLiveSetting("avatarRadius", v, live); if (live) syncAvatarLayer(); }
+// 助手头像出现间隔（PR#1 ②）：与大小 / 圆角同一条 live 口径 —— 拖动时那一层要在场
+// 就地重算分组（否则"间隔改了但屏上的脸没跟着变"）。
+function onAvatarAiRepeatRows(v, live) { commitLiveSetting("avatarAiRepeatRows", v, live); if (live) syncAvatarLayer(); }
 // 上传裁切（issue #191 问题 1）：用户口径是"上传非正方形、或主体不在中央时效果很差"。
 // 做法是**导入时先裁再传**（而不是存裁切参数第二次渲染）：
 //   · 盘上那张就是裁完的方形图 ⇒ 预览、会话里、以及"以后任何读到它的地方"天然一致，
@@ -4503,7 +4506,7 @@ function WallpaperPicker() {
     // **插件前端那一块自己的开关**（用户诉求 m03549）关着时层也不认它们，面板就跟着空 ——
     // 名单与"真的会动"必须同源，否则会出现点了没反应的滑杆。它与「界面元素跟随」互不依赖。
     parallaxPluginSlots: sel.parallaxPlugin === true ? weDiscoveredGroupsOf('parallax').sort() : [],
-    onAvatarEnabled, onAvatarSize, onAvatarRadius, onAvatarPick, onAvatarClear,
+    onAvatarEnabled, onAvatarSize, onAvatarRadius, onAvatarAiRepeatRows, onAvatarPick, onAvatarClear,
     // 上传裁切（issue #191 问题 1）：几何在这里现算（唯一实现），渲染器只读结果。
     onAvatarCropZoom, onAvatarCropDrag, onAvatarCropWheel, onAvatarCropConfirm, onAvatarCropCancel: closeAvatarCrop,
     avatarCropGeo: avatarCropGeometry(), avatarCropView: AVATAR_CROP_VIEW,

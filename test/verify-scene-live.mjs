@@ -4105,14 +4105,50 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
     check('#191 头像分组：只在首条显示 + 续行用 visibility 隐藏（不摘节点 ⇒ 不踩回 #154）',
       avSrc.includes("const AVATAR_CONT_CLASS = 'we-avatar--cont';")
       && avSrc.includes('function avatarApplyGrouping()')
-      && avSrc.includes('classList.toggle(AVATAR_CONT_CLASS, side === prev)')
+      // ⚠️ PR#1 ② 起判定口径从"连续同侧"升级为"回合起始一定露脸 + 每 N 条可见流条目再露一次"
+      //    （见下面那一组判据）。这里保留的是**不变量**：分组函数存在、续行仍走 --cont 修饰类、
+      //    重算仍被限频、隐藏仍只用 visibility。
+      && avSrc.includes('function avatarSetCont')
       && avSrc.includes('function avatarScheduleGrouping()')
-      && avSrc.includes('if (decorated) avatarScheduleGrouping();')
+      && /if \(decorated \|\| regroup\) avatarScheduleGrouping\(\);/.test(avSrc)
       // #154 的保护线：续行**只许**用 visibility 隐藏。出现 display 就是踩回那个坑 ——
       // 摘掉/收起头像那一路曾让收起的思考行宽度塌成 0、连入口一起消失。
       && /\.we-avatar--cont\s*\{\s*visibility:\s*hidden;\s*\}/.test(stSrc)
       && !/\.we-avatar--cont\s*\{[^}]*display\s*:/.test(stSrc),
       'avatar-layer + styles 源码口径');
+  }
+  {
+    // ── #191 问题 2 + PR#1 ②（适配本仓）：头像出现**频率** ─────────────────────────
+    // 旧口径只做"连续同侧隐藏后续行"，后果（PR#1 ② 的实测）：宿主把一条助手回复拆成
+    // **思考 / 工具调用 / 回复**若干 `assistant-step` 行，且思考与工具调用默认**折叠**
+    //（hidden / data-turn-process-hidden）⇒ 段首落在**看不见的折叠行**上，本轮唯一可见的
+    // 那条回复被判成续行 ⇒ 整轮一张脸都不剩（报告者实测 53 行里 44 行头像被隐藏）。
+    // 新口径三条叠加：① 回合起始一定露脸、且**只落在当前可见的第一条助手行**；
+    // ② 长回合每过 N 条**可见**流条目（思考 / 工具调用 / 回复都算）在下一条可见助手行再露一次
+    //（N 由设置键 avatarAiRepeatRows 驱动）；③ 用户开口后重新起算。
+    // ⚠️ 隐藏仍**只用 visibility 修饰类**、绝不摘节点（#154 的坑：摘节点会让收起的思考行
+    //    宽度塌成 0、连入口一起消失）。
+    const avSrc2 = readFileSync(join(root, 'src', 'avatar-layer.js'), 'utf8').replace(/\r\n/g, '\n');
+    const stSrc2 = styleText();
+    check('PR#1② 头像频率：回合起始必露脸 + 只认当前可见的第一条助手行 + 间隔设置键驱动',
+      avSrc2.includes('AVATAR_FLOW_ROW_SELECTOR')                       // 分组要看全部流条目（不只三种消息行）
+      && avSrc2.includes('avatarRowHidden')                             // 折叠行判定存在
+      && avSrc2.includes('avatarAiRepeatRows')                          // 间隔从设置现读
+      && avSrc2.includes('AVATAR_TURN_ATTR')                            // 回合号（同一回合只配一张脸）
+      && avSrc2.includes('AVATAR_FOLD_ATTR'),                           // 折叠标记
+      'avatar-layer 源码口径');
+    check('PR#1② 折叠行判定只认宿主真实事实（hidden / data-turn-process-hidden / 过程组 body）',
+      /closest\(['"]\[data-step-process-body\]\[hidden\]['"]\)/.test(avSrc2)
+      && avSrc2.includes("hasAttribute('hidden')"),
+      '折叠判定锚点');
+    check('PR#1② 观察者订阅属性变化（折叠 / 展开过程窗口 ⇒ 哪条助手行可见会变）',
+      /attributes:\s*true/.test(avSrc2) && avSrc2.includes('attributeFilter')
+      && /AVATAR_FOLD_ATTR|data-turn-process-hidden/.test(avSrc2),
+      'attributes 订阅');
+    check('PR#1② 隐藏仍只用 visibility 修饰类（绝不摘节点 ⇒ 不踩回 #154）',
+      /\.we-avatar--cont\s*\{\s*visibility:\s*hidden;\s*\}/.test(stSrc2)
+      && !/\.we-avatar--cont\s*\{[^}]*display\s*:/.test(stSrc2),
+      '#154 保护线');
   }
   {
     // ── #191 问题 1：上传裁切 ──────────────────────────────────────────────────
@@ -5791,7 +5827,8 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       };
       const prevFns = {};
       for (const k of Object.keys(stubs2)) { prevFns[k] = globalThis[k]; globalThis[k] = stubs2[k]; }
-      for (const k of ['AVATAR_SIZE_MIN', 'AVATAR_SIZE_MAX', 'AVATAR_RADIUS_MIN', 'AVATAR_RADIUS_MAX']) {
+      for (const k of ['AVATAR_SIZE_MIN', 'AVATAR_SIZE_MAX', 'AVATAR_RADIUS_MIN', 'AVATAR_RADIUS_MAX',
+        'AVATAR_AI_REPEAT_MIN', 'AVATAR_AI_REPEAT_MAX']) {
         prevFns[k] = globalThis[k]; globalThis[k] = schemaMod[k];
       }
       try {
@@ -5909,17 +5946,20 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       onAvatarEnabled: () => {}, onAvatarSize: () => {}, onAvatarRadius: () => {},
       onAvatarPick: () => {}, onAvatarClear: () => {},
     });
-    const PARAMS = ['「我」的头像', '「助手」的头像', '头像大小', '圆角强度'];
+    // ⚠️ PR#1 ② 起多了「助手头像间隔」这一行（`avatarAiRepeatRows`）⇒ 参数面从 4 项变 5 项。
+    const PARAMS = ['「我」的头像', '「助手」的头像', '头像大小', '圆角强度', '助手头像间隔'];
     // 岛的取值面跨了三个模块：schema 的四个常量（滑块范围 / 昵称上限）+ 头像层的三枚
     // （URL / 默认名 / 默认头像几何）⇒ 单独 import 时补替身（同 ext-fx 那块对
     // FX_BLEND_VALUES 的处理）。
     const STUB_KEYS = ['AVATAR_SIZE_MIN', 'AVATAR_SIZE_MAX', 'AVATAR_RADIUS_MIN', 'AVATAR_RADIUS_MAX',
+      'AVATAR_AI_REPEAT_MIN', 'AVATAR_AI_REPEAT_MAX',
       'avatarImageUrl', 'renderAvatarGlyph'];
     const PREV_STUBS = {};
     for (const k of STUB_KEYS) PREV_STUBS[k] = globalThis[k];
     Object.assign(globalThis, {
       AVATAR_SIZE_MIN: schemaMod.AVATAR_SIZE_MIN, AVATAR_SIZE_MAX: schemaMod.AVATAR_SIZE_MAX,
       AVATAR_RADIUS_MIN: schemaMod.AVATAR_RADIUS_MIN, AVATAR_RADIUS_MAX: schemaMod.AVATAR_RADIUS_MAX,
+      AVATAR_AI_REPEAT_MIN: schemaMod.AVATAR_AI_REPEAT_MIN, AVATAR_AI_REPEAT_MAX: schemaMod.AVATAR_AI_REPEAT_MAX,
       avatarImageUrl: avatarLayerMod.avatarImageUrl,
       renderAvatarGlyph: avatarLayerMod.renderAvatarGlyph,
     });

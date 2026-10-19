@@ -154,7 +154,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       },
       "host": {
         "id": "",
@@ -300,7 +301,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       }
     },
     {
@@ -464,7 +466,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       },
       "host": "__null__"
     },
@@ -629,7 +632,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       },
       "host": "__null__"
     },
@@ -794,7 +798,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       },
       "host": "__null__"
     },
@@ -951,7 +956,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       },
       "host": {
         "id": "",
@@ -1097,7 +1103,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       }
     },
     {
@@ -1310,7 +1317,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       },
       "host": {
         "id": "",
@@ -1456,7 +1464,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       }
     },
     {
@@ -1714,7 +1723,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       },
       "host": {
         "id": "",
@@ -1860,7 +1870,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       }
     },
     {
@@ -2017,7 +2028,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       },
       "host": {
         "id": "",
@@ -2163,7 +2175,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       }
     },
     {
@@ -2334,7 +2347,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       },
       "host": {
         "id": "",
@@ -2480,7 +2494,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       }
     },
     {
@@ -2651,7 +2666,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       },
       "host": {
         "id": "",
@@ -2797,7 +2813,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       }
     },
     {
@@ -2955,7 +2972,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       },
       "host": {
         "id": "",
@@ -3101,7 +3119,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       }
     },
     {
@@ -3264,7 +3283,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       },
       "host": {
         "id": "",
@@ -3410,7 +3430,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       }
     },
     {
@@ -3570,7 +3591,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       },
       "host": {
         "id": "",
@@ -3716,7 +3738,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       }
     },
     {
@@ -3883,7 +3906,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       },
       "host": {
         "id": "",
@@ -4029,7 +4053,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       }
     },
     {
@@ -4261,7 +4286,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       },
       "host": {
         "id": "",
@@ -4432,7 +4458,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       }
     },
     {
@@ -4588,7 +4615,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       },
       "host": {
         "id": "",
@@ -4734,7 +4762,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       }
     },
     {
@@ -4890,7 +4919,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       },
       "host": {
         "id": "wallpaper-42",
@@ -5036,7 +5066,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       }
     },
     {
@@ -5193,7 +5224,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       },
       "host": {
         "id": "",
@@ -5339,7 +5371,8 @@
         "uiColorTab": "",
         "uiColorDeepDiving": "",
         "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "glassSurfacePolicy": {},
+        "avatarAiRepeatRows": 6
       }
     }
   ]
