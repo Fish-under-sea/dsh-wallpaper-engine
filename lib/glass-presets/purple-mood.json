@@ -3,6 +3,7 @@
   "id": "purple-mood",
   "name": "紫色心情",
   "values": {
+    "glassSurfacePolicy": {},
     "scrim": 0.5,
     "border": 0.9,
     "blur": 9,

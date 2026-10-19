@@ -3,6 +3,7 @@
   "id": "factory-author",
   "name": "作者自用",
   "values": {
+    "glassSurfacePolicy": {},
     "scrim": 0.5,
     "border": 0.35,
     "blur": 9,

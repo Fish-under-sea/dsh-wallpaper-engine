@@ -3,6 +3,7 @@
   "id": "factory-readable",
   "name": "可读优先",
   "values": {
+    "glassSurfacePolicy": {},
     "scrim": 0.25,
     "border": 0.35,
     "blur": 24,

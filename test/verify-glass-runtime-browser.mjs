@@ -158,6 +158,18 @@ try {
       await evaluate("document.querySelector('#modal').remove();__glass.sync()");
       await until('document.querySelectorAll("[data-we-surface-plate]").length>=1');
       check(tag + ' 安全侧栏玻璃实际载体存在', await evaluate(`(()=>{const plate=document.querySelector('[data-we-surface-plate="left-sidebar"]');return !!plate && getComputedStyle(plate).backdropFilter.includes('blur(') && plate.children.length===0 && plate.getBoundingClientRect().width>20;})()`));
+      // 宿主（ui-sidebar-right 的 RightbarRoot）给**每个被保留的会话**各渲染一份右栏面板，
+      // 非当前会话那份在 `.session[hidden]` 里。旧判据按全文档 NodeList 长度要求"恰好一份"
+      // ⇒ 用户开过第二个会话后右栏永远不接管、整块退回原生不透明底。隐藏的兄弟不得参与竞争。
+      await evaluate(`(() => {
+        const wrap=document.createElement('div');wrap.id='ghost-session';wrap.hidden=true;
+        const ghost=document.createElement('aside');ghost.id='ghost-right';ghost.setAttribute('data-sidebar-right-panel','push');ghost.setAttribute('data-sidebar-right-open','');
+        ghost.style.cssText='position:fixed;right:0;bottom:0;width:25%;height:180px';
+        wrap.append(ghost);document.body.append(wrap);__glass.sync();return true;
+      })()`);
+      await until('!!document.querySelector("[data-we-surface-plate=right-sidebar]")');
+      check(tag + ' 隐藏会话的右栏面板不夺走接管资格', await evaluate(`document.querySelector('#right').getAttribute('data-we-surface-runtime')==='right-sidebar' && !document.querySelector('#ghost-right').hasAttribute('data-we-surface-runtime') && !!document.querySelector('[data-we-surface-plate="right-sidebar"]')`));
+      await evaluate("document.querySelector('#ghost-session').remove();__glass.sync()");
       await evaluate("document.querySelector('#left').style.width='25%'");
       await until('Math.abs(document.querySelector("[data-we-surface-plate=left-sidebar]").getBoundingClientRect().width-document.querySelector("#left").getBoundingClientRect().width)<1');
       // 多 right 节点（G1 历史栏位）：后台保留节点（无 open 属性）+ 活动节点。

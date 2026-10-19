@@ -152,7 +152,10 @@ const SURFACES = [
   },
   {
     id: 'better-sidebar', label: 'dsh-better-sidebar 侧栏面板',
-    anchors: ['[data-dsh-better-sidebar]', '[data-dsh-panel]'], tier: 'private',
+    // ⚠️ 只有 [data-dsh-better-sidebar]：表面所有权重构后 better-sidebar 的内部布局
+    //    **刻意保留原生**（见 src/styles-sidebar.js 的「未知 better-sidebar 内部布局保留原生」），
+    //    样式表里不再有 [data-dsh-panel] 规则头 ⇒ 把它登记成锚点就是"登记了没实现"。
+    anchors: ['[data-dsh-better-sidebar]'], tier: 'private',
     // 两个配置面名：chrome 面板本身，以及它内部的"内容面"（编辑器 / 终端）。
     // 后者是同一个 CSS 面里的**子面** —— 它今天另有自己的透明度与底色键，
     // 所以在玻璃配置里也是一个可独立控制的条目。

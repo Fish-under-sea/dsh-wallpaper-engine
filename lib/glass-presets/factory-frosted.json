@@ -3,6 +3,7 @@
   "id": "factory-frosted",
   "name": "重磨砂",
   "values": {
+    "glassSurfacePolicy": {},
     "scrim": 0.25,
     "border": 0.35,
     "blur": 36,

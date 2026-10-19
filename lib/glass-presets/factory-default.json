@@ -3,6 +3,7 @@
   "id": "factory-default",
   "name": "黑客绿(Fish)",
   "values": {
+    "glassSurfacePolicy": {},
     "scrim": 0.6,
     "border": 0.9,
     "blur": 9,

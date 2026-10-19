@@ -118,15 +118,29 @@ function weSurfaceCandidates(state) {
   // 唯一宿主区域才可认领；双侧栏/嵌套未知布局不猜测。
   for (const target of left) add(target, "left-sidebar", left.length === 1 && state.selection.leftSidebarGlass === true);
   const right = doc.querySelectorAll("[data-sidebar-right-panel]");
-  for (const target of right) add(target, "right-sidebar", right.length === 1 && state.selection.sidebarGlass === true && target.hasAttribute("data-sidebar-right-open"));
+  // ⚠️ 宿主会为**每个被保留的会话**各渲染一份右栏面板（ui-sidebar-right 的 RightbarRoot
+  //    按 useViews() 逐会话挂一份 SidebarPanel，非当前会话那份由 `.session[hidden]` 包住），
+  //    所以 DOM 里常年有多份 [data-sidebar-right-panel]，但**真正参与布局的只有当前会话那份**。
+  //    旧判据数的是 NodeList 长度 ⇒ 用户只要开过第二个会话的右栏，接管资格就永远为假，
+  //    右侧栏整块退回原生不透明底（"我的右侧侧边栏玻璃效果被改没了"）。
+  //    判据改成"**在布局里的**面板恰好一份"：hidden 子树里的兄弟面板不参与竞争。
+  const rightLive = [...right].filter((panel) => !panel.closest("[hidden]") && panel.getClientRects().length > 0);
+  for (const target of right) {
+    const sole = rightLive.length === 1 && rightLive[0] === target;
+    add(target, "right-sidebar", sole && state.selection.sidebarGlass === true && target.hasAttribute("data-sidebar-right-open"));
+  }
   for (const target of doc.querySelectorAll('[role="dialog"]:has([data-slot="settings.section"])'))
     add(target, "settings-window", doc.body.hasAttribute("data-we-glass-window"));
   for (const target of doc.querySelectorAll('[data-we-surface="v1"]')) add(target, "declared", true);
   // ⚠️ 阅读文件页（`[data-document-preview]`，宿主 dsh-client-ui-sidebar-documentpreview 的
   // TextPreview 根节点）也是**内容面**：它此前不在这一组里 ⇒ 「内容面透明度 / 内容面底色」
   // 在那一页从来不生效（用户以为设置被删了）。
-  for (const target of doc.querySelectorAll('[data-sidebar-right-panel][data-sidebar-right-open] :is(.cm-editor,.xterm,[data-document-preview])'))
-    add(target, "content", state.selection.sidebarGlass === true);
+  // 与上面同一条纪律：只认在布局里的面板，hidden 子树里保留的旧会话不参与。
+  for (const panel of rightLive) {
+    if (!panel.hasAttribute("data-sidebar-right-open")) continue;
+    for (const target of panel.querySelectorAll(".cm-editor,.xterm,[data-document-preview]"))
+      add(target, "content", state.selection.sidebarGlass === true);
+  }
   for (const selector of state.selectors) {
     for (const target of doc.querySelectorAll(selector)) {
       if (entries.size >= 32) break;
