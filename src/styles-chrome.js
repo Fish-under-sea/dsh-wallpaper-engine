@@ -77,11 +77,14 @@ const CSS_CHROME = `    /* ── 统一控件 token：一套高度/圆角/墨�
      translucent glass base + backdrop blur + specular sheen + inner highlight,
      with the accent color remapped to --we-accent (配色) and all surface alphas
      driven by --we-glass-alpha (玻璃透明度). Off = stock shell look. ── */
-  body[data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]):where([data-we-surface-runtime="settings-window"])::before {
-    /* 滤镜和令牌只属于装饰叶，不能传播到窗口内容。 */
-    content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
-    border-radius: inherit;
-    background-color: var(--dsw-alias-bg-layer-2);
+  /* ⚠️ 令牌声明必须在**对话框本体**上，不能只写在 ::before 装饰叶：
+     ::before 没有子元素，声明在它上面的变量**没有任何后代能继承** ⇒ 窗内所有读
+     --dsw-alias-bg-layer-* 的宿主卡片 / 页签 / 导航全部退回宿主实底（用户口径：
+     「这些我用红色矩形框选中的组件玻璃效果又丢失了」）。变量只是继承值，不建立
+     层叠上下文、不改盒模型，与 ADR-0015 D2 不冲突。
+     会建立包含块/层叠上下文的那几样（backdrop-filter、底色、釉光、阴影）仍然只写在
+     下面的 ::before 装饰叶上。 */
+  body[data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]):where([data-we-surface-runtime="settings-window"]) {
     /* Glass surface alphas (light scheme): the base tint is --we-surface-tint-light/dark
        (玻璃颜色) mixed with transparent at the 玻璃透明度-driven alpha, so the
        whole window glass can be tinted to any color. Default (no custom color)
@@ -125,6 +128,13 @@ const CSS_CHROME = `    /* ── 统一控件 token：一套高度/圆角/墨�
        var() 无兜底时回落继承色 = 它们在原生外观下的颜色）；我们自己的 picker 子树
        由 .we-picker 根重新别名（--we-accent-src），消费面不变。 */
     --we-accent: initial;
+  }
+  body[data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]):where([data-we-surface-runtime="settings-window"])::before {
+    /* 滤镜 / 底色 / 釉光 / 阴影只属于装饰叶：它们会建立包含块与层叠上下文，
+       不能落到窗口本体上（ADR-0015 D2）。 */
+    content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+    border-radius: inherit;
+    background-color: var(--dsw-alias-bg-layer-2);
     /* Frosted finish — the SAME recipe as the conversation surfaces (composer
        card / bubbles): the blur radius comes from the 玻璃 slider (--we-blur
        0–60px), the saturation melt is a flat material constant (--we-saturate,
@@ -144,9 +154,23 @@ const CSS_CHROME = `    /* ── 统一控件 token：一套高度/圆角/墨�
       inset 0 0 0 1px rgba(255, 255, 255, 0.06),
       0 24px 80px rgba(0, 7, 18, 0.35);
   }
+  /* 逐面策略「保留原生」（glassSurfacePolicy['settings-window'] = 'native'）：
+     表面管理器不认领这个对话框 ⇒ 上面两条（带 :where 运行标记的）都不匹配。
+     但页面级令牌映射仍在 body 上被继承 ⇒ 必须在这里把令牌钉回**不透明面板色**，
+     否则「保留原生」会变成"没有霜、但底色仍然半透明"的半成品档。
+     用插件自己的主题面板色（--we-panel-color：浅 #fff / 深 #1e1f26），
+     与右侧栏主开关关闭时的兜底口径一致。 */
+  body[data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]):not(:where([data-we-surface-runtime="settings-window"])) {
+    --dsw-alias-bg-layer-1: var(--we-panel-color, #ffffff);
+    --dsw-alias-bg-layer-2: var(--we-panel-color, #ffffff);
+    --dsw-alias-bg-layer-3: var(--we-panel-color, #ffffff);
+    --dsw-alias-button-elevated-fill: var(--we-panel-color, #ffffff);
+  }
   /* Dark scheme: deep translucent base instead of white. The default glass
      color is deep navy; a user-picked 玻璃颜色 overrides it in both themes. */
-  body[data-ds-dark-theme][data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]):where([data-we-surface-runtime="settings-window"])::before {
+  /* 深色令牌同样必须在**对话框本体**上（理由见上方浅色那条）：装饰叶上的变量
+     没有后代可以继承 ⇒ 窗内卡片会退回宿主深色实底。釉光渐变留在下面的 ::before。 */
+  body[data-ds-dark-theme][data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]):where([data-we-surface-runtime="settings-window"]) {
     /* 设置窗口的整块面板（导航 + 每个原生分区）都承载文字 → 同样过下限。 */
     --dsw-alias-bg-layer-1: color-mix(in srgb,
       var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
@@ -159,6 +183,8 @@ const CSS_CHROME = `    /* ── 统一控件 token：一套高度/圆角/墨�
       color-mix(in srgb, var(--we-surface-tint-dark, #0d1524) calc(var(--we-settings-window-alpha) * 1.1 * 100%), transparent) calc((1 - var(--we-readability-floor)) * 100%));
     --dsw-specific-sidebar-nav-item-active: color-mix(in srgb, var(--we-accent-src, #4f8cff) 30%, rgba(255, 255, 255, 0.06));
     --dsw-specific-sidebar-nav-item-hover: color-mix(in srgb, var(--we-accent-src, #4f8cff) 14%, rgba(255, 255, 255, 0.04));
+  }
+  body[data-ds-dark-theme][data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]):where([data-we-surface-runtime="settings-window"])::before {
     background-image: linear-gradient(
       180deg,
       rgba(255, 255, 255, 0.07) 0%,
@@ -169,12 +195,13 @@ const CSS_CHROME = `    /* ── 统一控件 token：一套高度/圆角/墨�
   /* No backdrop-filter support: fall back to near-opaque glass so text stays
      readable (same policy as the skin's patches.css). */
   @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-    body[data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]):where([data-we-surface-runtime="settings-window"])::before {
+    /* 回退档的令牌同样写在对话框本体（装饰叶没有继承者）。 */
+    body[data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]):where([data-we-surface-runtime="settings-window"]) {
       --dsw-alias-bg-layer-1: var(--we-surface-tint-light, #ffffff);
       --dsw-alias-bg-layer-2: var(--we-surface-tint-light, #ffffff);
       --dsw-alias-bg-layer-3: var(--we-surface-tint-light, #ffffff);
     }
-    body[data-ds-dark-theme][data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]):where([data-we-surface-runtime="settings-window"])::before {
+    body[data-ds-dark-theme][data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]):where([data-we-surface-runtime="settings-window"]) {
       --dsw-alias-bg-layer-1: var(--we-surface-tint-dark, #0d1524);
       --dsw-alias-bg-layer-2: var(--we-surface-tint-dark, #0d1524);
       --dsw-alias-bg-layer-3: var(--we-surface-tint-dark, #0d1524);
@@ -182,8 +209,8 @@ const CSS_CHROME = `    /* ── 统一控件 token：一套高度/圆角/墨�
     /* 同一个「无 backdrop-filter ⇒ 近不透明」政策也要覆盖**整窗**那层表面令牌：
        玻璃配方在没有模糊的内核上等于「半透明 + 无霜」，文字会直接落在壁纸上。
        浅色选择器写成与映射规则同特异度（0,1,1），深色那条 (0,2,1) 顶掉深色映射。 */
-    body[data-we-glass-page] :where([data-chat-flow]),
-    body[data-ds-dark-theme][data-we-glass-page] :where([data-chat-flow]) {
+    body[data-we-glass-page],
+    body[data-ds-dark-theme][data-we-glass-page] {
       --dsw-alias-bg-layer-1: var(--we-panel-color, #ffffff);
       --dsw-alias-bg-layer-2: var(--we-panel-color, #ffffff);
       --dsw-alias-bg-layer-3: var(--we-panel-color, #ffffff);

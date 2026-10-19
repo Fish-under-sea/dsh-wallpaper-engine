@@ -247,7 +247,15 @@ try {
     await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
     const compat = await evaluate(`(()=>{const s=id=>getComputedStyle(document.getElementById(id));const r=document.querySelector('#nested-modal').getBoundingClientRect();return {blur:s('settings').backdropFilter,rect:r.toJSON(),token:s('native-button').color,unknown:s('plugin-native').backgroundColor,warning:s('warning').backgroundColor,mark:document.querySelector('#settings').getAttribute('data-we-surface-runtime'),layout:s('layout').backgroundColor,keep:s('keep').backgroundColor,child:s('preserve-child').backgroundColor,syntax:s('syntax').color,selection:s('selection').backgroundColor,editor:s('editor').backgroundColor,ownTab:s('own-tabs').backgroundColor,ownUploads:s('own-uploads').backgroundColor,ownCurrent:s('own-current').backgroundColor,ownModule:s('own-module').backgroundColor,alias1:s('own-picker').getPropertyValue('--dsw-alias-bg-layer-1').trim(),rope:s('rope').visibility,notice:s('notice').visibility,intro:s('intro').visibility,status:__glass.status()};})()`);
     check(tag+' 设置本体不再建立fixed包含块', compat.blur==='none' && compat.rect.x===10 && compat.rect.y===20, compat);
-    check(tag+' 未知设置控件令牌与状态填充保留原生',compat.token==='rgb(225, 226, 227)' && compat.unknown==='rgb(255, 255, 255)' && compat.warning==='rgb(244, 180, 40)',compat);
+    // ⚠️ 这个用例的上半截（未知第三方面板的底色 / 状态色不被改写）保持不动；
+    //    `token` 那一项**按用户实测反转**：5cabb9e1 把宿主背景令牌映射收窄到聊天流后，
+    //    设置窗里的卡片 / 页签 / 导航全部退回宿主实底（用户："这些我用红色矩形框选中的
+    //    组件的玻璃效果又丢失了"）。现在的口径：宿主自己的设置窗控件吃玻璃令牌
+    //    （仍带可读性下限），未知第三方面板的底色声明与 preserve 区保持原生。
+    check(tag+' 未知设置控件底色保留原生（第三方面板不被改写）',
+      compat.unknown==='rgb(255, 255, 255)' && compat.warning==='rgb(244, 180, 40)', compat);
+    check(tag+' 宿主设置窗控件吃玻璃令牌（不是宿主实底）',
+      compat.token !== 'rgb(225, 226, 227)', compat.token);
     check(tag+' 壁纸仅清宿主外壳而非任意root和frame',await evaluate(`getComputedStyle(document.querySelector('#host-frame')).backgroundColor==='rgba(0, 0, 0, 0)' && getComputedStyle(document.querySelector('#host-root')).backgroundColor==='rgba(0, 0, 0, 0)'`));
     check(tag+' 已知设置面与显式布局接管且preserve优先',compat.mark==='settings-window' && compat.layout==='rgba(0, 0, 0, 0)' && compat.keep==='rgb(222, 223, 224)' && compat.child==='rgb(222, 223, 224)',compat);
     check(tag+' 编辑内容底板受控且语法选区不改',compat.editor!=='rgb(255, 255, 255)' && compat.syntax==='rgb(197, 104, 228)' && compat.selection==='rgb(60, 80, 160)',compat);
@@ -306,7 +314,18 @@ try {
     await evaluate("document.querySelector('#settings').scrollTop=0;document.querySelector('#settings-layout').style.minHeight='';document.querySelector('#settings').style.width='90vw'");
     await screenshot(tag+'-settings-owned');
     await evaluate("__selection.glassSurfacePolicy={'settings-window':'native',content:'native',declared:'native'};__glass.sync()");
-    check(tag+' 逐面原生撤销设置布局和内容接管',await evaluate(`!document.querySelector('#settings').hasAttribute('data-we-surface-runtime') && getComputedStyle(document.querySelector('#settings')).backgroundColor==='rgb(241, 242, 243)' && getComputedStyle(document.querySelector('#editor')).backgroundColor==='rgb(255, 255, 255)' && getComputedStyle(document.querySelector('#layout')).backgroundColor==='rgb(222, 223, 224)'`));
+    // 「保留原生」= 不接管这一面：不挂运行标记、不画霜；窗内的表面令牌由
+    // `:not(:where([data-we-surface-runtime="settings-window"]))` 那条钉回不透明面板色
+    // （--we-panel-color 的浅色缺省 #ffffff），因此底色是**实色**而不是玻璃色。
+    check(tag+' 逐面原生撤销设置布局和内容接管',await evaluate(`(()=>{
+      const bg=getComputedStyle(document.querySelector('#settings')).backgroundColor;
+      const rgba=bg.startsWith('rgba(') ? Number(bg.slice(5,-1).split(',')[3]) : 1;
+      return !document.querySelector('#settings').hasAttribute('data-we-surface-runtime')
+        && rgba===1
+        && getComputedStyle(document.querySelector('#settings')).backdropFilter==='none'
+        && getComputedStyle(document.querySelector('#editor')).backgroundColor==='rgb(255, 255, 255)'
+        && getComputedStyle(document.querySelector('#layout')).backgroundColor==='rgb(222, 223, 224)';
+    })()`));
     await evaluate("__selection.glassSurfacePolicy={};document.querySelector('#settings').remove();__glass.sync()");
     check(tag+' 模态卸载后浮层恢复',await evaluate("getComputedStyle(document.querySelector('#rope')).visibility==='visible'"));
     await evaluate("const el=document.createElement('div');el.setAttribute('role','dialog');el.style.cssText='width:20px;height:20px';document.body.append(el);__glass.sync()");

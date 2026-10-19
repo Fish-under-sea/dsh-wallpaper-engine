@@ -79,15 +79,19 @@ const CSS_EXT = `  /* ── 软件渲染回退（upstream #95，运行时探测
     background-color: color-mix(in srgb, var(--we-content-surface-color, var(--we-panel-color, #1e1f26)) max(calc(var(--we-readability-floor) * 100%), var(--we-content-surface-alpha, 88%)), transparent) !important;
   }
   /* 设置窗口：把三层面板 token 钉回实色（@supports 回退里的同一条 token 覆写），
-     并显式关掉不会生效的 backdrop-filter。 */
-  body[data-we-glass-fallback][data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]):where([data-we-surface-runtime="settings-window"])::before {
+     并显式关掉不会生效的 backdrop-filter。
+     ⚠️ 令牌写在**对话框本体**（装饰叶没有后代可继承），只有 backdrop-filter 那条
+     落在 ::before 上 —— 它才是会建立包含块的那一半。 */
+  body[data-we-glass-fallback][data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]):where([data-we-surface-runtime="settings-window"]) {
     --dsw-alias-bg-layer-1: var(--we-surface-tint-light, #ffffff);
     --dsw-alias-bg-layer-2: var(--we-surface-tint-light, #ffffff);
     --dsw-alias-bg-layer-3: var(--we-surface-tint-light, #ffffff);
+  }
+  body[data-we-glass-fallback][data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]):where([data-we-surface-runtime="settings-window"])::before {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
   }
-  body[data-ds-dark-theme][data-we-glass-fallback][data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]):where([data-we-surface-runtime="settings-window"])::before {
+  body[data-ds-dark-theme][data-we-glass-fallback][data-we-glass-window] [role="dialog"]:has([data-slot="settings.section"]):where([data-we-surface-runtime="settings-window"]) {
     --dsw-alias-bg-layer-1: var(--we-surface-tint-dark, #0d1524);
     --dsw-alias-bg-layer-2: var(--we-surface-tint-dark, #0d1524);
     --dsw-alias-bg-layer-3: var(--we-surface-tint-dark, #0d1524);
@@ -97,8 +101,8 @@ const CSS_EXT = `  /* ── 软件渲染回退（upstream #95，运行时探测
      宿主的面板/对话框/按钮面必须回到不透明面板色，否则文字压在壁纸上。
      深色那条选择器多一层 (0,3,1)，才能顶掉 body[data-ds-dark-theme][data-we-glass-page]
      上的玻璃映射。 */
-  body[data-we-glass-fallback][data-we-glass-page] :where([data-chat-flow]),
-  body[data-ds-dark-theme][data-we-glass-fallback][data-we-glass-page] :where([data-chat-flow]) {
+  body[data-we-glass-fallback][data-we-glass-page],
+  body[data-ds-dark-theme][data-we-glass-fallback][data-we-glass-page] {
     --dsw-alias-bg-layer-1: var(--we-panel-color, #ffffff);
     --dsw-alias-bg-layer-2: var(--we-panel-color, #ffffff);
     --dsw-alias-bg-layer-3: var(--we-panel-color, #ffffff);

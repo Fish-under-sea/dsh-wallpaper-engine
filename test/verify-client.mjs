@@ -257,11 +257,16 @@ assert.ok(!code.includes(wallpaperGatedSidebarSelector), 'legacy wallpaper-gated
 // 把让开那两条挪进页面玻璃块 ⇒ 第二条红。
 // 朴素块体切片：实现在 `test/tools/assert-harness.mjs`（契约 = 两个 `indexOf`，不跳字符串/注释）。
 const blockBodyOf = (needle) => naiveBlockBody(code, needle);
-const pageGlassBlock = blockBodyOf('body[data-we-glass-page] :where([data-chat-flow]) {');
+const pageGlassBlock = blockBodyOf('body[data-we-glass-page] {');
 const wallpaperBlock = blockBodyOf('body[data-we-wallpaper] {');
 assert.ok(pageGlassBlock && pageGlassBlock.includes('--dsw-alias-bg-layer-1')
   && pageGlassBlock.includes('--dsw-alias-markdown-code-block'),
   'page-glass token mapping must sit on body[data-we-glass-page] (glass works without a wallpaper)');
+// ⚠️ 作用域是**整页**，不是聊天流：5cabb9e1 曾把它收窄成 :where([data-chat-flow])，
+//    于是宿主自己的侧栏按钮 / 右栏页签栏 / 设置窗卡片全部退回实底（用户报障）。
+//    这条负对照把"再收窄回去"钉成红。
+assert.ok(!code.includes('body[data-we-glass-page] :where([data-chat-flow])'),
+  'page-glass token mapping must stay page-wide (host chrome outside the chat flow needs it too)');
 assert.ok(wallpaperBlock && wallpaperBlock.includes('--dsw-alias-bg-base: transparent')
   && !wallpaperBlock.includes('--dsw-alias-bg-layer-1'),
   'the page-let-the-wallpaper-through block stays wallpaper-only (no glass mapping inside)');

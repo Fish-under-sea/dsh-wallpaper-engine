@@ -1950,11 +1950,13 @@ console.log('\n⑬ CSS 契约（按面变量零兜底 / 门控许可证 / 双向
   };
   const gate = gateCheck(STYLES_TEXT);
   // 覆盖面地板 = **防"解析器静默返回空表"**（本文件头注释的纪律），不是紧贴实测值：
-  // 实测 13 条，地板取 10 —— 留出正常重构的余量，同时"一条都没扫到"必红。
+  // 实测 9 条（设置窗的令牌声明已从「会画东西的 ::before」挪回对话框本体 ⇒ 那一族
+  // 不再是本判据口径下的"画东西"规则），地板取 8 —— 留出正常重构的余量，
+  // 同时"一条都没扫到"必红。
   check('门控许可证：凡**画东西**且读按面变量的规则，选择器里都必须有 JS 写出的门控属性（' + jsGates.length + ' 个候选门控）',
-    gate.bad.length === 0 && gate.checked >= 10,
+    gate.bad.length === 0 && gate.checked >= 8,
     gate.bad.length ? '无门控：' + gate.bad.slice(0, 3).join(' · ')
-      : gate.checked + ' 条规则全部带门控（覆盖面地板 10）');
+      : gate.checked + ' 条规则全部带门控（覆盖面地板 8）');
 
   // 双向对账：effects.js 写出的每个按面变量，都必须被样式表读到（防"写了没人读"的死写入）
   const written = [...new Set([...GLASS_SRC.matchAll(/setProperty\("(--we-[a-z0-9-]+)"/g)]
