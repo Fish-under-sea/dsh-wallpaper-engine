@@ -2809,10 +2809,18 @@ async function openAvatarCrop(side, file) {
     return;
   }
   let url;
+  // ⚠️ `w` / `h` 必须声明在 `try` **之外**：它们在 try 内赋值、却在 catch **之后**才被写入瞬态。
+  // 写在 try 里是块作用域 ⇒ 出了 try 就是 `ReferenceError: w is not defined`。后果分两条路：
+  //   · 尺寸合规：异常冒泡出调用点，末尾 `emit()` 永远到不了 ⇒ **第一次选完图界面毫无反应**，
+  //     要再点一次导入才「突然」弹窗；
+  //   · 自动压缩路径：异常被 `onAvatarAutoCompress` 的 catch 接住 ⇒ 屏上显示
+  //     「压缩失败：w is not defined」，而 `avatarCropSide`/`avatarCropUrl` 已写入并 emit
+  //     ⇒ 弹出一个宽高恒为 0 的**空白**取景框（图不可见、拖不动）。
+  let w = 0, h = 0;
   try {
     const src = await decodeImageFile(file);
-    const w = Number(src.width) || 0;
-    const h = Number(src.height) || 0;
+    w = Number(src.width) || 0;
+    h = Number(src.height) || 0;
     if (src.close) { try { src.close(); } catch { /* ignore */ } }
     if (!w || !h) throw new Error(weT("读不出图片尺寸"));
     url = URL.createObjectURL(file);
@@ -2871,6 +2879,58 @@ function avatarCropGeometry() {
     dy: -slackY * ny,
   };
 }
+/**
+ * 把当前几何**就地**写进取景框那张图（live 档专用，不重渲染面板）。
+ *
+ * 为什么必须单开这一条：拖动 / 滚轮走 live 档（`commitLiveTransient(..., true)`）⇒ `emit()`
+ * 不被调用 ⇒ **面板不重渲染** ⇒ 渲染器里那份 `ctx.avatarCropGeo` 是上一版的快照。于是
+ * 拖动时 store 里的 x/y 在变、**屏上的图却不动**（用户手感 = 拖了没反应）；滚轮同理。
+ * 这里按 store 现算一次几何，直接改那几个 inline 值 —— 与"渲染器只在完整渲染时写 inline"
+ * 并存，两条路算出的是同一份几何（都走 `avatarCropGeometry()` 这个唯一实现）。
+ *
+ * 找不到节点 / 拿不到 document 时静默返回：本函数是"看得见的那部分"的加速器，
+ * 不该因为环境缺 DOM 就把一次拖动变成长抛。
+ */
+function syncAvatarCropLive() {
+  try {
+    if (typeof document === "undefined" || !document.querySelector) return;
+    const view = document.querySelector(".we-crop__view");
+    const img = document.querySelector(".we-crop__img");
+    if (!img) return;
+    const geo = avatarCropGeometry();
+    const side = AVATAR_CROP_VIEW;
+    const width = side + "px", height = side + "px";
+    if (view && view.style) { if (view.style.width !== width) view.style.width = width; if (view.style.height !== height) view.style.height = height; }
+    const w = geo.dw + "px", h = geo.dh + "px";
+    const left = (side - geo.dw) / 2 + geo.dx + "px";
+    const top = (side - geo.dh) / 2 + geo.dy + "px";
+    if (img.style) {
+      if (img.style.width !== w) img.style.width = w;
+      if (img.style.height !== h) img.style.height = h;
+      if (img.style.left !== left) img.style.left = left;
+      if (img.style.top !== top) img.style.top = top;
+    }
+    // 缩放滑块与百分比回显一并同步（live 档不重渲染 ⇒ 它们同样是过期快照）。
+    // ⚠️ 走**既有控件契约**，不臆造属性：SliderRow 产出的是
+    // `.we-picker__slider-row` 行内的 `input[type=range]` + `.we-picker__value` 回显，
+    // 就地回显的形状与它自己的 `liveFill(el)` 同构（--we-fill + 回显文本）。
+    // ⚠️ **绝不能派发 input 事件**：那会回调本行的 `onInput` ⇒ `onAvatarCropZoom(..., true)`
+    //    ⇒ 又回到本函数 ⇒ 无限递归。这里只写值，不惊动任何处理器。
+    const zoomPct = Math.round(Math.max(1, Number(selection.avatarCropZoom) || 1) * 100);
+    const range = document.querySelector(".we-crop__card .we-picker__slider-row input[type=range]");
+    if (range && Number(range.value) !== zoomPct) {
+      range.value = String(zoomPct);
+      const lo = Number(range.min), hi = Number(range.max);
+      if (range.style && hi > lo) {
+        const pct = Math.max(0, Math.min(100, ((zoomPct - lo) / (hi - lo)) * 100));
+        range.style.setProperty("--we-fill", pct + "%");
+      }
+      const row = range.parentNode;
+      const out = row && typeof row.querySelector === "function" ? row.querySelector(".we-picker__value") : null;
+      if (out && typeof out.textContent === "string") out.textContent = zoomPct + "%";
+    }
+  } catch { /* 就地更新是加速器：任何一步失败都不该把交互打崩 */ }
+}
 /** 拖动取景：把指针位移换成归一化平移（1 = 可用位移的满量）。 */
 function onAvatarCropDrag(dxPx, dyPx) {
   const geo = avatarCropGeometry();
@@ -2878,14 +2938,29 @@ function onAvatarCropDrag(dxPx, dyPx) {
   const slackY = Math.max(0, (geo.dh - AVATAR_CROP_VIEW) / 2);
   const nx = slackX > 0 ? (Number(selection.avatarCropX) || 0) - dxPx / slackX : 0;
   const ny = slackY > 0 ? (Number(selection.avatarCropY) || 0) - dyPx / slackY : 0;
-  // 拖动是"看得见的那部分" ⇒ 走 live 档（面板不重渲染；预览图由控件按新值自己挪）。
+  // 拖动是"看得见的那部分" ⇒ 走 live 档（面板不重渲染）+ **就地更新那张图**。
   commitLiveTransient("avatarCropX", Math.max(-1, Math.min(1, nx)), true);
   commitLiveTransient("avatarCropY", Math.max(-1, Math.min(1, ny)), true);
+  syncAvatarCropLive();
+}
+/**
+ * 滚轮缩放：**从 `selection` 现读**当前值再累加。
+ *
+ * 为什么不能像渲染器那样用 `sel.avatarCropZoom`：live 档不 emit ⇒ 面板不重渲染 ⇒
+ * 渲染器闭包里那份 `sel` 停在上一版，连滚十格只会放大一步（用户实测手感）。
+ * 取整到百分位（与滑块刻度同口径，避免浮点尾巴在回显里露出来）。
+ */
+function onAvatarCropWheel(delta) {
+  const cur = Math.max(1, Number(selection.avatarCropZoom) || 1);
+  const next = Math.round((cur + (Number(delta) || 0)) * 100) / 100;
+  onAvatarCropZoom(next, true);
 }
 /** 缩放取景（滚轮 / 滑块）。 */
 function onAvatarCropZoom(z, live) {
   const v = Math.max(1, Math.min(4, Number(z) || 1));
   commitLiveTransient("avatarCropZoom", v, live);
+  // live 档不重渲染 ⇒ 屏上那张图与滑块回显都要就地跟上（见 syncAvatarCropLive 的注释）。
+  if (live) syncAvatarCropLive();
 }
 /** 把取景框里那一块**按原图分辨率**裁出来（再用既有 downscale 链缩到 512）。 */
 async function cropAvatarToBlob() {
@@ -4366,7 +4441,7 @@ function WallpaperPicker() {
     parallaxPluginSlots: sel.parallaxPlugin === true ? weDiscoveredGroupsOf('parallax').sort() : [],
     onAvatarEnabled, onAvatarSize, onAvatarRadius, onAvatarPick, onAvatarClear,
     // 上传裁切（issue #191 问题 1）：几何在这里现算（唯一实现），渲染器只读结果。
-    onAvatarCropZoom, onAvatarCropDrag, onAvatarCropConfirm, onAvatarCropCancel: closeAvatarCrop,
+    onAvatarCropZoom, onAvatarCropDrag, onAvatarCropWheel, onAvatarCropConfirm, onAvatarCropCancel: closeAvatarCrop,
     avatarCropGeo: avatarCropGeometry(), avatarCropView: AVATAR_CROP_VIEW,
     // 超限拦截（#185 后续）：面板画提示行 + 「自动压缩后导入」按钮，处理器在 client 这一侧。
     onAvatarAutoCompress,

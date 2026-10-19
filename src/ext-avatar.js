@@ -137,7 +137,7 @@ function avatarPreviewRound(sel) {
  * 不自己再算一遍（两处算法必然漂）。
  */
 function renderAvatarCropModal(ctx) {
-  const { sel, onAvatarCropZoom, onAvatarCropDrag, onAvatarCropConfirm, onAvatarCropCancel } = ctx;
+  const { sel, onAvatarCropZoom, onAvatarCropDrag, onAvatarCropWheel, onAvatarCropConfirm, onAvatarCropCancel } = ctx;
   if (!sel.avatarCropSide) return null;
   // 几何由 ctx 传进来（client.js 现算）：渲染器不引 avatarCropGeometry 这个裸标识符 ——
   // 它是"只读 ctx"契约的一部分（见文件头不变量）。
@@ -152,21 +152,37 @@ function renderAvatarCropModal(ctx) {
         className: "we-crop__view",
         style: { width: view + "px", height: view + "px" },
         onPointerDown: (e) => {
-          const startX = e.clientX;
-          const startY = e.clientY;
-          const move = (ev) => onAvatarCropDrag(ev.clientX - startX, ev.clientY - startY);
+          // 传**本次增量**，不是"相对按下点的总位移"。
+          // 处理器每次都在**已更新**的 x/y 上继续累加 ⇒ 传总位移会让拖动越拖越快
+          // （第一次 10px 挪 10px、第二次 20px 又挪 20px…，手感是"越拖越飞"）。
+          let lastX = e.clientX;
+          let lastY = e.clientY;
+          const move = (ev) => {
+            const dx = ev.clientX - lastX;
+            const dy = ev.clientY - lastY;
+            lastX = ev.clientX;
+            lastY = ev.clientY;
+            if (dx || dy) onAvatarCropDrag(dx, dy);
+          };
           const up = () => {
-            try { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); } catch { /* ignore */ }
+            try {
+              window.removeEventListener("pointermove", move);
+              window.removeEventListener("pointerup", up);
+              // pointercancel：指针被系统 / 另一手势夺走时也要收监听，否则留一个永不触发的
+              // 悬挂 handler（下一帧它仍在收 move ⇒ 界面照旧跟着动、用户以为"卡住了"）。
+              window.removeEventListener("pointercancel", up);
+            } catch { /* ignore */ }
           };
           try {
             window.addEventListener("pointermove", move);
             window.addEventListener("pointerup", up);
+            window.addEventListener("pointercancel", up);
           } catch { /* ignore */ }
           if (e.preventDefault) e.preventDefault();
         },
         onWheel: (e) => {
-          const dir = (e.deltaY || 0) > 0 ? -0.1 : 0.1;
-          onAvatarCropZoom((Number(sel.avatarCropZoom) || 1) + dir, true);
+          // 增量交给 client 从 selection 现读当前值累加（live 档不重渲染 ⇒ 这里的 sel 是旧的）。
+          onAvatarCropWheel((e.deltaY || 0) > 0 ? -0.1 : 0.1);
           if (e.preventDefault) e.preventDefault();
         },
       },

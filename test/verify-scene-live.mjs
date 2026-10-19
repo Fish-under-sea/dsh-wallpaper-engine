@@ -4136,6 +4136,54 @@ check('官方侧栏接入用能力门 + 可选服务（不写进 inject，低版
       'client + ext-avatar 源码口径');
   }
   {
+    // ── 头像裁切弹窗的四个行为缺陷（PR#1 ① 适配到本仓）────────────────────────────
+    // 用户症状三类，根因四个：
+    //   ① **`w` / `h` 作用域**：`openAvatarCrop` 把 `const w/h` 声明在 `try` 块内、却在其后
+    //      使用 ⇒ 抛 `ReferenceError: w is not defined`。尺寸合规时异常冒泡出调用点，
+    //      末尾 `emit()` 永远到不了 ⇒「第一次选完图毫无反应，要再点一次才弹窗」；自动压缩
+    //      路径被调用点的 catch 接住 ⇒ 屏上「压缩失败：w is not defined」+ 几何恒 0 的空框。
+    //   ② **live 档没有就地更新**：拖动 / 滚轮走 live 档（不重渲染），但渲染值只在**完整渲染**
+    //      时才经 `ctx.avatarCropGeo` 写进 inline style ⇒ 拖动时屏上的图不动。
+    //   ③ **拖动传的是"相对按下点的总位移"**：处理器每次都在**已更新**的 x/y 上继续累加 ⇒
+    //      越拖越快（第一次 10px 挪 10px、第二次 20px 又挪 20px…）。
+    //   ④ **滚轮读的是渲染器里过期的 `sel.avatarCropZoom`**：live 档不 emit、面板不重渲染 ⇒
+    //      连滚十格只放大一步。
+    const clSrc3 = readFileSync(join(root, 'src', 'client.js'), 'utf8').replace(/\r\n/g, '\n');
+    const eaSrc2 = readFileSync(join(root, 'src', 'ext-avatar.js'), 'utf8').replace(/\r\n/g, '\n');
+
+    // ① 作用域：`w` / `h` 必须声明在 `try` **之外**（在 try 内声明 + try 外引用 = 块作用域
+    //    踩空 ⇒ ReferenceError）。判据**不依赖声明写法**（`let w = 0, h = 0;` 与
+    //    `let w; let h;` 都是对的），只钉"赋值不再用块内 const"这一缺陷形状。
+    const cropFn = fnBody(clSrc3, 'openAvatarCrop');
+    const boxedConst = /try\s*\{[^}]*\bconst\s+[wh]\s*=/.test(cropFn);
+    check('#191/PR① 头像裁切：w/h 声明在 try 之外（块内声明 + try 外引用 = ReferenceError）',
+      /(?:let|var)\s+[^;]*\b[wh]\b/.test(cropFn) && !boxedConst,
+      '函数级声明 = ' + (/(?:let|var)\s+[^;]*\b[wh]\b/.test(cropFn) ? '✓' : '✗')
+        + ' · try 内 const = ' + (boxedConst ? '仍在（判红）' : '已清除'));
+
+    // ② live 档就地更新：新增 syncAvatarCropLive()，且拖动 / 滚轮处理器都要喊它。
+    check('#191/PR① live 档拖动与滚轮有就地更新（syncAvatarCropLive 存在且被两处处理器调用）',
+      clSrc3.includes('function syncAvatarCropLive()')
+      && clSrc3.includes('syncAvatarCropLive();'),
+      'syncAvatarCropLive = ' + (clSrc3.includes('function syncAvatarCropLive()') ? 'def✓' : 'def✗'));
+
+    // ③ 触点：渲染器不再自己读 sel.avatarCropZoom 累加（改走 onAvatarCropWheel），
+    //    且拖动传增量（lastX/lastY 形态）而不是 startX/startY 总位移。
+    check('#191/PR① 拖动传增量（不是相对按下点的总位移）+ 滚轮走专用处理器',
+      eaSrc2.includes('onAvatarCropWheel')
+      && eaSrc2.includes('lastX') && eaSrc2.includes('lastY')
+      && !/onAvatarCropDrag\(ev\.clientX - startX/.test(eaSrc2),
+      'wheel=' + (eaSrc2.includes('onAvatarCropWheel') ? '✓' : '✗')
+        + ' 增量=' + (eaSrc2.includes('lastX') ? '✓' : '✗'));
+
+    // ④ 滚轮从 selection 现读（不是渲染器里那份过期 sel）；指针取消也要收监听。
+    check('#191/PR① 滚轮从 selection 现读当前值 + 收 pointercancel（防拖拽中丢指针留悬挂监听）',
+      clSrc3.includes('function onAvatarCropWheel')
+      && eaSrc2.includes('pointercancel'),
+      'onAvatarCropWheel=' + (clSrc3.includes('function onAvatarCropWheel') ? '✓' : '✗')
+        + ' pointercancel=' + (eaSrc2.includes('pointercancel') ? '✓' : '✗'));
+  }
+  {
     // ── 文件头尺寸解析器：**喂真字节**跑真实现（#185 后续）──────────────────────────
     // 上面那组判据只钉"函数在不在、顺序对不对"（源码口径）。但 `parseBitmapHeaderSize`
     // 是这轮**唯一含位运算的新代码** —— 位域读错一位就会把 1024 读成 0（闸随之恒放行）。
