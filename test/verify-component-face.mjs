@@ -12,7 +12,9 @@
  *   ① **内核分级面机械复算**：`KERNEL_STABLE_FACE`（`lib/kernel/host-kernel.js` 导出的 15 项）
  *      与**实跑内核**的 `Object.keys()` 对账。**合同数字的唯一真源 = 本行**（改一次 =
  *      一次可见的决策：同时把下面这行改掉）：
- *      「合计 99 / 稳定面 15 / 稳定面 ∩ 内核 7 / 内部面 92」
+ *      「合计 104 / 稳定面 15 / 稳定面 ∩ 内核 7 / 内部面 97」
+ *      —— PR#1 ③（上传图片缩略图）往内核加了 5 个导出键：`imageThumbDir` · `imageThumbPath` ·
+ *      `ensureImagePreview` · `pruneImagePreviewCache` · `IMAGE_PREVIEW_WIDTH`（99→104、92→97）。
  *      —— 判据**从这一行现算**期望值，不再把数字抄进 check 名与负对照（本会话实测：内核从
  *      95 长到 98 后，主判据与它的负对照一起假红 —— 负对照写死了 95/96/89/87）。
  *   ② **M9 → 0**：`lib/components/**` 与 `lib/routes/**` 里**零处**直接消费内核对象

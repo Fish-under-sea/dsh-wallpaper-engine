@@ -399,10 +399,106 @@ check('H2 注释里的调用不算调用（先剥注释再判）',
   !stripComments('// createVideoPreviewKit(x)\n/* createVideoPreviewKit(y) */').includes('createVideoPreviewKit('),
   'stripComments 剥掉行注释与块注释');
 
+// ───────────────── I. 上传图片缩略图族（PR#1 ③ 适配本仓）─────────────────────────
+// 背景：上传图片原先**把自己当 preview**（`/preview/<token>` = 原图）。卡片只有 92px 高，
+// 却让浏览器下载并解码整张原图（实测 43 MP / 17 MB）⇒ 一页 24 张就是数百 MB 传输 +
+// 24 × 43 MP 解码，整个渲染进程排队、表现为"翻到含大图那几页就卡死"。
+// 做法与视频族**同族同形**：按需 ffmpeg 缩到 320px、落 `<插件数据目录>/thumbs/`、失败回落原图。
+// ⚠️ 与视频族的两处**刻意不同**（都是 issue #240 的口径）：
+//   ① 落点是**插件数据目录**的 `thumbs/`，**不放 cacheDir**（那里会被 cache-prune 按体积/年龄
+//      当垃圾清掉；缩略图是"派生但稳定"的资产，源图在就该在）；
+//   ② 键只含 路径 + size + mtime + 宽度（无 `v1` 版本段，与视频族的键形态各自独立）。
+section('I. 上传图片缩略图族（PR#1 ③：按需缩到 320px、落数据目录 thumbs/、失败回落原图）');
+{
+  const IMG_SRC = join(ROOT, 'lib', 'media', 'image-preview.js');
+  check('I1 图片缩略图族文件存在且导出工厂 createImagePreviewKit',
+    existsSync(IMG_SRC), existsSync(IMG_SRC) ? '在' : '缺：lib/media/image-preview.js');
+  if (existsSync(IMG_SRC)) {
+    const { createImagePreviewKit } = await import(pathToFileURL(IMG_SRC).href);
+    check('I2 导出面含工厂函数', typeof createImagePreviewKit === 'function',
+      typeof createImagePreviewKit);
+    // 用真工厂跑：deps 与视频族同形（pluginDataDir / ensureDirOnce / transcodeKit）。
+    const iso = join(ISO, 'image-preview-' + (++seq));
+    rmSync(iso, { recursive: true, force: true });
+    mkdirSync(iso, { recursive: true });
+    const spawned = [];
+    const kit = createImagePreviewKit({
+      pluginDataDir: () => iso,
+      ensureDirOnce: (d) => { mkdirSync(d, { recursive: true }); return d; },
+      transcodeKit: {
+        resolveFfmpeg: () => 'ffmpeg',
+        // 假 spawn：把源图"输出"成一张真文件，用于验证产出判定与缓存键。
+        spawnFfmpeg: (args) => {
+          spawned.push(args);
+          const out = args[args.length - 1];
+          writeFileSync(out, 'JPEG');
+          return Promise.resolve({ ok: true, code: 0 });
+        },
+      },
+    });
+    const src = join(iso, 'big.png');
+    writeFileSync(src, 'PNG-BYTES');
+    const thumbDir = kit.imageThumbDir();
+    check('I3 缩略图目录 = <数据目录>/thumbs（刻意不放 cacheDir：否则会被 cache-prune 清掉）',
+      thumbDir === join(iso, 'thumbs'), 'thumbDir=' + thumbDir);
+    const out1 = kit.imageThumbPath(src);
+    check('I4 缓存键含源路径 + size + mtime + 宽度（换源 / 改 mtime / 改宽度都要换键）',
+      typeof out1 === 'string' && out1.startsWith(join(iso, 'thumbs'))
+      && /ip_[0-9a-f]+\.jpg$/.test(out1), 'out=' + out1);
+    // 改 mtime ⇒ 键必须变（否则换图后吐旧缩略图）。
+    utimesSync(src, new Date(2020, 0, 1), new Date(2020, 0, 1));
+    const out2 = kit.imageThumbPath(src);
+    check('I5 源 mtime 变 ⇒ 键变（绝不吐旧缩略图）', out2 !== out1, 'out1≠out2');
+    // 生成：spawn 一次、产出可读。
+    const made = await kit.ensureImagePreview(src);
+    check('I6 ensureImagePreview 生成后路径存在且 spawn 恰 1 次',
+      made === kit.imageThumbPath(src) && spawned.length === 1 && existsSync(made),
+      'made=' + made + ' spawn=' + spawned.length);
+    check('I7 ffmpeg 参数把短边缩到 320px（IMAGE_PREVIEW_WIDTH 是唯一真源）',
+      spawned.length > 0 && spawned[0].join(' ').includes(String(kit.IMAGE_PREVIEW_WIDTH))
+      && kit.IMAGE_PREVIEW_WIDTH === 320,
+      'width=' + kit.IMAGE_PREVIEW_WIDTH + ' args=' + (spawned[0] || []).join(' '));
+    // 同键合流：同 tick 两次调用只 spawn 一次。
+    writeFileSync(src, 'PNG-BYTES-2');
+    const before = spawned.length;
+    await Promise.all([kit.ensureImagePreview(src), kit.ensureImagePreview(src)]);
+    check('I8 同键合流：并发两次只 spawn 一次（不合并 ⇒ 一页 24 张就是 24 次 ffmpeg）',
+      spawned.length - before === 1, 'spawn 增量=' + (spawned.length - before));
+    // 失败一律回落（返回 null），绝不抛给路由。
+    const badKit = createImagePreviewKit({
+      pluginDataDir: () => iso,
+      ensureDirOnce: (d) => { mkdirSync(d, { recursive: true }); return d; },
+      transcodeKit: { resolveFfmpeg: () => 'ffmpeg', spawnFfmpeg: () => Promise.resolve({ ok: false, code: 1 }) },
+    });
+    const badSrc = join(iso, 'broken.png');
+    writeFileSync(badSrc, 'X');
+    let threw = '';
+    let badOut = 'unset';
+    try { badOut = await badKit.ensureImagePreview(badSrc); } catch (e) { threw = String((e && e.message) || e); }
+    check('I9 生成失败返回 null、绝不抛（调用方据此回落原图，"慢一点但可用"）',
+      !threw && badOut === null, threw ? ('抛错：' + threw) : ('返回 ' + String(badOut)));
+    // 修剪入口存在（按 mtime-LRU 收敛，源图删了以后缩略图不会永远留在盘上）。
+    check('I10 提供 pruneImagePreviewCache（启动清扫按 mtime-LRU 收敛）',
+      typeof kit.pruneImagePreviewCache === 'function', typeof kit.pruneImagePreviewCache);
+  }
+}
+// 接线面：清单只在缩略图**已在盘上**时指向它、路由只在图片档走缩略图、内核与清扫都挂上。
+{
+  const inv = readFileSync(join(ROOT, 'lib', 'inventory.js'), 'utf8');
+  const routes = readFileSync(join(ROOT, 'lib', 'routes', 'media-bytes.js'), 'utf8');
+  const kernel = readFileSync(join(ROOT, 'lib', 'kernel', 'host-kernel.js'), 'utf8');
+  const sweep = readFileSync(join(ROOT, 'lib', 'startup-sweep.js'), 'utf8');
+  check('I11 清单侧：只在缩略图已在盘上时指向它（缺失回落原图，换机器也不会坏）',
+    inv.includes('imageThumbPath') && /existsSync\(thumb\)/.test(inv), 'inventory 接线');
+  check('I12 路由侧：/preview 开 revalidate 且图片档走 ensureImagePreview（/media 保持原样）',
+    routes.includes('ensureImagePreview') && /revalidate:\s*true/.test(routes), 'media-bytes 接线');
+  check('I13 内核与启动清扫都挂上该族（否则生成 / 收敛都不发生）',
+    kernel.includes('createImagePreviewKit') && sweep.includes('pruneImagePreviewCache'), 'kernel+sweep 接线');
+}
+
 const CHECK_FLOOR = 14;
 const MUTANT_FLOOR = 8;
 const totalChecks = stats.passed + stats.failed;
-
 check(`H3 覆盖面地板：执行的判据 ≥ ${CHECK_FLOOR}`, totalChecks >= CHECK_FLOOR, `实测 ${totalChecks}`);
 check(`H4 负对照地板：变异体 ≥ ${MUTANT_FLOOR}`, mutants >= MUTANT_FLOOR, `实测 ${mutants}`);
 

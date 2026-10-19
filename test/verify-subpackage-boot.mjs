@@ -571,6 +571,82 @@ if (mod) {
 }
 rmSync(HOST_LEG_ISO, { recursive: true, force: true });
 
+// b3) 同名但**另一个版本**的 profile 不得让新版自检出声（PR#1 ⑦ 适配本仓）
+//     2026-10-18 真机事故：`hostRoots` 只判 `node_modules/<主包名>` 存在，而**同名 ≠ 同一份代码**
+//     —— 开发机上常见"另一个 profile 钉着旧版打包产物（那个版本连子包行都没有）"。不加版本过滤
+//     的后果是灾难性的：装着旧版的那个 profile 会让**正在运行的新版**在 apply() 里抛错 ⇒ 六条
+//     路由全没注册 ⇒ 整个面板 404（用户实测："子包怎么又没有挂载了"）。
+//     修法：先读对方 `package.json` 的 version，**版本不同 ⇒ 跳过**；同版本与读不出身份的
+//     （裸目录 / 读不到）照常检查 —— 后者是"大声失败"的方向（漏挂子包会静默丢 UI）。
+{
+  const verHome = join(HOST_LEG_ISO, 'home-ver');
+  rmSync(verHome, { recursive: true, force: true });
+  // 三个 profile：同版本（照常查）/ 外来版本（跳过）/ 读不出身份（照常查）。
+  const sameVerDir = makeHostProfile(verHome, 'v-same', { installsMain: true });
+  const foreignDir = makeHostProfile(verHome, 'v-foreign', { installsMain: true });
+  const noVerDir = makeHostProfile(verHome, 'v-nover', { installsMain: true });
+  // 本包版本（与被测实现同源口径：读仓库根的 package.json）。
+  const ownVersion = JSON.parse(read('package.json')).version;
+  writeFileSync(join(foreignDir, 'node_modules', rootName, 'package.json'),
+    JSON.stringify({ name: rootName, version: '1.0.0-r2' }) + '\n');   // 旧版
+  // noVerDir 故意**不写** package.json（读不出身份 ⇒ 按"它就是我们"处理）
+  // ⚠️ "同版本"那份必须写**本包真实版本**（首版写死 9.9.9 ⇒ 它被正确地判为外来版本，
+  //    判据自己判红 —— 造数据要与被测语义同源，不能编一个"看起来像版本"的字符串）。
+  writeFileSync(join(sameVerDir, 'node_modules', rootName, 'package.json'),
+    JSON.stringify({ name: rootName, version: ownVersion }) + '\n');
+  // ⚠️ 必须**给一行**（空 rows 时 resolveInRoot 根本不会被调用 ⇒ `asked` 恒空 ⇒ 判据恒真，
+  //    首版就是这样"意外判绿"的：实测第一条在缺陷未修时也过）。
+  const probeRow = [{ id: 'wallpaper-engine-__ver_probe', name: rootName + '-__ver_probe' }];
+  const ask = (env) => {
+    const asked = [];
+    let ret = null, err = null;
+    try {
+      // 解析器**不抛**（返回一个恒可解析的路径）——本段只问"哪些 profile 被检查了"，
+      // 解析失败会让调用提前抛错、`asked` 收不全。
+      ret = mod.assertSubpackagesResolvableInHost(probeRow, { mainName: rootName, env,
+        resolveInRoot: (rootR, name) => { asked.push(rootR.name); return '/x/' + name; } });
+    } catch (e) { err = e; }
+    return { asked: [...new Set(asked)].sort(), ret, err };
+  };
+  const r3 = ask({ DSH_HOME: verHome });
+  check('PR#1⑦ 同名但**另一个版本**的 profile 被跳过（它加载的是那份旧代码，不该由本版要求它）',
+    r3.asked.includes('v-foreign') === false,
+    '被检查的 profile = ' + JSON.stringify(r3.asked) + '（v-foreign 不该出现）');
+  check('PR#1⑦ 同版本 profile 照常检查（不是"一律跳过同名"）',
+    r3.asked.includes('v-same'),
+    '被检查的 profile = ' + JSON.stringify(r3.asked));
+  // ⚠️ 读到的是"本包自己的版本"——判据不该写死版本号，只钉"v-same 在我们这侧等于本包版本"。
+  check('PR#1⑦ 读不出对方身份（裸目录 / 无 version）⇒ 照常检查（大声失败的方向）',
+    r3.asked.includes('v-nover'),
+    '被检查的 profile = ' + JSON.stringify(r3.asked) + '（读不出身份不该被跳过）');
+  check('PR#1⑦ 判据自带前件：本包版本可读（否则上面三条会因"读不到自己版本"静默恒真）',
+    typeof ownVersion === 'string' && ownVersion.length > 0, '本包 version=' + String(ownVersion));
+  // 有牙：把版本过滤这一行从**真源码**里拿掉 ⇒ "外来版本被跳过"必须判红（否则判据恒真）。
+  const filteredSrc = stripComments(read(CONTRACT_REL));
+  const noFilterSrc = read(CONTRACT_REL).replace('if (isForeignVersion(installed)) continue;', '');
+  let noFilterMod = null, noFilterErr = null;
+  try { noFilterMod = await importSource(absolutize(noFilterSrc, 'lib'), 'lib', 'no-version-filter'); }
+  catch (e) { noFilterErr = e; }
+  let noFilterAsked = null;
+  if (noFilterMod) {
+    const asked2 = [];
+    try {
+      noFilterMod.assertSubpackagesResolvableInHost(probeRow, { mainName: rootName, env: { DSH_HOME: verHome },
+        resolveInRoot: (rootR, name) => { asked2.push(rootR.name); return '/x/' + name; } });
+    } catch { /* 只要拿到 asked 列表 */ }
+    noFilterAsked = [...new Set(asked2)].sort();
+  }
+  check('negative control: 把版本过滤那一行从真源码里拿掉 ⇒ 外来版本 profile 立刻被检查（判据有牙）',
+    noFilterErr === null && Array.isArray(noFilterAsked) && noFilterAsked.includes('v-foreign'),
+    noFilterErr ? ('变异体加载失败：' + noFilterErr.message)
+      : ('变异后 asked=' + JSON.stringify(noFilterAsked) + '（应含 v-foreign）'));
+  check('负对照前件：过滤行在源里唯一存在（替换锚点没漂移）',
+    read(CONTRACT_REL).split('if (isForeignVersion(installed)) continue;').length === 2
+    && noFilterSrc !== read(CONTRACT_REL)
+    && filteredSrc.length > 0,
+    '锚点唯一性');
+}
+
 if (failed) { console.log('SUBPACKAGE BOOT CHECKS FAILED — ' + failed + ' failed'); process.exit(1); }
 console.log('ALL SUBPACKAGE BOOT CHECKS PASSED');
 process.exit(0);
