@@ -372,7 +372,8 @@ async function main() {
     // 「视频播完就换」档 / 壁纸库缩略图链路）。地板按**本树**实测重取：上游那棵树写 89/102，
     // 因为它没有前两批的 ⑩⑪⑫；照抄会把地板调低三步，删一步就不再变红。
     // 补齐表情广播、侧栏诊断与玻璃几何三条离线硬门禁。
-    const CHAIN_FLOOR = { verify: 95, docs: 6, smoke: 6, all: 108 };
+    // 完整源码部署与发布清单回归新增一条硬门禁。
+    const CHAIN_FLOOR = { verify: 96, docs: 6, smoke: 6, all: 109 };
     /** 地板表与 GROUPS 的对齐体检：键名必须与**组名**逐一对齐（纯函数 ⇒ 负对照可直接喂）。 */
     const floorGaps = (groups, floors) => groups.map(([, g]) => g).filter((g) => !Number.isInteger(floors[g]));
     const problems = floorGaps(GROUPS, CHAIN_FLOOR).map((g) => '地板表缺组 ' + g

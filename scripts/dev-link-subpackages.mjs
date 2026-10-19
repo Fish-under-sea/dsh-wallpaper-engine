@@ -182,6 +182,10 @@ function main(argv) {
   }
   let profiles = listProfiles(home);
   if (only) profiles = profiles.filter((p) => p.name === only);
+  if (!has('--no-profiles') && only && profiles.length === 0) {
+    console.error('dev-link: profile not found: ' + only + ' under ' + home);
+    return 1;
+  }
   if (!has('--no-profiles')) for (const p of profiles) sites.push({ name: p.name, modules: p.modules, label: p.name, entries: subs });
   const actions = [];
   for (const site of sites) {
@@ -224,7 +228,7 @@ function main(argv) {
     + (conflicts ? '，' + conflicts + ' 条冲突未动' : '')
     + (dryRun ? '（--dry-run，未落盘）' : ''));
   if (json) console.log(JSON.stringify({ repoRoot, home, subpackages: subs.map((s) => ({ dir: s.dir, name: s.name })), actions }, null, 2));
-  return 0;
+  return conflicts ? 1 : 0;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {

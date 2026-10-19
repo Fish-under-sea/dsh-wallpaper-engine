@@ -36,9 +36,12 @@
  *   the installation closure`。⇒ 本通道就是那条路径的判据。
  */
 import { spawn, spawnSync } from 'node:child_process';
-import { createWriteStream, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs';
+import { createWriteStream, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { sourcePlan, retainMainBundle } from '../scripts/install-source.mjs';
+import { packRelease } from '../scripts/pack-release.mjs';
 import { request as httpRequest } from 'node:http';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
@@ -63,8 +66,12 @@ if (!['link', 'tarball'].includes(CHANNEL)) {
   process.exit(2);
 }
 
+const DSH_CLI = argOf('--dsh-cli', null);
 const childEnv = {
   ...process.env,
+  DSH_HOME: join(ISO_HOME, '.dsh'),
+  DSH_PROFILE: 'web',
+  DSH_PROFILE_DIR: join(ISO_HOME, '.dsh', 'profiles', 'web'),
   HOME: ISO_HOME,
   USERPROFILE: ISO_HOME,
   DSH_WE_DATA_DIR: DATA_DIR,
@@ -83,8 +90,15 @@ function check(name, ok, detail) {
 const tail = (s, n = 30) => String(s).split('\n').slice(-n).join('\n');
 
 // win32：`dsh` 是 npm 的 .cmd 垫片，Node ≥18 在 shell:false 下拒绝启动它。
-const spawnTool = (cmd, args, opts = {}) =>
-  spawn(cmd, args, { ...opts, shell: process.platform === 'win32' });
+const spawnTool = (cmd, args, opts = {}) => {
+  if (cmd === 'dsh' && DSH_CLI) return spawn(process.execPath, [resolve(DSH_CLI), ...args], opts);
+  if (process.platform === 'win32' && ['npm', 'dsh'].includes(cmd)) {
+    const env = { ...opts.env, DSH_WE_DEPLOY_ARGS: JSON.stringify(args) };
+    return spawn('pwsh', ['-NoProfile', '-NonInteractive', '-Command',
+      `$a = @($env:DSH_WE_DEPLOY_ARGS | ConvertFrom-Json); & ${cmd} @a; exit $LASTEXITCODE`], { ...opts, env });
+  }
+  return spawn(cmd, args, opts);
+};
 
 /** 跑一条工具命令并等它结束（超时 / 起不来都收敛成 {code, out}，不让异常穿透）。 */
 function runTool(cmd, args, { env, timeoutMs = 300000 } = {}) {
@@ -192,29 +206,42 @@ async function main() {
     iso.status === 0 ? String(iso.stdout) : '退出 ' + iso.status)) return;
 
   // ── 装插件：两条通道（见文件头"两条安装通道"）──────────────────────────────
-  let spec = 'link:' + ROOT;
+  const plan = sourcePlan({ root: ROOT, home: join(ISO_HOME, '.dsh'), profile: 'web' });
+  let add;
   if (CHANNEL === 'tarball') {
-    // 打包到隔离缓存里（与工作区解耦；`npm pack` 会跑 `prepare`，但产物落在 packDir）。
-    const packDir = join(CACHE, 'pack-tarball');
-    rmSync(packDir, { recursive: true, force: true });
-    mkdirSync(packDir, { recursive: true });
-    const pack = await runTool('npm', ['pack', '--pack-destination', packDir],
-      // npm 的 cache / logs 指到隔离目录里：受限环境（沙箱、或全局 cache 不可写）下 `npm pack`
-      // 会因为**写不了日志目录**而失败 —— 那是环境问题，不该伪装成"打包失败"。
-      { env: { ...childEnv, npm_config_cache: join(CACHE, 'npm-cache') } });
-    const tgzs = existsSync(packDir) ? readdirSync(packDir).filter((f) => f.endsWith('.tgz')) : [];
-    if (!check('npm pack 产出唯一 tarball（退出码 0）', pack.code === 0 && tgzs.length === 1,
-      pack.code !== 0 ? '退出 ' + pack.code + '\n' + tail(pack.out) : 'tarball=' + tgzs.join(','))) return;
-    const tgz = join(packDir, tgzs[0]);
-    const bytes = (() => { try { return lstatSync(tgz).size; } catch { return 0; } })();
-    if (!check('tarball 体积合理（> 200KB —— 内联产物在里面）', bytes > 200 * 1024, bytes + ' B')) return;
-    spec = tgz;
-    console.log('packed: ' + spec + ' (' + bytes + ' B)\n');
+    const releaseFile = argOf('--release-set', null);
+    const release = releaseFile
+      ? { ...JSON.parse(readFileSync(resolve(releaseFile), 'utf8')), dir: dirname(resolve(releaseFile)) }
+      : packRelease({ output: join(CACHE, 'pack-tarball') });
+    const specs = release.packages.map((pkg) => join(release.dir, pkg.file));
+    if (!check('发布集包含主包和八个子包', specs.length === 9)) return;
+    for (const spec of specs) if (!check('tarball 非空：' + spec, lstatSync(spec).size > 0)) return;
+    // 灰测子包尚未发布：仅在隔离夹具中覆盖解析源，不改 tarball 的正式版本依赖。
+    mkdirSync(plan.profileDir, { recursive: true });
+    writeFileSync(join(plan.profileDir, 'pnpm-workspace.yaml'), JSON.stringify({
+      packages: ['.'], nodeLinker: 'hoisted', autoInstallPeers: false,
+      overrides: Object.fromEntries(release.packages.filter((pkg) => pkg.name !== PLUGIN)
+        .map((pkg) => [pkg.name, 'file:' + join(release.dir, pkg.file).replaceAll('\\', '/')])) }, null, 2) + '\n');
+    add = await runTool('dsh', ['plugin', '--profile', 'web', 'add', specs.at(-1)], { env: childEnv });
+    if (add.code === 0) {
+      const path = join(plan.profileDir, 'package.json');
+      const manifest = retainMainBundle(JSON.parse(readFileSync(path, 'utf8')), plan);
+      writeFileSync(path, JSON.stringify(manifest, null, 2) + '\n');
+    }
+  } else {
+    add = await runTool(process.execPath, [join(ROOT, 'scripts', 'install-source.mjs'),
+      '--profile', 'web', '--dsh-home', plan.home, '--app-closed', '--skip-deps',
+      ...(DSH_CLI ? ['--dsh-cli', DSH_CLI] : [])], { env: childEnv });
   }
-
-  const add = await runTool('dsh', ['plugin', '--profile', 'web', 'add', spec], { env: childEnv });
-  if (!check('dsh plugin add 装载本插件（退出码 0）', add.code === 0,
+  if (!check('完整套件安装成功（退出码 0）', add.code === 0,
     add.code === 0 ? undefined : '退出 ' + add.code + '\n' + tail(add.out))) return;
+  const hostRequire = createRequire(join(plan.profileDir, 'cordis.yml'));
+  for (const name of [plan.main.name, ...plan.subs.map((p) => p.name)]) {
+    hostRequire.resolve(name);
+    const metadata = JSON.parse(readFileSync(hostRequire.resolve(name + '/package.json'), 'utf8'));
+    if (metadata.dsh?.client) hostRequire.resolve(name + '/client');
+  }
+  check('宿主可解析全部九包及独立客户端入口', true);
 
   // ── ⑥ 通道自证 + peer 解析（P4-17 的判据本体）──────────────────────────────
   const profileNm = join(ISO_HOME, '.dsh', 'profiles', 'web', 'node_modules', PLUGIN);
@@ -230,6 +257,9 @@ async function main() {
   };
   const isSameAsWorkspace = sameFile(join(profileNm, 'package.json'), join(ROOT, 'package.json'));
   if (CHANNEL === 'tarball') {
+    const manifest = JSON.parse(readFileSync(join(plan.profileDir, 'package.json'), 'utf8'));
+    check('只登记主包依赖，八个子包由运行依赖自动安装',
+      Boolean(manifest.dependencies?.[PLUGIN]) && plan.subs.every((pkg) => !manifest.dependencies?.[pkg.name]));
     // 装了 tarball 却还是工作区那一份 ⇒ 通道没生效（或装的是别的），那下面几条判据就是空转。
     check('通道自证：装进去的是**独立副本**（不是工作区那一份）⇒ 跑的是发布产物',
       isSameAsWorkspace === false, 'sameAsWorkspace=' + isSameAsWorkspace + ' path=' + profileNm);

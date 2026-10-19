@@ -1,6 +1,8 @@
 # dsh-plugin-wallpaper-engine
 
-![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg) ![node: >=18](https://img.shields.io/badge/node-%3E%3D18-5fa04e.svg)
+> **Unpublished test branch:** use the [source deployment instructions](README.md#安装), not the registry install commands below. Requires Node.js >=22.12.0 and DSH 0.2 (including 0.2.0-rc.1/rc.2). Close the target host, then run `node scripts/install-source.mjs --profile desktop --dsh-home "<target DSH data directory>" --app-closed` from this checkout. Use `web` for the web profile. The installer registers the main package and all eight subpackages persistently. The npm path only applies after the complete nine-package release set has been published; prepare that set with `npm run pack:release`.
+
+![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg) ![node: >=22.12](https://img.shields.io/badge/node-%3E%3D22.12-5fa04e.svg)
 
 [English](README.en.md) | [中文](README.md) | [Beginner guide](README.beginner.md#english)
 

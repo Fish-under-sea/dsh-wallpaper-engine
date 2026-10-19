@@ -104,6 +104,7 @@ const ZERO_COVERAGE_WHY = {
  * 允许**第三类**的守卫 —— **可枚举 + 每条有理由**。
  */
 const NO_MODULE_TARGET_WHY = {
+  'verify-deployment.mjs': '验证源码安装器与发布集构建器的行为、持久依赖和显式目标安全边界；目标是 scripts 下的部署流程，不属于本映射枚举的 lib/src 运行时模块',
   'verify-dead-declarations.mjs': '管的是**声明孤儿**（跨全部独立脚本面），不针对某个模块',
   'verify-route-families.mjs': '管的是**路由族触发线**（枚举口径经 `test/tools/host-route-index.mjs` 的 `buildIndex()` 重算）',
   'compat-harness-live.mjs': '真 harness 安装/启动探活（不读源文件）',

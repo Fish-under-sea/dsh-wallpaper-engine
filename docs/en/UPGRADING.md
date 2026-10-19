@@ -3,7 +3,13 @@
 > **中文**: [`../UPGRADING.md`](../UPGRADING.md)（与本文同源：改一处请同步另一处）
 
 
-### ✅ Prerequisites from v1.3.0: DSH kernel ≥ 0.1.5 (0.1.5-rc.1+, tested floor)
+### Current Test Branch Requirements
+
+The complete suite includes the built-in pet and requires **Node.js >=22.12.0 and DSH 0.2 (including 0.2.0-rc.1/rc.2)**. DSH 0.1 does not satisfy the complete suite. The older compatibility records below do not establish support for this branch.
+
+Close the host, update the entire checkout, and rerun the [source installer](../../README.md#安装). Registry package-name commands cannot fetch unpublished changes. The npm channel only applies after all nine release packages have been published.
+
+### Published v1.3.0 Prerequisites (Historical)
 
 **v1.3.0 states its prerequisite in kernel terms (v1.2.0 shipped npm with `>=0.2.0-rc.1`)**: the plugin manifest declares
 `engines.dsh: ">=0.1.5-rc.1"` — both the official desktop (DeepSeek Harness, kernel 0.2.0-rc.1+)

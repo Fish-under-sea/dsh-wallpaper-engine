@@ -149,7 +149,7 @@ const rows = patchRows(patchText);
 const discovered = discoverSubpackages();
 const badManifests = discovered.filter((d) => d.error || !d.name);
 const rowNames = rows.map((r) => r.name).filter(Boolean);
-const rowSpecs = rowNames.filter((n) => n !== rootName && !n.startsWith(rootName + '/') && n.startsWith(rootName + '-'));
+const rowSpecs = rowNames.filter((n) => n !== rootName && !n.startsWith(rootName + '/'));
 
 check('packages/ 下至少有一个子包（P-A 未落 ⇒ 判红，不放宽）', discovered.length > 0,
   discovered.length ? discovered.map((d) => d.dir + '=' + d.name).join(' / ') : 'packages/ 下没有带 package.json 的目录');
@@ -600,6 +600,24 @@ if (mod) {
   check('负对照：真源码变异（宿主腿的 throw 被抹掉 = 自检不出声）⇒ 宿主腿判据判红（证明判据有牙）',
     hostMutBad.length > 0, JSON.stringify(hostMutBad));
 }
+// 灰测回归：非主包前缀的内置桌宠也必须进入真实自检集合。
+check('灰测：自检覆盖 packages/ 中全部子包（包括内置桌宠）',
+  JSON.stringify([...mod.subpackageSpecifiers(patchText, rootName)].sort())
+    === JSON.stringify(discovered.map((d) => d.name).sort()));
+
+// 当前运行的 profile 优先，不能由同版本的另一个残缺安装阻断启动。
+let activeRoots = null, activeErr = null;
+try {
+  activeRoots = mod.assertSubpackagesResolvableInHost(hostLegRows, {
+    mainName: rootName,
+    env: { DSH_HOME: foreignHome, DSH_PROFILE: 'same-version', DSH_PROFILE_DIR: join(foreignHome, 'profiles', 'same-version') },
+    resolveInRoot: (root) => root.name === 'same-version' ? '/resolves' : null,
+  });
+} catch (e) { activeErr = e; }
+check('灰测：只检查当前 profile，无关残缺 profile 不得阻断启动',
+  activeErr === null && activeRoots.length === 1 && activeRoots[0].name === 'same-version',
+  activeErr ? activeErr.message : JSON.stringify(activeRoots));
+
 rmSync(HOST_LEG_ISO, { recursive: true, force: true });
 
 if (failed) { console.log('SUBPACKAGE BOOT CHECKS FAILED — ' + failed + ' failed'); process.exit(1); }

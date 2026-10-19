@@ -5,7 +5,7 @@
 > 口径：只统计守卫**代码**里真正碰到的模块（先剥注释），并区分"直接读源文件"与"隔着产物 `lib/client.js`"。
 > 写法：字面量路径 / `join(...)` 拼接 / 唯一 basename / 产物配方 / **前缀族读法** `scopeFiles|scopeText(<前缀>)` / **经共享族助手读**（`import { panelText } from './tools/src-scope.mjs'` + 真调用；族口径封在那个库里，见 DEV-GUIDE §4.6「同时是守卫的库」）/ **真源定位读**（`locate('符号')` / `locateFile('文件名')`，`test/tools/source-locator.mjs`：符号唯一声明在哪就是读了哪个模块）。
 
-模块面 174 个 · 守卫 119 个
+模块面 174 个 · 守卫 120 个
 
 ## 守卫 → 模块
 
@@ -31,7 +31,7 @@
 | `verify-bundle-rows.mjs` | `lib/host-boot.js` `lib/index.js` `lib/kernel/component-session.js` `lib/kernel/host-kernel.js` `lib/subpackage-boot.js` |  |
 | `verify-cache-dir.mjs` | `lib/faststart.js` `lib/index.js` `lib/kernel/data-dir.js` `lib/media/frame-store.js` `lib/media/media-dirs.js` `lib/media/transcode.js` `lib/media/video-preview.js` `lib/routes/cache-dir.js` `lib/upload-dir.js` `packages/media-bridge/lib/backend.js` `packages/media-bridge/lib/legacy.js` `packages/media-bridge/lib/routes/now-playing.js` |  |
 | `verify-cache-prune.mjs` | `lib/media/transcode.js` `lib/media/video-preview.js` |  |
-| `verify-child-kill.mjs` | `lib/media/transcode.js` `packages/media-bridge/lib/legacy.js` | ✅ |
+| `verify-child-kill.mjs` | `lib/media/transcode.js` `packages/media-bridge/lib/legacy.js` `packages/pet/lib/index.js` `packages/pet/lib/standalone.js` | ✅ |
 | `verify-ci-routing.mjs` | — |  |
 | `verify-ci-steps.mjs` | — |  |
 | `verify-client-sync.mjs` | — | ✅ |
@@ -42,6 +42,7 @@
 | `verify-config-store.mjs` | `lib/kernel/config.js` `lib/media/transcode.js` |  |
 | `verify-contracts.mjs` | `lib/host-boot.js` `lib/index.js` `lib/kernel/host-kernel.js` `lib/media/media-dirs.js` `lib/settings-schema.js` `packages/fonts/lib/routes/fontsets.js` `packages/fonts/src/fontset-editor.js` `packages/mascot-avatar/lib/routes/avatar.js` `packages/mascot-avatar/lib/routes/mascot.js` `packages/media-bridge/lib/backend.js` `packages/media-bridge/lib/index.js` `packages/media-bridge/lib/legacy.js` `packages/media-bridge/lib/supervisor.js` `src/api-client.js` `src/client.js` `src/fontset-store.js` `src/panel-tabs-advanced.js` `src/panel-tabs-appearance.js` `src/panel-tabs-effects.js` `src/panel-tabs-mascot.js` `src/panel-tabs-wallpaper.js` `src/panel-tabs.js` |  |
 | `verify-dead-declarations.mjs` | — |  |
+| `verify-deployment.mjs` | — |  |
 | `verify-eol.mjs` | — |  |
 | `verify-extra-glass.mjs` | `lib/settings-schema.js` `src/client.js` `src/effects.js` `src/glass-extra.js` `src/glass-panel.js` `src/quick-panel.js` | ✅ |
 | `verify-fontset.mjs` | `lib/index.js` `lib/settings-schema.js` `packages/fonts/lib/index.js` `packages/fonts/src/appearance-font-section.js` `packages/fonts/src/fontset-editor.js` `src/client.js` `src/extension-registry.js` `src/font/apply.js` `src/font/color-roles.js` `src/font/components.js` `src/font/typography.js` `src/fontset-store.js` `src/glass-panel.js` `src/media-prep.js` `src/module-reset.js` `src/panel-tabs-advanced.js` `src/panel-tabs-appearance.js` `src/panel-tabs-effects.js` `src/panel-tabs-mascot.js` `src/panel-tabs-wallpaper.js` `src/panel-tabs.js` `src/picker-modal.js` `src/picker-props-panel.js` `src/section-head.js` `src/styles-base.js` `src/styles-chrome.js` `src/styles-ext.js` `src/styles-panel.js` `src/styles-quick.js` `src/styles-settings.js` `src/styles-shell.js` `src/styles-sidebar.js` `src/styles.js` `src/system-fonts.js` `src/we-cond.js` | ✅ |
@@ -236,8 +237,8 @@
 | `packages/pet-link/src/pet-link-tuner.js` | 13 | `verify-pet-bubble-timing` `verify-pet-egg1-motion` `verify-pet-egg1-native-browser` `verify-pet-egg1-rebound` `verify-pet-egg2-motion` `verify-pet-follow` `verify-pet-hotplug-browser` `verify-pet-hotplug-client` `verify-pet-mascot-motion` `verify-pet-meme-broadcast` `verify-pet-phase-browser` `verify-pet-tuner-browser` `verify-pet-tuner` |
 | `packages/pet-link/src/pet-link.js` | 14 | `verify-pet-bubble-timing` `verify-pet-builtin` `verify-pet-egg1-motion` `verify-pet-egg1-native-browser` `verify-pet-egg1-rebound` `verify-pet-egg2-motion` `verify-pet-follow` `verify-pet-hotplug-browser` `verify-pet-hotplug-client` `verify-pet-mascot-motion` `verify-pet-meme-broadcast` `verify-pet-phase-browser` `verify-pet-tuner-browser` `verify-pet-tuner` |
 | `packages/pet/lib/client.js` | 28 | `fontset-load-smoke` `live-frame-async-identity-smoke` `live-frame-backfill-smoke` `rotation-live-smoke` `rotation-prepared-leak-smoke` `rotation-smoke` `verify-body-caps` `verify-client-sync` `verify-client` `verify-component-fonts` `verify-extra-glass` `verify-fontset` `verify-glass-surfaces` `verify-i18n` `verify-json-response` `verify-pet-builtin` `verify-picker-model` `verify-picker-props` `verify-picker-upload` `verify-playback-controls` `verify-presets` `verify-scene-live` `verify-scene` `verify-softrender` `verify-system-fonts` `verify-theme-layer` `verify-transcode-state` `verify-types` |
-| `packages/pet/lib/index.js` | 3 | `verify-pet-builtin` `verify-pet-eslint-compat` `verify-pet-meme-broadcast` |
-| `packages/pet/lib/standalone.js` | 2 | `verify-pet-builtin` `verify-pet-eslint-compat` |
+| `packages/pet/lib/index.js` | 4 | `verify-child-kill` `verify-pet-builtin` `verify-pet-eslint-compat` `verify-pet-meme-broadcast` |
+| `packages/pet/lib/standalone.js` | 3 | `verify-child-kill` `verify-pet-builtin` `verify-pet-eslint-compat` |
 | `src/about-assets.js` | 1 | `verify-about` |
 | `src/adapter.js` | 1 | `verify-adapter` |
 | `src/api-client.js` | 3 | `verify-api-client` `verify-contracts` `verify-occlusion-client` |

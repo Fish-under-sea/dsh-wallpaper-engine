@@ -141,6 +141,7 @@ const VERIFY_STEPS = [
   step('test/verify-extra-glass.mjs'),
   step('test/verify-package-files.mjs'),
   step('test/verify-package-publish.mjs'),
+  step('test/verify-deployment.mjs'),
   step('test/verify-contracts.mjs'),
   step('test/verify-body-caps.mjs'),
   step('test/verify-json-response.mjs'),

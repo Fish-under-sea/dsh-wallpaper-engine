@@ -18,21 +18,21 @@ All changes target `main`. The plugin is **one natively cross-platform tree** (W
 - `lib/client.js` is generated at build time and **not tracked in git** (v1.4): `npm run build` produces it locally; `prepack` produces it inside npm / Release tarballs. Do not edit it by hand.
 - Host-side changes live directly in `lib/index.js` and the other `lib/*.js` host modules.
 - Restart DSH after host-side edits: `lib/*.js` is loaded at startup and is never hot-updated in a running instance.
-- Install a local dev build with the application **fully closed** (`dsh plugin --profile desktop add link:<path>`), then start it. Installing while the app is running leaves the plugin in `startup-unconfirmed`, which the recovery state rolls back on the next start.
+- Install a local dev build with the application **fully closed**, using the complete source installer below. Linking only the main package is insufficient.
 - Use the Node.js version your DSH profile requires; this repository declares `engines.node` in `package.json`.
 
 - `src/client.js` 是浏览器端唯一源码。修改后运行 `npm run build` 重新生成 `lib/client.js`。
 - `lib/client.js` 是构建期产物、**不入库**（v1.4 起）：本地跑 `npm run build` 生成；npm 包与 Release tgz 里由 `prepack` 在打包时现场构建。请勿手改。
 - 宿主端代码直接位于 `lib/index.js` 和其他 `lib/*.js` 模块中。
 - 改完宿主端代码需**重启 DSH**：`lib/*.js` 在启动时加载，运行中的实例不会热更新。
-- 安装本地 dev 构建请**先完全关闭应用**（`dsh plugin --profile desktop add link:<path>`）再启动；应用运行期间安装会停在 `startup-unconfirmed`，恢复状态会在下次启动时自动回滚。
+- 安装本地 dev 构建请**先完全关闭应用**，使用下文的完整源码安装器；只链接主包不能部署完整套件。
 - 请使用你的 DSH profile 要求的 Node.js 版本；本仓在 `package.json` 的 `engines.node` 里声明。
 
 ### What `lib/client.js` actually is / `lib/client.js` 到底是什么
 
 - **Anatomy**: `lib/client.js` = the `src/client.js` body **+ every module listed in `INLINE_MODULES`** (`scripts/build-client.mjs`), all inlined into a single `factory(require)` scope. `npm run build` prints that inlined list — **read the count off that list, never from prose here** (a hardcoded number in this file has already gone stale once). Most of the file's lines therefore come from `src/**`, not from `client.js` itself — it *looks* like a monolith but is a flattened repository slice.
 - **Why inlining**: the browser half has **no local-module resolver** — the loader's `require` resolves only external packages, so `import './panel-tabs.js'` cannot work at runtime. Everything split out of `src/client.js` for readability is inlined back as a prelude in the same scope. Each entry declares `markers`, and a missing marker is a **hard build failure** — that is what stops the split from silently going empty. The output must also parse (`new Script(...)`) before it is written.
-- **Its role**: `package.json` exposes it as `exports["./client"]` with `dsh.client.immediately: true`; the DSH client loader fetches it from package metadata (no host route serves it). It is **built, never tracked** (v1.4): npm / Release tarballs get it from `prepack` at packaging time, and a `link:` dev checkout gets it from `npm run build`. The supported install paths are therefore the npm package name and the Release tarball — a raw `github:` install does not build it and is **not supported**.
+- **Its role**: `package.json` exposes it as `exports["./client"]` with `dsh.client.immediately: true`; the DSH client loader fetches it from package metadata (no host route serves it). It is **built, never tracked** (v1.4): npm / Release tarballs get it from `prepack` at packaging time, and a `link:` dev checkout gets it from `npm run build`. The supported paths are the complete source installer below and, after all packages are published, the npm package name or complete Release set. A raw `github:` install does not build the clients or register all subpackages and is **not supported**.
 - **Rule 1 — rebuild before verifying**: any `src/**` change requires `npm run build` before `verify` / packaging (there is no committed artifact left to forget). CI rebuilds and then asserts the artifact is **not tracked**; the **local chain asserts freshness** via `test/verify-client-sync.mjs`: it rebuilds, compares byte-for-byte, and restores the file — so a stale artifact fails **before you push**.
 - **Rule 2**: never hand-edit `lib/client.js`; the next build overwrites it.
 - **Rule 3 — the artifact is a contract**: several guards test the **built** file (`verify-readability`, `verify-softrender`, `verify-client`), and some extract the stylesheet from it by a line-leading anchor. That is why `src/styles.js` forbids backticks and literal copies of its own declaration in its comments — one stray backtick once made `verify-host-paint-scope` report "bare backticks: 489".
@@ -41,7 +41,7 @@ All changes target `main`. The plugin is **one natively cross-platform tree** (W
 
 - **构成**：`lib/client.js` = `src/client.js` 正文 **+ `INLINE_MODULES` 里的每一个模块**（见 `scripts/build-client.mjs`），全部内联进**同一个** `factory(require)` 作用域。`npm run build` 会把内联清单打印出来 —— **条数只许从那份清单现读，不要写进本文件**（这里写死过一次，已经漂了）。**它的大部分行来自 `src/**` 而不是 `client.js` 自己**（占比同样按那份清单复算，勿记死数）—— 看着像巨石，实为"压平的仓库切片"。
 - **为什么必须内联**：浏览器半边**没有本地模块解析器** —— loader 的 `require` 只解析外部包，`import './panel-tabs.js'` 在运行时根本不成立。凡为可读性拆出去的代码，都在构建期作为 prelude 内联回同一作用域。每项都带 `markers`，**缺任何一个都构建硬失败** —— 这正是"拆分不会悄悄变空"的保证；产物还必须能通过 `new Script(...)` 解析才会被写出。
-- **它的身份**：`package.json` 用 `exports["./client"]` + `dsh.client.immediately: true` 暴露它，DSH 客户端加载器按**包元数据**取（宿主侧没有任何路由发它）。它**构建、但不入库**（v1.4 起）：npm 包与 Release tgz 由 `prepack` 在打包时生成；`link:` 开发检出由 `npm run build` 生成。支持的安装路径因此是 **npm 包名 / Release tgz**；裸 `github:` 直装不构建产物，**不再支持**。
+- **它的身份**：`package.json` 用 `exports["./client"]` + `dsh.client.immediately: true` 暴露它，DSH 客户端加载器按**包元数据**取（宿主侧没有任何路由发它）。它**构建、但不入库**（v1.4 起）：npm 包与 Release tgz 由 `prepack` 在打包时生成；`link:` 开发检出由 `npm run build` 生成。支持下文的**完整源码安装器**；整套包正式发布后也支持 **npm 包名 / 完整 Release 集合**。裸 `github:` 直装不构建客户端，也不会登记全部子包，**不支持**。
 - **铁律一 —— 先重建再验证**：改任何 `src/**` 都要在 `verify` / 打包前 `npm run build`（已无"产物忘了提交"这回事）。CI 重建后判**产物不入库**；**本地链同样判新鲜度**：`test/verify-client-sync.mjs` 会重建、逐字节比对、并把文件**还原**（守卫不改工作树）⇒ 产物过期会在 **push 之前**就红。
 - **铁律二**：绝不手改 `lib/client.js`，下一次构建会抹掉。
 - **铁律三 —— 产物即契约**：多个守卫跑的是**产物**（`verify-readability`、`verify-softrender`、`verify-client`），另有一些**按行首锚点从产物里**取样式表。这就是 `src/styles.js` 禁止在自己注释里写反引号、也禁止复述那条声明语句的原因（实测踩到过：`verify-host-paint-scope` 报"裸反引号 489"）。
@@ -49,6 +49,10 @@ All changes target `main`. The plugin is **one natively cross-platform tree** (W
 - **不要把它当巨石来"治理"**：它的体积就是 `src/**` 的体积，杠杆在源文件。
 
 ## Install a local dev build / 从本地源码安装（开发者）
+
+> **Gray-test checkouts:** when a change has not reached upstream, download the current gray-test repository and branch, not the upstream `main` shown in the clone examples below.
+>
+> **灰测源码**：未合入上游的改动，请从当前灰测仓库及分支下载，不要用下面示例中的上游 `main` 代替灰测源码。
 
 ### 1. Get the code (`checkout`) / 取得源码
 
@@ -68,39 +72,41 @@ All changes target `main`. The plugin is **one natively cross-platform tree** (W
 >
 > 完成后你会得到一个包含 `package.json`、`lib/`、`src/`、`cordis.patch.yml` 的文件夹。下文把这个文件夹称作**插件文件夹**。
 
-### 2. Install it using its folder path (`link:`) / 用文件夹路径安装（`link:`）
+### 2. Install the complete source set / 安装完整源码套件
 
-> `link:` tells `dsh` (which forwards the command to `pnpm`) to make a *link* to your local plugin folder instead of downloading a package from the internet — so edits + `npm run build` take effect without reinstalling.
->
-> `link:` 表示：告诉 `dsh`（它会把命令转发给 pnpm）去**连接你本地那个插件文件夹**，而不是从网上下载一个包。好处是改完代码并重新构建后，改动能直接生效，不用反复重装。
+Requires Node.js >=22.12.0, DSH 0.2 (including 0.2.0-rc.1/rc.2), and pnpm. Enter the checkout directory and completely close the target application. Use the target host's actual DSH data directory, not an assumed `~/.dsh`.
 
-Replace `<插件文件夹绝对路径>` with the **full path of your plugin folder** (the "address bar" path you see when you open that folder in Explorer / your file manager):
-
-把命令里的 `<插件文件夹绝对路径>` **替换成你插件文件夹的完整路径**（就是资源管理器地址栏里显示的那串路径）：
+要求 Node.js >=22.12.0、DSH 0.2 内核（包括 0.2.0-rc.1/rc.2）和 pnpm。进入插件目录，先完全退出目标宿主，并确认该宿主实际使用的 DSH 数据目录。
 
 ```sh
-dsh plugin --profile web add link:<插件文件夹绝对路径>
+node scripts/install-source.mjs --profile desktop --dsh-home "<目标 DSH 数据目录>" --app-closed
 ```
 
-**Concrete example** —假设你的插件文件夹路径像 `D:\dev\dsh-wallpaper-engine` 这样：
+Use `web` for the web profile. Add `--dry-run` to inspect the target without changing it. Desktop profiles require the carrier CLI installed by the desktop host; the standalone npm CLI rejects `desktop`. For web profiles without `dsh` on PATH, pass `--dsh-cli "<DSH CLI lib/bin.js>"`.
+
+网页宿主使用 `--profile web`。先加 `--dry-run` 可只核对目标。桌面 profile 必须使用桌面宿主安装的 carrier CLI；独立 npm CLI 不允许管理 `desktop`。网页版找不到 `dsh` 命令时，可传入 `--dsh-cli "<DSH CLI 的 lib/bin.js 路径>"`。
+
+The installer runs `npm ci`, builds the clients, and registers all nine packages as persistent `link:` dependencies. Only the main bundle remains selected; it owns the complete patch, so selecting the child bundles as well duplicates their rows. Other bundle selections and row-level settings remain unchanged.
+
+脚本安装仓库依赖、构建客户端，通过 DSH 将主包和 8 个子包登记为持久 `link:` 依赖。只保留主包 bundle 选择，避免子包 patch 重复插入行；其他 bundle 选择和现有行级开关不变。不要只链接主包，也不要把临时 junction 工具当成正式安装流程。
+
+For an update, close the host, update the entire checkout, and rerun the same command. Keep the source directory in place while installed.
+
+更新时先关闭宿主，更新整个源码目录，再重跑同一命令。安装后不要移动或删除源码目录。
+
+### Release set / 发布集
 
 ```sh
-dsh plugin --profile web add link:D:\dev\dsh-wallpaper-engine
+npm run pack:release
 ```
 
-You can also use a relative path if your shell is already in the folder's parent / 如果你已经 `cd` 到了插件文件夹的上一级，也可以用相对路径：
+This builds clients and creates nine tarballs plus `release-set.json` under a unique `.test-cache/release/set-*` directory. The staged main manifest uses each child's exact real version as a runtime dependency, including the independently versioned built-in pet. Publish the children first and the main package last, following `publishOrder`. This command does not publish anything. A raw root `npm pack` uses the development manifest and is not the complete release set. Do not publish a gray-test version without explicit release approval.
 
-```sh
-dsh plugin --profile web add link:./dsh-wallpaper-engine
-```
+该命令构建客户端，在独立的 `.test-cache/release/set-*` 目录生成九个 tarball 和 `release-set.json`。发布形态主包将各子包的真实精确版本列为运行依赖，内置桌宠保留独立版本。正式发布按 `publishOrder` 先子包、后主包。此命令不执行发布；源码根目录直接 `npm pack` 仍是开发清单，不能当成完整发布集。灰测阶段未经明确发布批准，不要发布 npm。
 
-> **Which exact path to fill in?** It must be the **folder that contains `package.json`** — not the path to `package.json` itself, and not any file inside. It is the same value you would paste into Explorer's address bar.
->
-> **该填哪个确切的路径？** 必须是**包含 `package.json` 的那个文件夹**——不是 `package.json` 文件本身的路径，也不是它里面任何单个文件的路径。
+On Windows, use a current patched Node.js release for packaging. A minimal directory-copy test with a Chinese path exits unexpectedly on Node.js 24.14.0; the same test and the release-set build succeed on 24.21.0. Ensure npm uses the same Node.js runtime.
 
-> Why prefer `link:` over `file:`? `link:` creates a live link to your source folder, so edits to `src/client.js` + `npm run build` take effect without reinstalling; `file:` packs a static snapshot, which needs a re-add after every change. Both work for a first install.
->
-> 为什么推荐 `link:` 而不用 `file:`？`link:` 是和你的源码文件夹**建立实时连接**，改完 `src/client.js` 并 `npm run build` 后直接生效，无需重装；`file:` 则是打包成一份静态快照，每次改动都要重新 add。首次安装两者都可以。
+Windows 打包建议使用已更新补丁版本的 Node.js。本机对照中，24.14.0 复制中文路径目录时直接退出；同一样本及发布集构建在 24.21.0 通过。请同时确认 npm 使用同一套 Node.js 运行时。
 
 ### 3. Restart / 重启确认
 
@@ -110,7 +116,7 @@ Then restart `dsh web`. The host plugin becomes a bundle layer and the client pl
 
 If Steam is installed in a non-standard location, the host auto-detects it via `libraryfolders.vdf` — nothing further is required. / 如果 Steam 装在非标准位置，host 会通过 `libraryfolders.vdf` 自动探测，无需额外配置。
 
-> **注意 profile 与「应用必须先关闭」**：上面的示例用 `--profile web`；若目标是桌面端 profile，请改成 `--profile desktop`，并务必**先完全关闭应用**再安装（应用运行期间安装会停在 `startup-unconfirmed`，恢复状态会在下次启动时自动回滚，见上文「从唯一源码构建」）。
+> **注意 profile 与「应用必须先关闭」**：上面的示例用 `--profile desktop`，需要桌面宿主的 carrier CLI；若目标是网页端，请改成 `--profile web`。安装前务必**先完全关闭目标应用**（应用运行期间安装会停在 `startup-unconfirmed`，恢复状态会在下次启动时自动回滚）。
 
 ## Verify before opening a PR / 提交 PR 前验证
 

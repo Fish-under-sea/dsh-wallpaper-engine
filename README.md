@@ -20,7 +20,7 @@
   <a href="cordis.patch.yml"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/stat-modules-dark.png"><img src="assets/readme/stat-modules-light.png" alt="MODULES：7 个独立子包" width="23%"></picture></a>
 </p>
 
-![Node.js](https://img.shields.io/badge/Node.js-18%2B-8fd6a0?style=flat-square&logo=nodedotjs&logoColor=white&labelColor=5a544a)
+![Node.js](https://img.shields.io/badge/Node.js-22.12%2B-8fd6a0?style=flat-square&logo=nodedotjs&logoColor=white&labelColor=5a544a)
 [![License MIT](https://img.shields.io/badge/License-MIT-8fd6a0?style=flat-square&labelColor=5a544a)](LICENSE)
 [![npm Version](https://img.shields.io/npm/v/dsh-plugin-wallpaper-engine?style=flat-square&logo=npm&label=npm&color=8fd6a0&labelColor=5a544a)](https://www.npmjs.com/package/dsh-plugin-wallpaper-engine)
 [![Contributors](https://img.shields.io/badge/Contributors-Join-8fd6a0?style=flat-square&labelColor=5a544a)](https://github.com/elysia395/dsh-wallpaper-engine/graphs/contributors)
@@ -51,13 +51,15 @@
 
 <h2 id="快速开始"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/section-start-dark.png"><img src="assets/readme/section-start-light.png" alt="快速开始" width="1440" height="83"></picture></h2>
 
+先下载本仓 ZIP 并解压，进入插件目录，完全退出目标 DSH 应用，然后执行：
+
 ```sh
-dsh plugin --profile web add dsh-plugin-wallpaper-engine
+node scripts/install-source.mjs --profile desktop --dsh-home "<目标 DSH 数据目录>" --app-closed
 ```
 
-重启 `dsh web`，打开 **设置 → Wallpaper Engine → 壁纸库**，选择一张壁纸即可。
+网页宿主将 `desktop` 改为 `web`。完成后重启对应宿主，打开 **设置 → Wallpaper Engine → 壁纸库**。目标目录和 CLI 说明见 [安装](#安装)。
 
-**前置条件**：DSH 内核 `>=0.1.5-rc.1`；Node.js `>=18`。桌面端用户优先通过应用内插件市场安装，命令行安装时使用对应的 `desktop` profile。`dsh-better-sidebar` 是可选配套插件，不是必装依赖。
+**前置条件**：DSH 0.2 内核（包括 `0.2.0-rc.1/rc.2`）、Node.js `>=22.12.0` 和 pnpm。当前灰测改动未发布到 npm；`dsh-better-sidebar` 是可选配套插件，不是必装依赖。
 
 没用过命令行？从 [新手指南](README.beginner.md) 开始。
 
@@ -112,35 +114,33 @@ dsh plugin --profile web add dsh-plugin-wallpaper-engine
 
 <h2 id="安装"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/section-install-dark.png"><img src="assets/readme/section-install-light.png" alt="安装" width="1440" height="83"></picture></h2>
 
-### 普通用户
+### 灰测用户：从仓库安装或更新
 
-浏览器版安装或更新：
+本分支的未发布改动只能从 GitHub 源码部署。**不要执行下面「npm 通道」的包名安装命令来获取灰测版本**，它只会取得注册表中已经发布的版本。
+
+要求 **Node.js >=22.12.0、DSH 0.2 内核（包含 0.2.0-rc.1/rc.2）**，并已安装可用的 DSH CLI 和 pnpm。桌面应用外部版本号不等于内核版本。下载本仓 ZIP 并解压，或克隆本仓；进入包含 `package.json` 的目录。先完全退出目标 DSH 应用，然后执行：
+
+```sh
+node scripts/install-source.mjs --profile desktop --dsh-home "<目标 DSH 数据目录>" --app-closed
+```
+
+网页宿主把 `desktop` 改为 `web`。数据目录应从目标宿主环境确认，不要假定始终是 `~/.dsh`。先加 `--dry-run` 可核对目标和九条链接。**桌面 profile 必须使用桌面宿主安装的 carrier CLI**；独立 npm 安装的 `dsh` 不允许管理 `desktop`，不能把它当成桌面 CLI。网页版若 `dsh` 不在 PATH，可使用 `--dsh-cli "<DSH CLI 的 lib/bin.js 路径>"`。
+
+脚本会安装仓库依赖、构建所有客户端，并通过 DSH 将**主包和 8 个子包**登记成目标 profile 的持久 `link:` 依赖。只保留主包的 bundle 选择，防止子包自带 patch 重复插入同一组行；现有行级开关和其他 bundle 选择不变。之后重启目标宿主。
+
+更新时先退出宿主，再更新整个源码目录并重跑同一命令。安装完成后不要删除或移动源码目录。不要只安装主包，不要用裸 `github:` 直装，也不要只运行临时子包链接工具。
+
+### npm 通道：仅适用于整套包已发布的版本
+
+正式发布者必须先运行 `npm run pack:release`，生成含构建产物的九个 tarball，并按生成清单先发布子包、最后发布主包。主包发布清单以各子包**真实精确版本**声明运行依赖，内置桌宠保留独立版本。单独在源码根目录执行 `npm pack` 得到的开发形态主包不能代表完整发布集。
+
+整套包发布后，用户才可执行：
 
 ```sh
 dsh plugin --profile web add dsh-plugin-wallpaper-engine
 ```
 
-桌面版通过应用内插件市场安装；使用 CLI 时：
-
-```sh
-dsh plugin --profile desktop add dsh-plugin-wallpaper-engine
-```
-
-安装或更新后，**重启对应宿主**。桌面版需要完全退出应用后重新打开，而不只是刷新页面。
-
-版本要求以 npm 包声明和 [升级指南](https://github.com/elysia395/dsh-wallpaper-engine/blob/main/docs/UPGRADING.md) 为准。历史桌面端版本号与 DSH 内核版本号不是同一个概念，不要混用。
-
-### 从源码体验本分支
-
-npm 安装获取的是已发布版本，不会自动包含此目录中的未发布改动。开发者请按 [贡献指南](CONTRIBUTING.md) 构建并链接源码；本地开发还需运行子包链接工具，让目标 profile 能解析各个子包。不要用裸 `github:` 地址代替构建，源码仓库不跟踪生成的客户端产物。
-
-```sh
-npm ci
-npm run build
-node scripts/dev-link-subpackages.mjs --profile <目标profile>
-```
-
-链接工具会修改所选 profile 的包链接，先确认目标，桌面端应先完全退出。主包的 `link:` 安装和重启步骤见贡献指南；这里只展示构建与子包准备，不会替你执行安装。
+桌面宿主将 `web` 改为 `desktop`，安装前完全退出，完成后重启。不要单独启用子包 bundle；整组行由主包 patch 管理。源码部署和发布说明见 [贡献指南](CONTRIBUTING.md)。
 
 ### 插件行与启停
 
