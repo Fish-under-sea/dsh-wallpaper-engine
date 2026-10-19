@@ -122,7 +122,10 @@ function weSurfaceCandidates(state) {
   for (const target of doc.querySelectorAll('[role="dialog"]:has([data-slot="settings.section"])'))
     add(target, "settings-window", doc.body.hasAttribute("data-we-glass-window"));
   for (const target of doc.querySelectorAll('[data-we-surface="v1"]')) add(target, "declared", true);
-  for (const target of doc.querySelectorAll('[data-sidebar-right-panel][data-sidebar-right-open] :is(.cm-editor,.xterm)'))
+  // ⚠️ 阅读文件页（`[data-document-preview]`，宿主 dsh-client-ui-sidebar-documentpreview 的
+  // TextPreview 根节点）也是**内容面**：它此前不在这一组里 ⇒ 「内容面透明度 / 内容面底色」
+  // 在那一页从来不生效（用户以为设置被删了）。
+  for (const target of doc.querySelectorAll('[data-sidebar-right-panel][data-sidebar-right-open] :is(.cm-editor,.xterm,[data-document-preview])'))
     add(target, "content", state.selection.sidebarGlass === true);
   for (const selector of state.selectors) {
     for (const target of doc.querySelectorAll(selector)) {

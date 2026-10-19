@@ -545,6 +545,37 @@ check('宿主腿默认解析根（不注入）：合成 profile 里**没装**的
   realNegErr instanceof Error && realNegErr.message.includes(notInstalledName),
   realNegErr ? realNegErr.message : '没有抛错');
 
+// b3) **同名但另一个版本**的 profile **不归本版管**（2026-10-18 真机事故）。
+//     现场：开发机 `dshwe132` 钉着 1.3.0-r2 的**打包产物**（那个版本的 patch 只有一条主包行、
+//     根本没有子包行），而它同样满足"装了同名主包"的形态 ⇒ 被旧口径扫进检查面 ⇒ 新版 apply
+//     在自检里抛错 ⇒ **六条路由一条都没注册** ⇒ 设置页「壁纸引擎」整屏 404
+//     （用户原话："子包怎么又没有挂载了"，主机日志零报错，因为抛错发生在路由注册之前）。
+//     口径：**同名 ≠ 同一份代码** —— 旧版 profile 加载的是那份旧代码，由它自己的自检负责。
+//     ⚠️ 这批断言同时是**行为级负对照**：把 `isForeignVersion(...) continue` 那一行删掉，
+//     roots 会变成 {old-version, same-version} ⇒ 下面的集合相等断言立刻判红。
+const foreignHome = join(HOST_LEG_ISO, 'home-foreign');
+const ownVersion = JSON.parse(read('package.json')).version;
+const mkInstalledMain = (home, profile, version) => {
+  const dir = makeHostProfile(home, profile, { installsMain: true });
+  writeFileSync(join(dir, 'node_modules', rootName, 'package.json'),
+    JSON.stringify({ name: rootName, version }) + '\n');
+  return dir;
+};
+mkInstalledMain(foreignHome, 'old-version', '0.0.1-old');
+mkInstalledMain(foreignHome, 'same-version', ownVersion);
+// 无 package.json 的裸目录（读不出它是谁）⇒ 按"是我们"处理（大声失败的方向），见实现注释。
+makeHostProfile(foreignHome, 'bare-dir', { installsMain: true });
+let foreignRoots = null, foreignErr = null;
+try {
+  foreignRoots = mod.assertSubpackagesResolvableInHost([{ id: 'probe-ok', name: rootName + '-__probe_ok' }],
+    { mainName: rootName, env: { DSH_HOME: foreignHome }, resolveInRoot: () => '/always-resolves' });
+} catch (e) { foreignErr = e; }
+check('宿主腿：同名但**另一个版本**的 profile 不被检查（旧版不可能是本版子包行的装载者）；'
+  + '同版本 / 读不出身份的都照常检查',
+  foreignErr === null && Array.isArray(foreignRoots)
+  && JSON.stringify(foreignRoots.map((r) => r.name).sort()) === JSON.stringify(['bare-dir', 'same-version']),
+  foreignErr ? foreignErr.message : JSON.stringify(foreignRoots));
+
 // c2) 真接线：apply 体里两条腿都在，且都在 provide 之后
 const facadeHostRe = /assertSubpackagesResolvableInHost\s*\(/;
 const facadeHostImported = /import\s*\{[^}]*\bassertSubpackagesResolvableInHost\b[^}]*\}\s*from\s*['"]\.\/subpackage-boot\.js['"]/.test(stripComments(facadeSrc));

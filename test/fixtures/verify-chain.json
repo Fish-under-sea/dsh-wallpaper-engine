@@ -401,6 +401,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-avatar-interval-and-rotation.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-presets.mjs",
           "args": [],
           "tier": "hard",
@@ -1247,6 +1255,14 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-fontset.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-avatar-interval-and-rotation.mjs",
           "args": [],
           "tier": "hard",
           "probe": false

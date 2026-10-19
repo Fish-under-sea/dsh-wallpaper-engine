@@ -128,6 +128,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -153,8 +154,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       },
       "host": {
         "id": "",
@@ -277,6 +277,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -299,8 +300,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       }
     },
     {
@@ -438,6 +438,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -463,8 +464,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       },
       "host": "__null__"
     },
@@ -603,6 +603,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -628,8 +629,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       },
       "host": "__null__"
     },
@@ -768,6 +768,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -793,8 +794,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       },
       "host": "__null__"
     },
@@ -925,6 +925,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -950,8 +951,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       },
       "host": {
         "id": "",
@@ -1074,6 +1074,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -1096,8 +1097,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       }
     },
     {
@@ -1284,6 +1284,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -1309,8 +1310,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       },
       "host": {
         "id": "",
@@ -1433,6 +1433,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -1455,8 +1456,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       }
     },
     {
@@ -1688,6 +1688,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -1713,8 +1714,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       },
       "host": {
         "id": "",
@@ -1837,6 +1837,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -1859,8 +1860,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       }
     },
     {
@@ -1991,6 +1991,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -2016,8 +2017,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       },
       "host": {
         "id": "",
@@ -2140,6 +2140,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -2162,8 +2163,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       }
     },
     {
@@ -2308,6 +2308,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -2333,8 +2334,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       },
       "host": {
         "id": "",
@@ -2457,6 +2457,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -2479,8 +2480,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       }
     },
     {
@@ -2625,6 +2625,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -2650,8 +2651,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       },
       "host": {
         "id": "",
@@ -2774,6 +2774,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -2796,8 +2797,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       }
     },
     {
@@ -2929,6 +2929,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -2954,8 +2955,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       },
       "host": {
         "id": "",
@@ -3078,6 +3078,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -3100,8 +3101,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       }
     },
     {
@@ -3238,6 +3238,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -3263,8 +3264,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       },
       "host": {
         "id": "",
@@ -3387,6 +3387,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -3409,8 +3410,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       }
     },
     {
@@ -3544,6 +3544,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -3569,8 +3570,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       },
       "host": {
         "id": "",
@@ -3693,6 +3693,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -3715,8 +3716,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       }
     },
     {
@@ -3857,6 +3857,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -3882,8 +3883,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       },
       "host": {
         "id": "",
@@ -4006,6 +4006,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -4028,8 +4029,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       }
     },
     {
@@ -4107,6 +4107,7 @@
             "name": "我的列表",
             "interval": 30,
             "order": "random",
+            "trigger": "interval",
             "wallpaperIds": [
               "w1"
             ]
@@ -4234,6 +4235,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -4259,8 +4261,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       },
       "host": {
         "id": "",
@@ -4283,6 +4284,7 @@
             "name": "我的列表",
             "interval": 30,
             "order": "random",
+            "trigger": "interval",
             "wallpaperIds": [
               "w1"
             ]
@@ -4407,6 +4409,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -4429,8 +4432,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       }
     },
     {
@@ -4560,6 +4562,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -4585,8 +4588,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       },
       "host": {
         "id": "",
@@ -4709,6 +4711,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -4731,8 +4734,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       }
     },
     {
@@ -4862,6 +4864,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -4887,8 +4890,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       },
       "host": {
         "id": "wallpaper-42",
@@ -5011,6 +5013,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -5033,8 +5036,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       }
     },
     {
@@ -5165,6 +5167,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -5190,8 +5193,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       },
       "host": {
         "id": "",
@@ -5314,6 +5316,7 @@
         "avatarEnabled": false,
         "avatarSize": 40,
         "avatarRadius": 100,
+        "avatarAiRepeatRows": 6,
         "avatarUserImage": "",
         "avatarAiImage": "",
         "mascotImage": "",
@@ -5336,8 +5339,7 @@
         "uiColorFileIcon": "",
         "uiColorTab": "",
         "uiColorDeepDiving": "",
-        "extraGlassSelectors": "",
-        "glassSurfacePolicy": {}
+        "extraGlassSelectors": ""
       }
     }
   ]

@@ -367,7 +367,11 @@ async function main() {
     //（⑫ 内置 provider 装配/消费链与阶段诊断）。它的静态兼容姊妹 `test/verify-pet-eslint-compat.mjs`
     // 有意脱链（`import { ESLint } from 'eslint'` ⇒ 违反本段 P5 的零裸依赖口径），理由在
     // `test/tools/guard-chain.mjs` 的 OFF_CHAIN_WHY 里，与 `verify-static.mjs` 同族。
-    const CHAIN_FLOOR = { verify: 91, docs: 6, smoke: 6, all: 104 };
+    //  再：verify 91→92 / all 104→105 —— 移植上游 PR#1 ① 挂一硬档
+    // `test/verify-avatar-interval-and-rotation.mjs`（助手头像间隔旋钮 / 轮播间隔取值域与
+    // 「视频播完就换」档 / 壁纸库缩略图链路）。地板按**本树**实测重取：上游那棵树写 89/102，
+    // 因为它没有前两批的 ⑩⑪⑫；照抄会把地板调低三步，删一步就不再变红。
+    const CHAIN_FLOOR = { verify: 92, docs: 6, smoke: 6, all: 105 };
     /** 地板表与 GROUPS 的对齐体检：键名必须与**组名**逐一对齐（纯函数 ⇒ 负对照可直接喂）。 */
     const floorGaps = (groups, floors) => groups.map(([, g]) => g).filter((g) => !Number.isInteger(floors[g]));
     const problems = floorGaps(GROUPS, CHAIN_FLOOR).map((g) => '地板表缺组 ' + g

@@ -112,6 +112,9 @@ const WE_I18N_EN_EXT = {
   "导入中…": "Importing…",
   "头像大小": "Avatar size",
   "圆角强度": "Corner roundness",
+  "助手头像间隔": "Assistant avatar spacing",
+  "条": "rows",
+  "每过这么多条可见的思考 / 工具调用 / 回复，就在下一条助手消息前再显示一次头像。1 = 每条都显示，越大越稀。": "Every this many visible thinking / tool-call / reply rows, show the avatar again before the next assistant message. 1 = every message, larger = sparser.",
   "100% = 正圆（默认），50% = 大圆角方块，0% = 直角方形": "100% = a full circle (default), 50% = a rounded square, 0% = sharp corners",
 
   "仅支持 JPG / PNG / WebP 图片": "Only JPG / PNG / WebP images are supported",

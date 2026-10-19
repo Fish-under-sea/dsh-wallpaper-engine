@@ -128,6 +128,26 @@ const CSS_SHELL = `  /* ── iOS liquid glass ──────────�
   body[data-we-glass-page][data-we-thinking-glass] [class*="_bubble"]:not([role="tooltip"]) {
     background-color: var(--we-chat-glass-fill) !important;
   }
+  /* ── 三挡的一半：「关」挡的交付物文件卡是**半透明**（用户实测回归）─────────────
+     「思考块液态玻璃」三挡的产品语义是 **关 = 半透明 / 液态玻璃 = 磨砂玻璃 / 原生 = 实色**。
+     气泡与输入框在「关」挡下本来就吃 --we-chat-glass-fill（下面那组里带
+     :not([data-we-thinking-native]) 的规则），但**宿主交付物卡片（data-presented-file）漏了
+     这一档**：它只在 data-we-thinking-glass 门下才被清成 transparent，于是「关」挡下保留
+     宿主不透明的 --deliverable-fill（暗色主题 = --dsw-static-neutral-850）⇒ 屏上一块
+     实心深色卡，与旁边半透明气泡不是同一种材质（用户原话："关闭挡位时应该是半透明的"）。
+     这里补的就是缺的那一档：**同一份 chat 釉、不加霜**（"关" = 无磨砂）。
+     · 液态玻璃挡不受影响：那条 background: transparent !important 在更后面（同权重后胜），
+       仍然是既有的"清底"形态。
+     · 原生挡不匹配（:not([data-we-thinking-native])）⇒ 卡片保持宿主实色，正是该挡的定义。
+     · 宿主 hover 档（--deliverable-hover）在本挡会被 !important 压住、卡片悬停不变色 ——
+       刻意的取舍：底色正确优先（材质一致性 + 可读性），悬停反馈由边框/光标承担。
+     ⚠️ 本段不许出现反引号：整套样式文本是模板字符串（构建期拼接）。 */
+  body[data-we-glass-chat][data-we-glass-page]:not([data-we-thinking-glass]):not([data-we-thinking-native]) [data-presented-file] {
+    background-color: var(--we-chat-glass-fill) !important;
+    background-image: none !important;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
   /* ⚠️ 正文原生挡（data-we-thinking-native，见文件下方「正文原生挡」块）：只有**气泡**
      这一条带 :not() —— 原生挡下气泡退出霜釉（正文原生 = 无玻璃装饰）；**输入卡与工具
      弹卡不豁免**（用户口径：输入对话框保留玻璃），照旧吃霜/釉。

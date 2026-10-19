@@ -233,6 +233,12 @@ asar 里带着宿主自己的插件编写文档：`@deepseek-ai/dsh-agent-preset
   `data-chat-flow-kind` 的值来自节点种类（`user` / `steering` / `context` / `turn-trigger` / `turn-process` /
   `assistant-text` …）⇒ **`[data-chat-flow-kind="user"]`（+ `"steering"`）就是用户气泡那一行的锚点**，
   而 `…_userRow` / `…_bubble` 这类类名是构建哈希、只能兜底。
+- **"哪条助手行现在看得见"要靠三个属性合判**（issue #231 的频率口径）：① `data-chat-turn`（同一回合
+  的助手行只配一张脸）；② `data-turn-process-hidden`（这一行属于**折叠中的**过程窗口 ⇒ 它现在不可见，
+  不该占"段首"）；③ 祖先里的 `[data-step-process-body][hidden]`（过程组整组折叠时，成员行自己不带
+  `hidden`，是整个 body 被藏起来）。三者都是 `ChatNodeSeat` / `ChatGroupSeat` 直接写在流条目上的
+  宿主事实（asar 复算：`"data-turn-process-hidden": processHidden || void 0`、
+  `"data-chat-turn": turn`、`useSearchableHidden` 落 `hidden="until-found"`）。
 - **左栏那一列不能拿 `translate` 动**（"能量形态"的边界，与上面三条同批核实）。`[data-slot="sidebar"]` 出口的
   **直接父元素**就是左侧栏那一列（本插件自己的 CSS 也这么指它：`div:has(> [data-slot="sidebar"])`，见
   `src/styles.js` 的液态玻璃那一段），而 Windows 标题栏模式下宿主把「收起侧边栏」按钮做成 `position: fixed`

@@ -3,7 +3,6 @@
   "id": "factory-author",
   "name": "作者自用",
   "values": {
-    "glassSurfacePolicy": {},
     "scrim": 0.5,
     "border": 0.35,
     "blur": 9,
@@ -130,7 +129,8 @@
     "layerScale": 100,
     "avatarEnabled": true,
     "avatarSize": 40,
-    "avatarRadius": 100
+    "avatarRadius": 100,
+    "avatarAiRepeatRows": 6
   },
   "assets": {
     "font": {

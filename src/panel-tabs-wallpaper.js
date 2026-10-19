@@ -165,7 +165,7 @@
   }
 
   function renderWallpaperRotationSection(ctx) {
-    const { INTERVALS, armedConfirm, editing, group, groups, onArmDeleteGroup, onDeleteGroup, onDisarmConfirm, onEditInterval, onEditName, onEditOrder, onGroupChange, onGroupInterval, onOpenPickerDraft, onToggleRotation, playableCount, sel } = ctx;
+    const { INTERVALS, armedConfirm, editing, group, groups, onArmDeleteGroup, onDeleteGroup, onDisarmConfirm, onEditInterval, onEditName, onEditOrder, onEditTrigger, onGroupChange, onGroupInterval, onGroupTrigger, onOpenPickerDraft, onToggleRotation, playableCount, sel } = ctx;
     const groupToken = group ? "group:" + group.id : "";
     return React.createElement(React.Fragment, null,
     // ── 自动轮播: user-defined carousel lists, each with its own
@@ -227,11 +227,23 @@
           className: "we-picker__rotation-interval",
           value: String(editing.interval),
           onChange: onEditInterval,
+          // 推进方式选了「视频播完」时，间隔不参与推进 —— 置灰但保留可见（用户切回来时还在）
+          disabled: editing.trigger === "videoEnd",
           "aria-label": weT("轮播间隔"),
         },
         ...INTERVALS.map((minutes) =>
           React.createElement("option", { key: minutes, value: String(minutes) }, weT("{min} 分钟", { min: minutes })),
         )),
+        React.createElement("span", { className: "we-picker__hint we-picker__label" }, weT("推进")),
+        React.createElement("select", {
+          className: "we-picker__playlist-select",
+          value: editing.trigger === "videoEnd" ? "videoEnd" : "interval",
+          onChange: onEditTrigger,
+          "aria-label": weT("轮播推进方式"),
+        },
+        React.createElement("option", { value: "interval" }, weT("按间隔")),
+        React.createElement("option", { value: "videoEnd" }, weT("视频播完就换")),
+        ),
         React.createElement("span", { className: "we-picker__hint we-picker__label" }, weT("顺序")),
         React.createElement("select", {
           className: "we-picker__playlist-select",
@@ -288,18 +300,31 @@
           ? weT("请先选择或新建一个轮播列表")
           : playableCount < 2
             ? weT("当前列表至少需要 2 个可播放壁纸")
-            : weT("每 {min} 分钟切换一次", { min: group ? group.interval : DEFAULTS.rotationInterval })),
+            : (group && group.trigger === "videoEnd")
+              ? weT("当前视频播完就换下一张（不看间隔）")
+              : weT("每 {min} 分钟切换一次", { min: group ? group.interval : DEFAULTS.rotationInterval })),
       React.createElement("div", { className: "we-picker__ctl-side" },
         React.createElement("select", {
           className: "we-picker__rotation-interval",
           value: String(group ? group.interval : DEFAULTS.rotationInterval),
           onChange: onGroupInterval,
-          disabled: !sel.rotationEnabled || !sel.rotationGroupId || playableCount < 2,
+          disabled: !sel.rotationEnabled || !sel.rotationGroupId || playableCount < 2
+            || (group && group.trigger === "videoEnd"),
           "aria-label": weT("轮转间隔"),
         },
         ...INTERVALS.map((minutes) =>
           React.createElement("option", { key: minutes, value: String(minutes) }, weT("{min} 分钟", { min: minutes })),
         )),
+        React.createElement("select", {
+          className: "we-picker__playlist-select",
+          value: group && group.trigger === "videoEnd" ? "videoEnd" : "interval",
+          onChange: onGroupTrigger,
+          disabled: !sel.rotationGroupId,
+          "aria-label": weT("轮播推进方式"),
+        },
+        React.createElement("option", { value: "interval" }, weT("按间隔")),
+        React.createElement("option", { value: "videoEnd" }, weT("视频播完就换")),
+        ),
         Toggle({
           checked: sel.rotationEnabled,
           onChange: onToggleRotation,

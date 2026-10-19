@@ -152,7 +152,7 @@ const SURFACES = [
   },
   {
     id: 'better-sidebar', label: 'dsh-better-sidebar 侧栏面板',
-    anchors: ['[data-dsh-better-sidebar]'], tier: 'private',
+    anchors: ['[data-dsh-better-sidebar]', '[data-dsh-panel]'], tier: 'private',
     // 两个配置面名：chrome 面板本身，以及它内部的"内容面"（编辑器 / 终端）。
     // 后者是同一个 CSS 面里的**子面** —— 它今天另有自己的透明度与底色键，
     // 所以在玻璃配置里也是一个可独立控制的条目。
@@ -161,7 +161,12 @@ const SURFACES = [
   },
   {
     id: 'official-right-panel', label: '原生右栏面板',
-    anchors: ['[data-sidebar-right-panel]'], tier: 'private',
+    // [data-document-preview] = 宿主的「阅读文件页」（dsh-client-ui-sidebar-documentpreview 的
+    // TextPreview 根节点，实测自 asar）。它长在原生右栏里、吃的是同一张内容面底板
+    // （--we-content-surface-*）⇒ 归本面认领。
+    // ⚠️ 之前它没有任何规则引用它 ⇒ 不在登记表里；本轮把「内容面透明度 / 内容面底色」
+    //   接上去（用户口径："阅读文件页面的背景底色设置被删除了"）后，认领判据当场要求登记。
+    anchors: ['[data-sidebar-right-panel]', '[data-document-preview]'], tier: 'private',
     why: '与 better-sidebar 共用同一组私有旋钮（--we-sidebar-*），故同档。'
       + '枚举时看到的 data-sidebar-right-open 是**开态标记**，不是独立的面。',
   },

@@ -37,6 +37,14 @@
  *     断开观察者、撤掉 body 上的开关属性与两个变量。宿主 DOM 上不留任何痕迹。
  *   · **只碰消息行**：只给 `user` / `steering` / `assistant-step` 三种 kind 补头像
  *     （工具调用、思考过程、压缩标记、turn 尾巴一律不碰 —— 那些不是"好友发的消息"）。
+ *   · **出现频率（issue #231）**：助手侧**每个回合都露脸**，且长回合不会"一张脸滚出屏幕后整页
+ *     再没有"。口径是三条叠加：① 回合的**第一条可见**助手行露脸（宿主会把思考 / 工具调用折叠成
+ *     `hidden` / `data-turn-process-hidden`，折叠行不占这个位置，否则整轮一张脸都不剩）；
+ *     ② 之后每过「助手头像间隔」条**可见**流条目（思考 / 工具调用 / 回复都算）在
+ *     下一条可见助手行上再露一次 —— 实测 24 条流条目（思考 / 工具交替）的长回合里露 3 张脸，
+ *     约合每 8 行一张、一屏 2~3 张；既不空屏，也不至于每步一张；
+ *     ③ 用户开口后重新从"第一条可见"起算。隐藏行（折叠窗口里的）不参与计数 —— 否则
+ *     折叠掉几十条后脸会被判成"早该出现"而挤在一起。用户侧口径不变：连续的用户行只显示第一条。
  *   · **幂等**：同一个消息行只补一次（`data-we-avatar-row` 是标记）；设置变化时**就地更新**
  *     已补节点的图与形状，不重建 DOM（否则每改一次滑块，整屏消息的头像都要重挂一遍）。
  *   · **观察者的开销有硬界**：流式输出时消息内部每帧都在插节点 ⇒ 回调里对**不是消息行**
@@ -69,6 +77,39 @@ function avatarComponentVisible(components, name) {
 const AVATAR_FLOW_SIDES = { user: 'user', steering: 'user', 'assistant-step': 'ai' };
 /** 消息行的选择器（只扫这三种；`closest` 的早退判定用的也是它）。 */
 const AVATAR_ROW_SELECTOR = '[data-chat-flow-kind="user"], [data-chat-flow-kind="steering"], [data-chat-flow-kind="assistant-step"]';
+/**
+ * **全部**会话流行的选择器（分组用）。分组必须看见工具调用 / 思考过程这些**不补头像**的行：
+ * 它们承载宿主的折叠状态，决定哪一条助手行才是屏幕上真正可见的"段首"（issue #231）。
+ */
+const AVATAR_FLOW_ROW_SELECTOR = '[data-chat-flow-kind]';
+/** 宿主写在每条流条目上的**回合号**：同一回合的助手行只配一张脸（issue #231 的频率口径）。 */
+const AVATAR_TURN_ATTR = 'data-chat-turn';
+/**
+ * 宿主"这一行属于折叠中的过程窗口"的标记。它与 `hidden` / `hidden="until-found"` 一起
+ * 表示**当前不可见**；折叠窗口成员的头像再漂亮也没人看得见，所以它们不占"段首"。
+ */
+const AVATAR_FOLD_ATTR = 'data-turn-process-hidden';
+/**
+ * 长回合里助手的脸**隔多少条可见流条目**再露一次（issue #231 的用户反馈：一个回合只贴一张，
+ * 而思考 / 工具调用常常占满好几屏 ⇒ 整页看不到助手）。
+ *
+ * ⚠️ 这个数**由设置驱动**（`avatarAiRepeatRows`，「扩展」页签的「助手头像间隔」滑块；
+ * 合法域的真源见 lib/settings-schema.js 的 AVATAR_AI_REPEAT_MIN/MAX）。下面的常量只是
+ * 设置缺失 / 坏值时的兜底 —— 与 schema 的默认值同值（守卫对账）。
+ *
+ * 为什么按"流条目"而不是"助手行"计数：思考与工具调用在宿主里是两类不同的行，一个回合里
+ * 助手行可能只有几条、工具调用却几十条；按任意可见行计数才与"屏幕上滚过去多少内容"成正比。
+ */
+const AVATAR_AI_REPEAT_FALLBACK = 6;
+/** 本层的间隔上下界（**兜底**，不是真源）：单独 import 时 schema 常量不在作用域里。 */
+const AVATAR_AI_REPEAT_CLAMP = { min: 1, max: 30 };
+/** 设置里那个间隔读出来（钳到合法域；缺 / 坏 ⇒ 兜底值）。 */
+function avatarAiRepeatRows(selLike) {
+  const sel = selLike || selection;
+  const n = Number(sel && sel.avatarAiRepeatRows);
+  if (!isFinite(n)) return AVATAR_AI_REPEAT_FALLBACK;
+  return Math.max(AVATAR_AI_REPEAT_CLAMP.min, Math.min(AVATAR_AI_REPEAT_CLAMP.max, Math.round(n)));
+}
 /** 注入标记：`data-we-avatar-row="<side>"` 加在消息行上，`we-avatar` 是注入节点（那张脸）自己的类。 */
 const AVATAR_ROW_ATTR = 'data-we-avatar-row';
 const AVATAR_NODE_CLASS = 'we-avatar';
@@ -257,31 +298,97 @@ function avatarSweep() {
 }
 
 /**
- * 分组：**连续的同侧消息只在第一条前面显示头像**（issue #191 问题 2）—— 主流聊天软件的
- * 形态（微信 / Discord / Telegram 同款），免得"连着十条助手回复贴着十张一样的脸"。
+ * 这一行**当前是否看不见**（宿主自己的两种折叠机制 + 标准 `hidden`）。
  *
- * ⚠️ 做法是给后续同侧的**头像节点加一个 `--cont` 修饰类**（CSS 里 `visibility: hidden`），
+ * 只看三样东西，都是宿主写在流条目上的真实事实（asar 复算，DSH 0.2.0-rc.2）：
+ *   · 条目自己的 `hidden`（`hidden="until-found"` 也是隐藏）；
+ *   · `data-turn-process-hidden`（这条属于"折叠中的过程窗口"）；
+ *   · 祖先里那层 `[data-step-process-body][hidden]` —— 过程组折叠时是整个 body 被藏起来，
+ *     成员行自己不带 `hidden`。
+ * **不向上无限找 `hidden`**：侧栏 / 整页级隐藏也会用 `hidden`，那种情况下把每行都判成
+ * "看不见"会让整轮头像全灭，而它们重新显示时未必有我们监听得到的变异。
+ */
+function avatarRowHidden(row) {
+  if (!row || typeof row.getAttribute !== 'function') return false;
+  if (row.hasAttribute && row.hasAttribute('hidden')) return true;
+  if (row.getAttribute(AVATAR_FOLD_ATTR) !== null) return true;
+  try {
+    return !!(row.closest && row.closest('[data-step-process-body][hidden]'));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 分组：助手侧**每个回合都露脸、长回合按可见行数周期性再露**，用户侧连续消息只显示第一张
+ * （issue #191 问题 2 + issue #231 的频率口径）。
+ *
+ * 为什么不能只按"连续同侧"：宿主把思考 / 工具调用渲染成**过程窗口**里的独立行，折叠时它们
+ * 带 `hidden` / `data-turn-process-hidden` —— 若"段首"落在这些**看不见**的行上，本轮唯一
+ * 可见的那条回复就会被判成续行，整轮一张脸都没有（issue #231 的实测：助手侧 83% 被隐藏）。
+ * 为什么不能"一个回合只一张"：一个回合里思考 + 几十次工具调用能撑满好几屏，唯一那张脸
+ * 早早滚出视野 ⇒ 整页看不到助手（用户实测反馈）。所以助手侧的口径是：
+ *   · 回合的**第一条可见**助手行露脸；
+ *   · 之后每过「助手头像间隔」条**可见**流条目（任何 kind，含工具调用）就在下一条
+ *     可见助手行上再露一次 —— 脸因此跟着内容往下走（实测每 8 行左右一张、一屏 2~3 张）；
+ *   · 同一回合计一次"该露了"的额度，**工具调用行不重置它**（否则每一步工具调用都重新贴一张，
+ *     正是 issue #231 说的"太频繁"来的那一侧）；不同回合（`data-chat-turn` 变了）重新起算；
+ *   · 折叠窗口里的行不计数也不露脸（看不见的图不占位），展开 / 收起时重算；
+ *   · 用户开口（user / steering）⇒ 助手侧重新从"第一条可见"起算。
+ * 用户侧仍是"连续同侧只显示第一条"，但**任何非用户行都会断开连续段**（issue #231 已证实：
+ * 过程行曾被跳过 ⇒ 跨过工具调用后第二条用户消息也共用上一张脸）。
+ *
+ * ⚠️ 做法是给不露脸的行**头像节点加一个 `--cont` 修饰类**（CSS 里 `visibility: hidden`），
  * **绝不摘掉节点**：节点在、框还占着 ⇒ 缩进对齐与 flex 几何**逐字节不变**。
  * 那正是 issue #154 那个坑的规避方式 —— 摘掉头像节点会让宿主那层 `display: contents`
  * 锚点下的内容退回 `flex: 0 1 auto`，收起的思考行固有宽为 0 ⇒ 整条消息连入口一起消失
  *（见 src/styles.js 头像段的血泪注释与 test/verify-scene-live.mjs 的假 DOM 判据）。
- *
- * 顺序判定：按**文档序**走一遍消息行，记住上一条的 side；同侧且不是第一条 ⇒ 标记为续行。
- * 不同类型之间（助手 → 用户）自然断开。只认三种消息行（`AVATAR_FLOW_SIDES`）。
  */
 function avatarApplyGrouping() {
   if (!avatarActive || typeof document.querySelectorAll !== 'function') return;
   let rows;
-  try { rows = document.querySelectorAll(AVATAR_ROW_SELECTOR); } catch { return; }
-  let prev = '';
+  try { rows = document.querySelectorAll(AVATAR_FLOW_ROW_SELECTOR); } catch { return; }
+  let prevSide = '';         // 用户侧连续段：任何非用户行都断开
+  // 间隔在每次重算时现读设置（滑块不重渲染面板；分组本来就是每次 emit 重算的一趟）。
+  const repeatRows = avatarAiRepeatRows();
+  let turn;                  // 助手侧当前回合（宿主没写 data-chat-turn 时是 undefined）
+  let aiFacePending = true;  // 下一条**可见**助手行该不该露脸
+  let aiSince = 0;           // 上次露脸之后又滚过去多少条**可见**流条目
   for (const row of rows) {
-    const side = AVATAR_FLOW_SIDES[row.getAttribute('data-chat-flow-kind')];
-    if (!side) continue;
-    const node = row.firstElementChild;
-    if (node && node.classList && node.classList.contains(AVATAR_NODE_CLASS)) {
-      try { node.classList.toggle(AVATAR_CONT_CLASS, side === prev); } catch { /* ignore */ }
+    const turnAttr = row.getAttribute(AVATAR_TURN_ATTR);
+    if (turnAttr !== null && turnAttr !== turn) {
+      // 新回合一进来就重新起算（第一条可见的助手行必定露脸）。
+      turn = turnAttr;
+      aiFacePending = true;
+      aiSince = 0;
     }
-    prev = side;
+    const side = AVATAR_FLOW_SIDES[row.getAttribute('data-chat-flow-kind')];
+    const hidden = avatarRowHidden(row);
+    if (!side) {
+      prevSide = '';
+      if (!hidden) aiSince++;   // 工具调用 / 思考过程 / 回合头等：看得见就算一条
+      continue;
+    }
+    let cont;
+    if (side === 'ai') {
+      const show = !hidden && (aiFacePending || aiSince >= repeatRows);
+      cont = !show;
+      if (!hidden) {
+        if (show) { aiFacePending = false; aiSince = 0; }
+        else aiSince++;
+      }
+      prevSide = 'ai';
+    } else {
+      cont = prevSide === 'user';
+      prevSide = 'user';
+      aiFacePending = true;
+      aiSince = 0;
+    }
+    const node = row.firstElementChild;
+    if (node && node.classList && node.classList.contains(AVATAR_NODE_CLASS)
+      && typeof node.classList.toggle === 'function') {
+      try { node.classList.toggle(AVATAR_CONT_CLASS, cont); } catch { /* ignore */ }
+    }
   }
 }
 
@@ -299,16 +406,19 @@ function avatarScheduleGrouping() {
 }
 
 /**
- * 观察者的回调。两件事，按代价从低到高：
- *   ① 新增的**消息行** ⇒ 补头像；
- *   ② 其余新增元素：如果它已经在装饰过的行里就直接放行 —— 流式输出期间消息内部每帧都在
- *      插节点，这一级早退把开销钉在"每个新增元素一次 `closest`"上，
+ * 观察者的回调。两类，按代价从低到高：
+ *   ① **属性变化**（只订 `hidden` / 折叠标记 / 行种类 / 回合号）：宿主展开或收起过程窗口时
+ *      "哪条助手行可见"会变 ⇒ 只需要重算分组（不重建任何节点）；
+ *   ② 新增元素：新增的**消息行** ⇒ 补头像；其余新增元素如果已经在装饰过的行里就直接放行 ——
+ *      流式输出期间消息内部每帧都在插节点，这一级早退把开销钉在"每个新增元素一次 `closest`"上，
  *      绝不逐个 `querySelectorAll` 扫子树（那是 O(帧 × 子树) 的写法）。
  */
 function avatarOnMutations(records) {
   if (!avatarActive) return;
   let decorated = false;
+  let regroup = false;
   for (const r of records) {
+    if (r.type === 'attributes') { regroup = true; continue; }
     const added = r.addedNodes;
     if (!added || !added.length) continue;
     for (const n of added) {
@@ -325,8 +435,9 @@ function avatarOnMutations(records) {
       for (const row of inner) { if (avatarDecorateRow(row)) decorated = true; }
     }
   }
-  // 补了新行 ⇒ 分组可能变了（新行算不算"续行"取决于它前面那条）⇒ 合并到一帧重算一次。
-  if (decorated) avatarScheduleGrouping();
+  // 补了新行 ⇒ 分组可能变了（新行算不算"续行"取决于它前面那条）；属性变化（折叠 / 展开）
+  // 会让"当前可见的第一条助手行"换人 ⇒ 同样重算。两者都合并到一帧一次。
+  if (decorated || regroup) avatarScheduleGrouping();
 }
 
 function avatarStop() {
@@ -387,7 +498,13 @@ function syncAvatarLayer() {
   if (!avatarObserver) {
     try {
       avatarObserver = new MutationObserver(avatarOnMutations);
-      avatarObserver.observe(body, { childList: true, subtree: true });
+      avatarObserver.observe(body, {
+        childList: true, subtree: true,
+        // 折叠 / 展开过程窗口会改这些属性，而"哪条助手行可见"决定这一轮的脸贴在哪条上
+        // （issue #231）⇒ 只订这四枚，别的属性变化（包括本层自己加的 class）一概不惊动。
+        attributes: true,
+        attributeFilter: ['hidden', AVATAR_FOLD_ATTR, AVATAR_TURN_ATTR, 'data-chat-flow-kind'],
+      });
     } catch { avatarObserver = null; }
   }
   avatarActive = true;
