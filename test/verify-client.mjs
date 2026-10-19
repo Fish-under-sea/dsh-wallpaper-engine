@@ -271,6 +271,16 @@ assert.ok(/setAttribute\("data-we-glass-page", "on"\)/.test(code)
 assert.ok(code.includes('body[data-we-sidebar-glass] :where([data-we-surface-runtime="content"])'),
   'sidebar content surfaces must follow both the sidebar switch and runtime ownership',
 );
+// ── PR#1 ⑥（适配本仓）：阅读文件页（`[data-document-preview]`）也是**内容面** ──────────
+// 宿主 `dsh-client-ui-sidebar-documentpreview` 的 TextPreview 根节点 —— 「内容面透明度 /
+// 内容面底色」此前**从不覆盖阅读页**（用户以为设置被删了；实际是它的锚点不在认领组里）。
+// 三处都必须接：① 表面策略的 content 认领组；② 同一张内容面底板的兜底 CSS。
+// ⚠️ 判据取**真标识符**，不是"文档里提过这事"：`[data-document-preview]` 必须出现在
+//    content 认领选择器里（`glass-surfaces.js`）与兜底底板规则里（`styles-sidebar.js`）。
+assert.ok(code.includes('[data-document-preview]'),
+  'PR#1⑥ 阅读文件页 [data-document-preview] 必须接进内容面（否则该页底色 / 透明度永不生效）');
+assert.ok(/\.cm-editor\s*,\s*\.xterm\s*,\s*\[data-document-preview\]|\[data-document-preview\][^;]{0,80}\.cm-editor/.test(code),
+  'PR#1⑥ content 认领组必须含 [data-document-preview]（与 .cm-editor / .xterm 同一组）');
 assert.ok(code.includes('body[data-we-wallpaper] {') && code.includes('body[data-we-wallpaper]:not([data-ds-dark-theme])'),
   'wallpaper-only effects (base let-through, light-scheme text boost) must remain wallpaper-gated');
 // 宿主清底保留双门控，但只匹配挂载点外壳；未知插件的同名类不得被命中。
@@ -1423,7 +1433,18 @@ setTimeout(async () => {
     //    "它是一道折叠门（可收起）"这件事由下面的 aria-expanded 与翻转用例承担，
     //    不再靠"默认收起所以看不见"来表达。 ──
     assert.equal(findCtlInput(tree, '侧栏玻璃·独立配置'), null, '设置页不画「侧栏玻璃·独立配置」（已迁侧栏折叠块）');
-    assert.equal(findCtlInput(tree, '内容面玻璃·独立配置'), null, '设置页不画「内容面玻璃·独立配置」（已迁侧栏折叠块）');
+    // ── PR#1 ⑥（适配本仓）：**内容面是这一族的例外** ─────────────────────────────
+    // 用户口径："侧边栏阅读文件页面的背景底色的设置被删除了，需要找回"。
+    // 此前「内容面玻璃·独立配置」也只在侧栏「详细玻璃调节」展开时才可达（`detailOpen` 门内）
+    // ⇒ **设置页与侧栏收起态两条路都够不着**，观感就是"设置没了"。
+    // 这一面看的是正文（阅读文件页 / 编辑器 / 终端），调整期望远高于其余独立配置 ⇒
+    // 从折叠块里提出来、**两档都画**（仍在节的 `open` 门内，节收起时随节收起）。
+    // ⚠️ 门只判 `sidebarGlass`、**不判 `sidebarPresent`**：这一面真正作用的对象是**宿主原生
+    //    右栏**（`[data-sidebar-right-panel]`，阅读文件页就长在那里）—— 没装 dsh-better-sidebar
+    //    的机器上它同样存在、同样吃 `data-we-sidebar-glass` 那张底板。挂 `sidebarPresent` 的
+    //    后果是"未装该插件的用户整组行一行都不画"。
+    assert.ok(findCtlInput(tree, '内容面玻璃·独立配置') !== null,
+      '★ 设置页必须画「内容面玻璃·独立配置」（阅读页底色 / 透明度的唯一入口，用户要求找回）');
     assert.equal(findSliderRow(tree, '侧栏模糊'), null, '设置页不画「侧栏模糊」（精确标签，防 tooltip 骗过）');
     assert.equal((JSON.stringify(tree).match(/"aria-label":"侧栏玻璃颜色 /g) || []).length, 0,
       '设置页不画侧栏玻璃颜色色板（已迁侧栏折叠块）');

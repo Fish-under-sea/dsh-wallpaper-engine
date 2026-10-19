@@ -645,34 +645,53 @@ function renderAppearanceGlassSection(ctx) {
           advRows.push(swatchRow(weT("侧栏玻璃颜色"), GLASS_COLOR_PRESETS, sel.sidebarColor, onSidebarColor, { key: "sb-color" }));
         }
       }
-      // 内容面（编辑器 / 终端，即 dsh-better-sidebar 面板内的内容区）近不透明玻璃底。
-      // 它与跟随全局无关 ⇒ 不受上面那道门影响。
-      advRows.push(switchRow(weT("内容面玻璃·独立配置"),
-        !!(childIndependentOn && childIndependentOn("sidebarContent")),
-        (e) => onToggleChildIndependent("sidebarContent", e.target.checked), {
-          key: "content-independent",
-          hint: weT("用这一项自己的釉层参数覆盖全局"),
-          tooltip: weT("打开后**紧接在本行下方**出现这一项自己的独立配置，**完全覆盖**上面的全局配置；关闭则回到继承全局"),
-        }));
-      if (childIndependentOn && childIndependentOn("sidebarContent")) {
-        advRows.push(SliderRow(weT("内容面透明度"), 0, 100, 5, sel.sidebarContentAlpha, onSidebarContentAlpha, sel.sidebarContentAlpha + "%", "content-alpha"));
-        advRows.push(swatchRow(weT("内容面底色"), GLASS_COLOR_PRESETS, sel.sidebarContentColor, onSidebarContentColor, {
-          key: "content-color",
-          auto: React.createElement("button", {
-            key: "auto",
-            className: "we-picker__swatch we-picker__swatch--auto" + (sel.sidebarContentColor === "" ? " we-picker__swatch--active" : ""),
-            type: "button",
-            title: weT("跟随主题面板色"),
-            onClick: () => onSidebarContentColor(""),
-            "aria-label": weT("内容面底色 跟随主题"),
-          }, weT("主题")),
-          colorValue: sel.sidebarContentColor || "#1e1f26",
-        }));
-      }
+      // 内容面（阅读文件页 / 编辑器 / 终端）的底色与透明度**不在这里** ——
+      //   PR#1 ⑥ 起它提到玻璃节的**常规行**（见下面 `open &&` 之后那一块）：
+      //   用户口径是"侧边栏阅读文件页面的背景底色的设置被删除了，需要找回"，而它此前
+      //   只在侧栏「详细玻璃调节」展开 + 「独立配置」打开后才可达 ⇒ 设置页一行都不画、
+      //   侧栏收起态也够不着，两条路都像"没了"。
     }
     // ── 子 UI 独立配置：这一节只有**一层** —— 每个子面一个「独立配置」开关（开 = 用
     //    自己那套参数覆盖全局）。⚠️ 这里**没有**「要不要玻璃」的开关：所有子面恒吃玻璃。
     advRows.push(...childRows);
+  }
+  // ── 内容面（阅读文件页 / 编辑器 / 终端）的底色与透明度 ────────────────────────
+  //   **PR#1 ⑥ 适配本仓**：从 `detailOpen` 折叠块里提出来，成为玻璃节的**常规行、两档都画**。
+  //   三条纪律：
+  //     · 门只有 `sidebarGlass`、**不含 `sidebarPresent`**：这一面真正作用的对象是
+  //       **宿主原生右栏**（`[data-sidebar-right-panel]`，阅读文件页就长在那里）—— 没装
+  //       dsh-better-sidebar 的机器上它同样存在、同样吃 `data-we-sidebar-glass` 那张底板。
+  //       挂 `sidebarPresent` 的后果实测过一次：未装该插件的用户整组行一行都不画。
+  //       CSS 侧的门也是 `data-we-sidebar-glass`（由 `sidebarGlass` 写）⇒ 与本门同源。
+  //     · 仍保留「独立配置」开关（`glassMode.sidebarContent`）而不是直接摊两个旋钮：
+  //       `applyGlass` 的 `glassValue()` 只在 mode='custom' 时读这两个键，mode 停在
+  //       'inherit' 时写进去的值**不会被消费** —— 直接摊旋钮就是一对死旋钮。
+  //     · 住在节的 `open` 门内（节收起时随节收起），但**不在 `detailOpen` 内**。
+  if (open && sel.sidebarGlass === true) {
+    advRows.push(switchRow(weT("内容面玻璃·独立配置"),
+      !!(childIndependentOn && childIndependentOn("sidebarContent")),
+      (e) => onToggleChildIndependent("sidebarContent", e.target.checked), {
+        key: "content-independent",
+        hint: weT("阅读文件页 / 编辑器 / 终端的底色"),
+        tooltip: weT("打开后**紧接在本行下方**出现内容面自己的两项（透明度 / 底色），**完全覆盖**全局玻璃配置；关闭则回到继承全局"),
+      }));
+    if (childIndependentOn && childIndependentOn("sidebarContent")) {
+      advRows.push(SliderRow(weT("内容面透明度"), 0, 100, 5, sel.sidebarContentAlpha, onSidebarContentAlpha, sel.sidebarContentAlpha + "%", "content-alpha",
+        { tooltip: weT("阅读文件页、编辑器与终端的底板不透明度（0 = 接近全透、100 = 最实）。") }));
+      advRows.push(swatchRow(weT("内容面底色"), GLASS_COLOR_PRESETS, sel.sidebarContentColor, onSidebarContentColor, {
+        key: "content-color",
+        tooltip: weT("阅读文件页、编辑器与终端的底板色相；「主题」= 跟随主题面板色"),
+        auto: React.createElement("button", {
+          key: "auto",
+          className: "we-picker__swatch we-picker__swatch--auto" + (sel.sidebarContentColor === "" ? " we-picker__swatch--active" : ""),
+          type: "button",
+          title: weT("跟随主题面板色"),
+          onClick: () => onSidebarContentColor(""),
+          "aria-label": weT("内容面底色 跟随主题"),
+        }, weT("主题")),
+        colorValue: sel.sidebarContentColor || "#1e1f26",
+      }));
+    }
   }
   // ── 主题预设：**独立节**（ADR-0011 后预设是整机快照，不再是玻璃子集 ⇒ 不住「玻璃 UI」
   //    分栏，升为自己的栏目且排在玻璃节之前）。只在设置页画（!sidebarSurface 门不变）；

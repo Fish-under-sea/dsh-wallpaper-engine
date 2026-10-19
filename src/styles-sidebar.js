@@ -421,6 +421,15 @@ const CSS_SIDEBAR = `  /* ── 左侧栏液态玻璃（宿主原生左栏的�
   body[data-we-sidebar-glass] :where([data-we-surface-runtime="content"]) {
     background-color: color-mix(in srgb, var(--we-content-surface-color, var(--we-panel-color, #1e1f26)) max(calc(var(--we-readability-floor) * 100%), var(--we-content-surface-alpha, 88%)), transparent) !important;
   }
+  /* 阅读文件页的**兜底底板**（同一张内容面配方，PR#1 ⑥ 适配本仓）：
+     表面策略系统在"认领失败"时会把 data-we-surface-runtime 撤掉（preserve / hidden /
+     多实例不猜），那时这一页就完全**没有底色** —— 而它恰恰是最需要稳定阅读底的一张。
+     这条规则按**锚点**直接给底，与上面那条策略规则同配方、同可读性地板 ⇒ 两套都在时
+     观感一致，策略接管时覆盖它。
+     ⚠️ 只作用于**打开态**右栏（与官方右栏那组同一纪律）。 */
+  body[data-we-sidebar-glass] [data-sidebar-right-panel][data-sidebar-right-open] [data-document-preview] {
+    background-color: color-mix(in srgb, var(--we-content-surface-color, var(--we-panel-color, #1e1f26)) max(calc(var(--we-readability-floor) * 100%), var(--we-content-surface-alpha, 88%)), transparent) !important;
+  }
 
   /* Picker chrome. */
   .we-picker {

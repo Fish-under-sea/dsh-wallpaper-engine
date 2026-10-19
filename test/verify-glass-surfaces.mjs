@@ -161,9 +161,16 @@ const SURFACES = [
   },
   {
     id: 'official-right-panel', label: '原生右栏面板',
-    anchors: ['[data-sidebar-right-panel]'], tier: 'private',
+    // ⚠️ PR#1 ⑥（适配本仓）：新增的**锚点**只有 `[data-document-preview]`（阅读文件页，
+    //    宿主 dsh-client-ui-sidebar-documentpreview 的 TextPreview 根节点）——
+    //    它接进内容面（`--we-content-surface-*` 那张底板），且已出现在规则头里
+    //    （styles-sidebar.js 的阅读页兜底底板）。`.cm-editor` / `.xterm` **不登记**：
+    //    它们走的是策略形态 `:where([data-we-surface-runtime="content"])`，锚点出现在
+    //    规则头里的是那个运行标记，不是类名 —— 强行登记会被"锚点必须出现在规则头"判红。
+    anchors: ['[data-sidebar-right-panel]', '[data-document-preview]'], tier: 'private',
     why: '与 better-sidebar 共用同一组私有旋钮（--we-sidebar-*），故同档。'
-      + '枚举时看到的 data-sidebar-right-open 是**开态标记**，不是独立的面。',
+      + '枚举时看到的 data-sidebar-right-open 是**开态标记**，不是独立的面；'
+      + '阅读文件页是本面里的子面（与编辑器 / 终端同址、同吃一张内容面底板）。',
   },
   {
     id: 'plugin-floaters', label: '插件自身浮层（更新提示 / 壁纸仓库抽屉）',
