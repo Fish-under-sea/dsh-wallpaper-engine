@@ -36,6 +36,31 @@ function weSurfaceOwnNode(node) {
   return !!(el && el.closest && el.closest("[data-we-surface-root], style[data-plugin-css]"));
 }
 
+/**
+ * 这个宿主元素**在不在布局里**（表面认领资格的判据，见 `weSurfaceCandidates`）。
+ *
+ * ⚠️ 为什么不能只数 `querySelectorAll(...).length`：宿主 `ui-sidebar-right` 的 RightbarRoot
+ * 按 `useViews()` 给**每个被保留的会话**各渲染一份 `[data-sidebar-right-panel]`，非当前会话
+ * 那份由 `.session[hidden]` 包住 ⇒ DOM 里常年多份，而**真正参与布局的只有当前会话那份**。
+ * 旧判据（长度必须 `=== 1`）于是恒假 ⇒ 该面永远退回原生不透明底。
+ *
+ * 三样都算"不在布局里"：自己的 `hidden`（含 `hidden="until-found"`）、祖先链里的 `[hidden]`、
+ * 以及 `getClientRects()` 为空（零尺寸 / `display:none` 子树）。
+ * ⚠️ `getClientRects` 按**可选能力**处理：仓内测试台（`test/verify-pet-sidebar-glass.mjs` 的
+ *    假元素）没有这个 API ⇒ 缺 API 时**按可见处理**（宁可不判，也不抛错）。
+ */
+function weSurfaceInLayout(el) {
+  if (!el || typeof el.hasAttribute !== "function") return false;
+  if (el.hasAttribute("hidden")) return false;
+  try {
+    if (el.closest && el.closest("[hidden]")) return false;
+  } catch { /* closest 不可用 ⇒ 只按上面两条判 */ }
+  if (typeof el.getClientRects === "function") {
+    try { return el.getClientRects().length > 0; } catch { return true; }
+  }
+  return true;
+}
+
 function weSurfaceUnmark(record) {
   // 摘除判值用本 record 实际写过的标记值（markValue），不能假定它等于 record.id：
   // 软渲档把 extra 面标记跟走为 "extra-fallback"，按 id 判会永久摘不掉。
@@ -118,7 +143,13 @@ function weSurfaceCandidates(state) {
   // 唯一宿主区域才可认领；双侧栏/嵌套未知布局不猜测。
   for (const target of left) add(target, "left-sidebar", left.length === 1 && state.selection.leftSidebarGlass === true);
   const right = doc.querySelectorAll("[data-sidebar-right-panel]");
-  for (const target of right) add(target, "right-sidebar", right.length === 1 && state.selection.sidebarGlass === true && target.hasAttribute("data-sidebar-right-open"));
+  // 唯一宿主区域才可认领，但"唯一"数的是**在布局里的**那份（见 weSurfaceInLayout 的注释）：
+  // 隐藏会话保留的面板不参与竞争。两份都展开时仍按原纪律拒绝猜测（保留原生）。
+  const rightLive = [...right].filter(weSurfaceInLayout);
+  for (const target of right) {
+    const sole = rightLive.length === 1 && rightLive[0] === target;
+    add(target, "right-sidebar", sole && state.selection.sidebarGlass === true && target.hasAttribute("data-sidebar-right-open"));
+  }
   for (const target of doc.querySelectorAll('[role="dialog"]:has([data-slot="settings.section"])'))
     add(target, "settings-window", doc.body.hasAttribute("data-we-glass-window"));
   for (const target of doc.querySelectorAll('[data-we-surface="v1"]')) add(target, "declared", true);

@@ -2485,6 +2485,120 @@ console.log('\n⑲ 标记值跟走 resolver（t9-001 运行级断言：真跑 we
     legacy.el.getAttribute('data-we-surface-runtime') === 'extra');
 }
 
+console.log('\n⑳ 右栏接管资格只认「在布局里的」面板（PR#1 ⑧ / 多会话面板形态）');
+{
+  // 真宿主形态（`ui-sidebar-right` 的 RightbarRoot 按 useViews() 逐会话挂一份 SidebarPanel）：
+  // 用户只要开过第二个会话的右栏，DOM 里就常驻**多份** `[data-sidebar-right-panel]`，
+  // 非当前会话那份由 `.session[hidden]` 包住。
+  //
+  // 旧判据数的是 NodeList 长度（`right.length === 1`）⇒ 多出一份就永远为假 ⇒ 该面永远退回
+  // 原生不透明底（用户报障："我的右侧侧边栏的玻璃效果被改没了"）。判据须改成
+  // **在布局里的**面板恰好一份：hidden 子树里的兄弟不参与竞争；两份都展开时仍拒绝猜测。
+  //
+  // 台子：真 `src/glass-surfaces.js` 装进 `new Function` + with-scope 替身 DOM（同 ⑲ 的装法）。
+  // ⚠️ 替身 DOM 的 API 面必须与**仓内既有台子**兼容：`test/verify-pet-sidebar-glass.mjs` 的
+  //    假元素没有 `getClientRects` ⇒ 新判据不许无条件调它（会 TypeError）。本组专门喂一个
+  //    缺该 API 的替身，把"缺 API ⇒ 按可见处理"这条降级钉住。
+  const RIGHT_SRC = readFileSync(join(ROOT, 'src', 'glass-surfaces.js'), 'utf8');
+
+  // 假元素工厂。opts.hiddenAncestor：该面板被 `[hidden]` 子树包住；opts.noClientRects：摘掉该 API。
+  const mkPanel = (attrs, opts = {}) => {
+    const map = new Map(Object.entries(attrs));
+    return {
+      nodeType: 1, isConnected: true, scrollTop: 0, scrollLeft: 0,
+      ownerDocument: null, parentElement: null, children: [], style: {},
+      getAttribute: (k) => (map.has(k) ? map.get(k) : null),
+      setAttribute: (k, v) => { map.set(k, String(v)); },
+      removeAttribute: (k) => { map.delete(k); },
+      hasAttribute: (k) => map.has(k),
+      closest: (sel) => (sel === '[hidden]' && opts.hiddenAncestor ? opts.hiddenAncestor : null),
+      matches: () => false,
+      querySelector: () => null, querySelectorAll: () => [],
+      getBoundingClientRect: () => ({ left: 0, top: 0, right: 100, bottom: 100, width: 100, height: 100, x: 0, y: 0, toJSON() { return this; } }),
+      getAnimations: () => [],
+      appendChild(c) { this.children.push(c); return c; },
+      remove() {}, addEventListener() {}, removeEventListener() {},
+      ...(opts.noClientRects ? {} : { getClientRects: () => (opts.hiddenAncestor ? [] : [{ left: 0, top: 0, right: 100, bottom: 100 }]) }),
+    };
+  };
+  const elStyle = () => ({
+    display: 'block', visibility: 'visible', opacity: '1',
+    backdropFilter: 'none', webkitBackdropFilter: 'none',
+    transform: 'none', perspective: 'none', filter: 'none',
+    isolation: 'normal', mixBlendMode: 'normal', contain: 'none',
+    willChange: 'auto', translate: 'none', rotate: 'none', scale: 'none',
+    overflow: 'visible', overflowX: 'visible', overflowY: 'visible',
+    position: 'fixed', zIndex: '5', borderRadius: '0px',
+  });
+  const runRight = (srcText, panels) => {
+    const body = mkPanel({ 'data-we-glass-page': 'on' });
+    body.hasAttribute = (k) => k === 'data-we-glass-page';
+    body.getAttribute = (k) => (k === 'data-we-glass-page' ? 'on' : null);
+    const win = {
+      innerWidth: 1200, innerHeight: 900, scrollX: 0, scrollY: 0,
+      CSS: { supports: () => true },
+      ResizeObserver: class { observe() {} unobserve() {} disconnect() {} },
+      MutationObserver: class { observe() {} disconnect() {} },
+      requestAnimationFrame: () => 0, cancelAnimationFrame() {},
+      addEventListener() {}, removeEventListener() {},
+      getComputedStyle: (t, pseudo) => (pseudo ? { content: 'normal' } : elStyle()),
+    };
+    const doc = {
+      hidden: false, defaultView: win, body, documentElement: mkPanel({}),
+      addEventListener() {}, removeEventListener() {},
+      createElement: () => mkPanel({}),
+      querySelector: (sel) => (sel === '[data-sidebar-right-panel]' ? panels[0] || null : null),
+      querySelectorAll: (sel) => (sel === '[data-sidebar-right-panel]' ? panels : []),
+    };
+    for (const p of panels) p.ownerDocument = doc;
+    const scope = new Proxy({
+      document: doc,
+      sanitizeExtraGlassSelectors: (v) => (typeof v === 'string' ? v : ''),
+    }, {
+      has: (t, k) => (k in t) || !(k in globalThis),
+      get: (t, k) => (k in t ? t[k] : () => undefined),
+      set: () => true,
+    });
+    const mod = new Function('__scope', 'with (__scope) { ' + stripExportBlocks(srcText)
+      + '\nreturn { syncGlassSurfaces, disposeGlassSurfaces, weGlassSurfaceStatus }; }')(scope);
+    mod.syncGlassSurfaces({ sidebarGlass: true });
+    const out = panels.map((p) => p.getAttribute('data-we-surface-runtime'));
+    mod.disposeGlassSurfaces();
+    return { out };
+  };
+
+  const open = { 'data-sidebar-right-panel': 'push', 'data-sidebar-right-open': '' };
+
+  // ① 基准：单面板（真宿主的常态）必须接管 —— 新判据不许把常态判死。
+  const r1 = runRight(RIGHT_SRC, [mkPanel(open)]);
+  check('① 单面板仍然接管（回归面：新判据不许把常态判死）',
+    r1.out[0] === 'right-sidebar', 'runtime=' + JSON.stringify(r1.out));
+
+  // ② 真宿主形态：第二份面板被 [hidden] 包住 ⇒ 活动面板必须照常接管。
+  const r2 = runRight(RIGHT_SRC, [mkPanel(open), mkPanel(open, { hiddenAncestor: mkPanel({}) })]);
+  check('② 隐藏会话的面板不夺走接管资格（多会话真宿主形态 ⇒ 活动面板接管）',
+    r2.out[0] === 'right-sidebar' && r2.out[1] === null,
+    'active=' + JSON.stringify(r2.out[0]) + ' ghost=' + JSON.stringify(r2.out[1]));
+
+  // ③ 原纪律不许放宽：两份都在布局里 ⇒ 仍拒绝猜测（保留原生）。
+  const r3 = runRight(RIGHT_SRC, [mkPanel(open), mkPanel(open)]);
+  check('③ 两份都在布局里仍拒绝猜测（原纪律逐字不变）',
+    r3.out[0] === null && r3.out[1] === null, 'out=' + JSON.stringify(r3.out));
+
+  // ④ 降级：替身 DOM 缺 getClientRects（仓内 verify-pet-sidebar-glass 的假元素就是这样）
+  //    ⇒ 不抛错，且按"可见"处理（单面板接管）。
+  let degraded = null, threw = '';
+  try { degraded = runRight(RIGHT_SRC, [mkPanel(open, { noClientRects: true })]); }
+  catch (e) { threw = String((e && e.message) || e); }
+  check('④ 替身 DOM 缺 getClientRects 时不抛错、按可见处理（与仓内既有台子兼容）',
+    !threw && degraded && degraded.out[0] === 'right-sidebar',
+    threw ? ('抛错：' + threw) : 'runtime=' + JSON.stringify(degraded && degraded.out));
+
+  // 负对照：源里一旦回退成"数 NodeList 长度"的旧形态，②就会判出 —— 证明②有牙。
+  check('negative control: 旧形态（数 NodeList 长度）不出现在源里（②因此有牙）',
+    RIGHT_SRC.includes('add(target, "right-sidebar", right.length === 1') === false);
+}
+
 console.log('');
 if (failed) {
   console.log('GLASS SURFACE CHECKS FAILED — ' + failed + ' failed');

@@ -402,6 +402,7 @@ check('H2 注释里的调用不算调用（先剥注释再判）',
 const CHECK_FLOOR = 14;
 const MUTANT_FLOOR = 8;
 const totalChecks = stats.passed + stats.failed;
+
 check(`H3 覆盖面地板：执行的判据 ≥ ${CHECK_FLOOR}`, totalChecks >= CHECK_FLOOR, `实测 ${totalChecks}`);
 check(`H4 负对照地板：变异体 ≥ ${MUTANT_FLOOR}`, mutants >= MUTANT_FLOOR, `实测 ${mutants}`);
 
