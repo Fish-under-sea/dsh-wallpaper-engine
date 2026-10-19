@@ -139,6 +139,7 @@ export const OFF_CHAIN_WHY = {
   'verify-pet-link.mjs': '快捷汇总入口 npm run verify:pet-link；其十二个离线用例已逐项接入默认 verify 链，不重复运行汇总器。',
   'verify-pet-hotplug-integration.mjs': '显式安装集成入口，需要受支持原版桌宠夹具与真实 Cordis 模块；不得在离线 verify 链隐式下载或修改用户安装。',
   'verify-pet-hotplug-browser.mjs': '完整 React 与真实视频集成，需要独立 Edge、ReactDOM 和已准备隔离 profile，使用 verify:pet-link:browser 显式运行。',
+  'verify-pet-sidebar-glass-browser-case.mjs': '用例模块由链上的 verify-glass-runtime-browser.mjs 导入并执行，使用其 CDP 会话，不是独立命令。',
   'verify-pet-egg2-browser-case.mjs': '完整浏览器入口导入的彩蛋二用例模块，依赖其 CDP 会话与真实视频，不是独立命令。',
   'verify-pet-egg1-native-browser.mjs': '真实原生抛掷与媒体验收，需要独立 Edge 和显式 PET_TEST_CLIENT 隔离客户端。',
   'verify-pet-phase-browser.mjs': '真实阶段接管验收，需要独立 Edge 和显式 PET_TEST_CLIENT 隔离客户端。',

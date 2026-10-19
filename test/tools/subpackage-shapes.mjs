@@ -75,11 +75,11 @@ export const UPSTREAM_FORKS = Object.freeze([
     prebuilt: Object.freeze({
       // 产物与"派生基线"的逐字节锚点：预构建 = 不重编译，所以必须有一条可复算的字节证据。
       entry: 'lib/client.js',
-      sha256: '1bb340138c0f38a2833407ff9d90b82bc93c3eeb8aafd8e655d2a5911e062bad',
+      sha256: '78f4d86ee4bb21f038d0a6f352103b685a6433c2d58461bf88cf0fff5b77aea8',
       moduleId: 'dsh-we-pet-builtin',
       // 宿主半边与独立模式 CLI 的字节锚点（同一条派生链的另外两个产物）。
       hostEntry: 'lib/index.js',
-      hostSha256: '49047662421d3a176e7ac7c62e37bf81212c8e91b54640d7bcddb67b1d7099dd',
+      hostSha256: '00ccae2482b6850c07ae31df5d153a5413e9564594b3839f0ec87913c0ac7315',
     }),
     hostServiceConsumer: false,
     /**

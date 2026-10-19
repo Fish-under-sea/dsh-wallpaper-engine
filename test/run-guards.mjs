@@ -161,6 +161,7 @@ const VERIFY_STEPS = [
   step('test/verify-component-fonts.mjs'),
   step('test/verify-component-face.mjs'),     // ← 还原（旧链位：component-fonts 之后、fontset 之前）
   step('test/verify-fontset.mjs'),
+  step('test/verify-avatar-interval-and-rotation.mjs'), // ← #231 间隔旋钮 + #230 轮播间隔 / 视频播完档 + #240 缩略图
   step('test/verify-presets.mjs'),
   step('test/verify-settings-namespaces.mjs'), // ← 还原（旧链位：presets 之后、system-fonts 之前）
   step('test/verify-system-fonts.mjs'),
@@ -212,10 +213,13 @@ const VERIFY_STEPS = [
   step('test/verify-pet-rope-entry.mjs'),
   step('test/verify-pet-tuner.mjs'),
   step('test/verify-pet-bubble-timing.mjs'),
+  step('test/verify-pet-meme-broadcast.mjs'),
   step('test/verify-pet-mascot-motion.mjs'),
   step('test/verify-pet-egg1-motion.mjs'),
   step('test/verify-pet-egg1-rebound.mjs'),
   step('test/verify-pet-sidebar-rebound.mjs'),
+  step('test/verify-pet-sidebar-diag.mjs'),
+  step('test/verify-pet-sidebar-glass.mjs'),
   step('test/verify-pet-egg2-motion.mjs'),
   step('test/verify-pet-follow.mjs'),
   // ⑫ P1 内置桌宠（upstream-fork `dsh-we-pet-builtin`，2026-10-19）：一条**装配/消费链**的验收判据

@@ -28,6 +28,10 @@ import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { stripComments, functionBodyOf } from './tools/js-text.mjs';
 import { buildIndex } from './tools/host-route-index.mjs';
+import { createPetHostFixture } from './tools/pet-host-fixture.mjs';
+import { upstreamForkByName } from './tools/subpackage-shapes.mjs';
+
+const petFixture = await createPetHostFixture();
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MUT_HELPER = '__weMutNoHandoff';
@@ -115,11 +119,19 @@ const makeFiber = (webServer) => {
   const collected = [];
   let handoffs = 0;
   const provided = [];
+  const resources = new Set();
+  const registerResource = (value) => {
+    resources.add(value);
+    return () => resources.delete(value);
+  };
   return {
+    resources,
     // handoffs = 该行**交给 fiber 的 teardown 数目**（§7.6④ 的第二个观测面：路由之外唯一能看出
     // "拆卸有没有真交接"的量；纯浏览器空壳行宿主侧零路由，只有这一面能分辨真源码与变异体）。
     ctx: {
       webServer,
+      commands: { register: registerResource },
+      on(event, callback) { return registerResource({ event, callback }); },
       // 跨包服务面（§5.1 ①）：子包宿主半边只经 ctx.<服务名> 取面，这里给**真值**
       // （主包 createSubpackageHost()）——手搓 stub 等于把"服务面名字/键集"从本判据里挖掉，
       // 那一面由 test/verify-subpackage-boot.mjs 逐键对账，这里只保证"取得到、能用"。
@@ -357,10 +369,13 @@ const plugins = [];
 for (const r of rows) {
   if (!r.rel || !isFile(join(ROOT, r.rel))) continue;
   try {
-    const mod = await importEntry(join(ROOT, r.rel));
+    const fork = upstreamForkByName(r.name);
+    const independent = fork !== null && !fork.hostServiceConsumer;
+    if (independent && fork.dir !== 'packages/pet') throw new Error('独立 fork 尚无宿主夹具：' + fork.dir);
+    const mod = independent ? petFixture : await importEntry(join(ROOT, r.rel));
     const applyFn = mod.apply || (mod.default && mod.default.apply);
     if (typeof applyFn !== 'function') { check('行 ' + r.name + ' 的入口导出 apply', false, r.rel + ' 没有导出 apply'); continue; }
-    plugins.push({ label: r.name, apply: applyFn, row: r });
+    plugins.push({ label: r.name, apply: applyFn, row: r, independent });
   } catch (e) { check('行 ' + r.name + ' 的入口可装载', false, r.rel + '：' + String(e.message || e).split('\n')[0]); }
 }
 check('所有行入口都装载成功', plugins.length === rows.filter((r) => r.rel && isFile(join(ROOT, r.rel))).length,
@@ -394,7 +409,7 @@ check('所有行入口都装载成功', plugins.length === rows.filter((r) => r.
 // 那"零主包说明符"就成了纸面文章。放在零残留探针之前跑，避免把它的残留算到后面头上。
 {
   const noServiceOk = [];
-  for (const p of plugins.filter((q) => q.row.kind === 'subpackage')) {
+  for (const p of plugins.filter((q) => q.row.kind === 'subpackage' && !q.independent)) {
     const t = makeTable();
     const f = makeFiber(t.webServer);
     delete f.ctx[HOST_SERVICE_NAME];
@@ -402,8 +417,34 @@ check('所有行入口都装载成功', plugins.length === rows.filter((r) => r.
     catch { /* 预期：抛错 */ }
     try { f.unload(); } catch { /* 装载已抛错，收尾尽力而为 */ }
   }
-  check('负对照：mock ctx 不带服务面 ⇒ 每个子包宿主半边都在装载期抛错（证明它真经 ctx.' + HOST_SERVICE_NAME + ' 取面）',
+  check('负对照：mock ctx 不带服务面 ⇒ 壁纸服务型子包都在装载期抛错（独立 fork 另验）',
     noServiceOk.length === 0, noServiceOk.join('；'));
+}
+
+// 独立 fork 不消费壁纸服务；仍执行真 apply 并对路由、命令和事件作正负对照。
+{
+  const pet = plugins.find((p) => p.independent);
+  check('独立 pet 行确实纳入往返测试', !!pet);
+  if (pet) {
+    const t = makeTable();
+    const f = makeFiber(t.webServer);
+    delete f.ctx[HOST_SERVICE_NAME];
+    loadDroppingReturn(pet.apply, f.ctx);
+    check('独立 pet 无壁纸服务仍注册真实路由、三条命令和三个事件',
+      t.table.size === 1 && f.resources.size === 6 && f.handoffs() >= 9);
+    f.unload();
+    check('独立 pet 停用后路由、命令和事件全部撤销', t.table.size === 0 && f.resources.size === 0);
+
+    const source = read(pet.row.rel);
+    const needle = 'ctx.effect(() => ctx.webServer.register(';
+    check('pet 变异前提：真实入口只有一处路由 effect 注册', source.split(needle).length === 2);
+    const mutant = await createPetHostFixture(source.replace(needle, '((cb) => cb())(() => ctx.webServer.register('));
+    try {
+      const bad = rowRoundtripProblems(pet.label, [{ ...pet, apply: mutant.apply }]);
+      check('负对照：移除真实 pet 路由的 effect 交接后，同一往返判据必须报红',
+        bad.some((message) => message.includes('本行残留 1 条')), bad.join('；'));
+    } finally { mutant.dispose(); }
+  }
 }
 
 if (plugins.length > 0) {
@@ -510,8 +551,8 @@ if (plugins.length > 0) {
   const listenerDelta = EVENTS.map((ev) => ev + ':' + (process.listenerCount(ev) - listenerBase[ev])).filter((s) => !/:0$/.test(s));
   const handlesNow = (typeof process._getActiveHandles === 'function' ? process._getActiveHandles().length : -1);
   check('整族关掉后路由表清空 + 零残留（无遗留定时器 / 进程监听 / 活动句柄）',
-    leftover === 0 && pendingTimers === 0 && listenerDelta.length === 0 && (handlesBase < 0 || handlesNow <= handlesBase),
-    '残留路由 ' + leftover + ' · 停用后仍挂的定时器 ' + pendingTimers + ' · 监听增量 ' + (listenerDelta.join(',') || '无')
+    leftover === 0 && fAll.resources.size === 0 && pendingTimers === 0 && listenerDelta.length === 0 && (handlesBase < 0 || handlesNow <= handlesBase),
+    '残留命令/事件 ' + fAll.resources.size + ' · 残留路由 ' + leftover + ' · 停用后仍挂的定时器 ' + pendingTimers + ' · 监听增量 ' + (listenerDelta.join(',') || '无')
       + ' · 活动句柄 ' + handlesBase + ' -> ' + handlesNow + (timerRows.length ? ' · 逐行：' + timerRows.join(' / ') : ''));
   globalThis.setTimeout = oST; globalThis.setInterval = oSI; globalThis.clearTimeout = oCT; globalThis.clearInterval = oCI;
 
@@ -586,11 +627,11 @@ if (plugins.length > 0) {
   for (const p of plugins) {
     if (ownSets.get(p.label).size === 0) continue;
     const src = read(p.row.rel);
-    const body = functionBodyOf(stripComments(src), 'export function apply(');
-    if (body === null) textIssues.push(p.label + '（' + p.row.rel + '）定位不到 export function apply( 的函数体');
-    else if (!HANDOFF_SRC_RE.test(body)) textIssues.push(p.label + '（' + p.row.rel + '）apply 体里没有交接调用（handOffTeardown( / <receiver>.handOff(）');
+    const body = functionBodyOf(stripComments(src), p.independent ? 'function apply(' : 'export function apply(');
+    if (body === null) textIssues.push(p.label + '（' + p.row.rel + '）定位不到 apply 函数体');
+    else if (!(p.independent ? /\bctx\.effect\s*\(/ : HANDOFF_SRC_RE).test(body)) textIssues.push(p.label + '（' + p.row.rel + '）apply 体里没有 teardown 交接调用');
   }
-  check('注册了路由的行：apply 体里都有交接调用（handOffTeardown( / <receiver>.handOff(）', textIssues.length === 0, textIssues.join('；'));
+  check('注册了路由的行：apply 体里都有交接调用（handOff 或独立 fork 的 ctx.effect）', textIssues.length === 0, textIssues.join('；'));
 }
 
 // ── P-C 字体实例（task-8 第 3 条）：关掉 `wallpaper-engine-fonts` 行 ⇒
@@ -949,6 +990,7 @@ function fontsSectionOwnershipProblems(t) {
   }
 }
 
+petFixture.dispose();
 console.log('');
 if (failed) { console.log('SUBPACKAGE TOGGLE ROUNDTRIP CHECKS FAILED -- ' + failed + ' failed'); process.exit(1); }
 console.log('ALL SUBPACKAGE TOGGLE ROUNDTRIP CHECKS PASSED');

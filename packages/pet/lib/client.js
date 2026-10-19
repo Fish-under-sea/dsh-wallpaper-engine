@@ -3069,7 +3069,7 @@ function makePetUI(rt) {
 		// 正常情况下由 handleEnded 按时释放；这个上限只为兜住"视频报错 / onended 没触发"
 		// 这类异常路径 —— 与显式锁的 60s 兜底同一个理由（绝不能让宠物被永久冻住）。
 		const SELF_LOCK_TTL_MS = 20000;
-		
+
 		const readLock = () => {
 			if (typeof window === "undefined") return null;
 			const l = window.__dshWePetLock;

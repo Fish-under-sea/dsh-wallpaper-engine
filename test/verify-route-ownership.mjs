@@ -367,6 +367,18 @@ console.log('\n④ 子包行 ⇄ `packages/<dir>/package.json` 双向对账（�
   check('negative control：patch 里多一条没有包认领的子包行 ⇒ 同一条判据点名 "死行"',
     deadRow.some((v) => v.includes('死行')), deadRow.join('；') || '（没判出来）');
 
+  const independent = { dir: 'probe', name: 'vendor-pet-probe', main: './lib/index.js' };
+  const independentRows = [pkg.name, independent.name];
+  check('独立命名子包按清单真名对账，不要求主包名前缀',
+    subpackageModuleViolations(independentRows, [independent], () => true).length === 0);
+  const independentMissing = subpackageModuleViolations([pkg.name], [independent], () => true);
+  const independentEntry = subpackageModuleViolations(independentRows, [independent], () => false);
+  const independentDead = subpackageModuleViolations([...independentRows, 'vendor-orphan-probe'], [independent], () => true);
+  check('negative control：独立命名子包缺行、缺入口、无包认领仍逐项报错',
+    independentMissing.length === 1 && independentMissing[0].includes('未登记行')
+    && independentEntry.length === 1 && independentEntry[0].includes('入口不存在')
+    && independentDead.length === 1 && independentDead[0].includes('死行'));
+
   // 子包路由族必须在孤儿扫描面内（面塌回 `lib/routes/`-only ⇒ 搬走的族"文件在、没人调用"判不出来）。
   const pkgRouteCandidates = routeModuleCandidates().filter((rel) => rel.startsWith('packages/') && rel.includes('/lib/routes/'));
   const routeFiles = routeModuleFiles();

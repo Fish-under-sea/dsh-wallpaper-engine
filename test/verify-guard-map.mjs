@@ -125,6 +125,10 @@ const NO_MODULE_TARGET_WHY = {
   // `scripts/ci-routing.mjs` 的真实管道：staged/unstaged/untracked 三通道、docs 于 full 差异
   // exit 3 拒绝、judgeResult 汇总核验），目标是 CLI 行为与分类器的 fail-closed 语义，不读 lib/src 源模块。
   'verify-ci-routing.mjs': '管的是 **ci-routing CLI 的端到端行为**（隔离 git 库：staged/unstaged/untracked 三通道、full 误调 docs ⇒ exit 3、judgeResult 汇总），读的是 `scripts/ci-routing.mjs` 与临时仓库，不针对某个 lib/src 模块',
+  // 侧栏网格与玻璃的**浏览器用例模块**：导出 `verifyPetSidebarGlassBrowser()` 供
+  // `verify-glass-runtime-browser.mjs` import（后者才是链上的守卫，也是真读源文件的那个），
+  // 自己既不被单独 spawn、也不直接读源文件 —— 目标全在宿主传入的 `bundle`/`runtime` 里。
+  'verify-pet-sidebar-glass-browser-case.mjs': '是 `verify-glass-runtime-browser.mjs` 的**用例模块**（导出函数被 import，由宿主守卫传入已构建的 bundle 与 runtime），自身不 spawn、不读源文件',
 };
 
 const map = buildMap(ROOT);

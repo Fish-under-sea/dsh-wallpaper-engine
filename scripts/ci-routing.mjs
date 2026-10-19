@@ -85,6 +85,13 @@ const VALUE_DOMAINS = {
   '--base-mode': ['merge-base', 'exact'],
 };
 
+/**
+ * GitHub 的**全零 SHA**（push 事件的 `before` 在「新建分支 / 首次推送」时取这个值）。
+ * 它不是任何 git 对象：送去 `git diff` 只会 `fatal: bad object`。语义上等于**空树** ——
+ * 分支在此前不存在，整条历史都是本次推送带来的。
+ */
+const ZERO_SHA_RE = /^0{40}$/;
+
 const camel = (flag) => flag.slice(2).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
 
 /**
@@ -200,7 +207,19 @@ export function collectDiff(input) {
   if (src.baseMode === 'exact') {
     if (!base) return { ok: false, reason: '--base-mode exact 需要 --base（push 的 before）；没有边界就阻断，不猜' };
     if (!head) return { ok: false, reason: '--base-mode exact 需要 --head（push 的 after）；精确模式必须有双端，不给本地通道' };
-    baseRef = base;
+    // GitHub 在**新建分支 / 首次推送**时把 push 事件的 `before` 填成全零 SHA（40 个 0）。
+    // 它不是一个 git 对象，直接 `git diff --raw 000…  <head>` 会 `fatal: bad object`，
+    // 于是"跑不了"被当成阻断（本意是 fail-closed，但这里是**必然误报**：分支之前根本
+    // 不存在，整条历史都是本次推送新增的）。零 SHA 的语义就是**空树**，与下面根提交
+    // 分支同形处理 ⇒ 该提交的全部文件都是"新增"，仍在安全方向上（差异只会更大，不会漏）。
+    if (ZERO_SHA_RE.test(base)) {
+      const empty = git(['hash-object', '-t', 'tree', '/dev/null']);
+      if (!empty.ok) return { ok: false, reason: 'git hash-object 失败：' + empty.err };
+      baseRef = String(empty.out).trim();
+      notes.push('push 的 before 是全零 SHA（' + base + '：新建分支 / 首次推送）⇒ 按空树 diff，全部文件计为新增');
+    } else {
+      baseRef = base;
+    }
   } else if (base) {
     const mb = git(['merge-base', base, target]);
     if (mb.ok && String(mb.out).trim()) {

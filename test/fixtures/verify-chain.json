@@ -401,6 +401,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-avatar-interval-and-rotation.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-presets.mjs",
           "args": [],
           "tier": "hard",
@@ -633,6 +641,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-pet-meme-broadcast.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-pet-mascot-motion.mjs",
           "args": [],
           "tier": "hard",
@@ -658,6 +674,22 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-pet-sidebar-rebound.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-pet-sidebar-diag.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-pet-sidebar-glass.mjs",
           "args": [],
           "tier": "hard",
           "probe": false
@@ -1254,6 +1286,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-avatar-interval-and-rotation.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-presets.mjs",
           "args": [],
           "tier": "hard",
@@ -1486,6 +1526,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-pet-meme-broadcast.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-pet-mascot-motion.mjs",
           "args": [],
           "tier": "hard",
@@ -1511,6 +1559,22 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-pet-sidebar-rebound.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-pet-sidebar-diag.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-pet-sidebar-glass.mjs",
           "args": [],
           "tier": "hard",
           "probe": false

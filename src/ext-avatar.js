@@ -137,7 +137,7 @@ function avatarPreviewRound(sel) {
  * 不自己再算一遍（两处算法必然漂）。
  */
 function renderAvatarCropModal(ctx) {
-  const { sel, onAvatarCropZoom, onAvatarCropDrag, onAvatarCropConfirm, onAvatarCropCancel } = ctx;
+  const { sel, onAvatarCropZoom, onAvatarCropDrag, onAvatarCropWheel, onAvatarCropConfirm, onAvatarCropCancel } = ctx;
   if (!sel.avatarCropSide) return null;
   // 几何由 ctx 传进来（client.js 现算）：渲染器不引 avatarCropGeometry 这个裸标识符 ——
   // 它是"只读 ctx"契约的一部分（见文件头不变量）。
@@ -152,21 +152,34 @@ function renderAvatarCropModal(ctx) {
         className: "we-crop__view",
         style: { width: view + "px", height: view + "px" },
         onPointerDown: (e) => {
-          const startX = e.clientX;
-          const startY = e.clientY;
-          const move = (ev) => onAvatarCropDrag(ev.clientX - startX, ev.clientY - startY);
+          // 传**增量**而不是"相对按下点的总位移"：处理器每次都在已更新的 x/y 上继续累加，
+          // 传总位移会让拖动越拖越快（第一次 10px 挪 10px、第二次 20px 又挪 20px…）。
+          let lastX = e.clientX;
+          let lastY = e.clientY;
+          const move = (ev) => {
+            const dx = ev.clientX - lastX;
+            const dy = ev.clientY - lastY;
+            lastX = ev.clientX;
+            lastY = ev.clientY;
+            if (dx || dy) onAvatarCropDrag(dx, dy);
+          };
           const up = () => {
-            try { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); } catch { /* ignore */ }
+            try {
+              window.removeEventListener("pointermove", move);
+              window.removeEventListener("pointerup", up);
+              window.removeEventListener("pointercancel", up);
+            } catch { /* ignore */ }
           };
           try {
             window.addEventListener("pointermove", move);
             window.addEventListener("pointerup", up);
+            window.addEventListener("pointercancel", up);
           } catch { /* ignore */ }
           if (e.preventDefault) e.preventDefault();
         },
         onWheel: (e) => {
-          const dir = (e.deltaY || 0) > 0 ? -0.1 : 0.1;
-          onAvatarCropZoom((Number(sel.avatarCropZoom) || 1) + dir, true);
+          // 增量交给 client 从 selection 现读当前值累加（live 档不重渲染，sel 里的值是旧的）。
+          onAvatarCropWheel((e.deltaY || 0) > 0 ? -0.1 : 0.1);
           if (e.preventDefault) e.preventDefault();
         },
       },
@@ -241,7 +254,7 @@ function avatarOverflowRow(sel, acts) {
  * @param {{sel:object}} ctx 见文件头契约
  */
 function renderAvatarIsland(ctx) {
-  const { sel, onAvatarEnabled, onAvatarSize, onAvatarRadius, onAvatarPick, onAvatarClear } = ctx;
+  const { sel, onAvatarEnabled, onAvatarSize, onAvatarRadius, onAvatarAiRepeatRows, onAvatarPick, onAvatarClear } = ctx;
   const on = sel.avatarEnabled === true;
   return React.createElement(React.Fragment, null,
     switchRow(weT("启用自定义会话头像"), on, onAvatarEnabled,
@@ -255,6 +268,12 @@ function renderAvatarIsland(ctx) {
     on && SliderRow(weT("头像大小"), AVATAR_SIZE_MIN, AVATAR_SIZE_MAX, 1, sel.avatarSize, onAvatarSize, "px", "avatar-size"),
     on && SliderRow(weT("圆角强度"), AVATAR_RADIUS_MIN, AVATAR_RADIUS_MAX, 1, sel.avatarRadius, onAvatarRadius, "%", "avatar-radius",
       { tooltip: weT("100% = 正圆（默认），50% = 大圆角方块，0% = 直角方形") }),
+    // 助手头像的**出现间隔**（issue #231 第二轮的观感旋钮）：每过多少条可见流条目
+    // （思考 / 工具调用 / 回复都算）在下一条可见助手行上再露一次脸。
+    // 1 = 每条助手行都露脸（最密）；越大越稀。语义真源 = src/avatar-layer.js 的读取处。
+    on && SliderRow(weT("助手头像间隔"), AVATAR_AI_REPEAT_MIN, AVATAR_AI_REPEAT_MAX, 1,
+      sel.avatarAiRepeatRows, onAvatarAiRepeatRows, weT("条"), "avatar-ai-repeat",
+      { tooltip: weT("每过这么多条可见的思考 / 工具调用 / 回复，就在下一条助手消息前再显示一次头像。1 = 每条都显示，越大越稀。") }),
     on && avatarOverflowRow(sel, { onAutoCompress: ctx.onAvatarAutoCompress }),
     on && sel.avatarError
       && React.createElement("div", { className: "we-picker__hint we-avatar-error", key: "avatar-err" }, sel.avatarError),

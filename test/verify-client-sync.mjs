@@ -69,6 +69,31 @@ for (const p of model.clientPackages) {
 const artNames = ARTIFACTS.map((a) => a.rel);
 console.log('  产物集合（发现层 clientPackages）：' + ARTIFACTS.length + ' 份 — ' + artNames.join(', '));
 
+// ── prebuilt（受控派生）形态：产物**必须入库**，不能按 §「产物不入库」判 ──────────
+// 绝大多数子包的浏览器半边由 `npm run build` 现场编译（源码 → 产物），所以产物出库。
+// 但 `packages/pet` 是 upstream-fork 形态：`lib/client.js` 是上游 dsh-pet@0.3.7 的
+// **预构建产物**（tsdown 出、含 .ts 源码面），本仓没有它的构建链 —— 它的
+// `client.build.json` 写的是 `prebuilt`：构建期只核对 sha256，不读源码重编。
+// 对这类产物「入库」才是对的：不入库 ⇒ CI 的 checkout 里根本没有这个文件 ⇒
+// `npm run build` 直接 `登记的浏览器半边 lib/client.js 不在盘上` 退出 1。
+// 判据不能放宽成"忽略 pet"，而是**按配方登记的真实形态分支**：只有当真声明了
+// `prebuilt.sha256` 时才豁免，其余一律照旧要求未跟踪。
+const prebuiltRels = new Set();
+for (const p of model.clientPackages) {
+  const dir = p.dir || '.';
+  const recipeAbs = join(ROOT, dir === '.' ? '' : dir, 'client.build.json');
+  let recipe;
+  try { recipe = JSON.parse(readFileSync(recipeAbs, 'utf8')); } catch { continue; }
+  const pre = recipe && recipe.prebuilt;
+  if (!pre || typeof pre.sha256 !== 'string' || !pre.sha256) continue;
+  const rel = relOf(p.clientArtifact);
+  if (rel) prebuiltRels.add(rel);
+}
+const trackedOkRel = artNames.filter((r) => !prebuiltRels.has(r));
+if (prebuiltRels.size) {
+  console.log('  prebuilt 形态（必须入库，豁免「不入库」）：' + [...prebuiltRels].join(', '));
+}
+
 /** 「产物面地板」判据（**唯一**实现）：生产判据与负对照都喂它。 */
 const meetsArtifactFloor = (n) => n >= FLOORS.clientArtifacts;
 check('产物面地板：发现层给出 ≥ ' + FLOORS.clientArtifacts + ' 份产物（含主包；防止产物面静默缩小）',
@@ -197,18 +222,30 @@ const lsFiles = (args) => {
 };
 
 {
-  const ls = lsFiles([...artNames, 'docs/images']);
+  // pathspec 取「需要出库的那批」；prebuilt 产物**刻意不在里面**（它必须入库，见上）。
+  const ls = lsFiles([...trackedOkRel, 'docs/images']);
   if (!ls.ok) {
     console.log('  ⚠ git 跑不起来（不是 git 工作树 / 没装 git）⇒ 跳过「产物不入库」判据：' + ls.err);
   } else {
-    check('产物不入库：' + ARTIFACTS.length + ' 份产物与 docs/images/** 均未被 git 跟踪', ls.tracked.length === 0,
-      ls.tracked.length === 0 ? 'ls-files 空（pathspec: ' + artNames.join(' ') + ' docs/images）'
+    check('产物不入库：' + trackedOkRel.length + ' 份产物与 docs/images/** 均未被 git 跟踪',
+      ls.tracked.length === 0,
+      ls.tracked.length === 0
+        ? 'ls-files 空（pathspec: ' + trackedOkRel.join(' ') + ' docs/images'
+          + (prebuiltRels.size ? '；prebuilt 豁免 ' + prebuiltRels.size + ' 份' : '') + '）'
         : '被跟踪 ' + ls.tracked.length + ' 条：' + ls.tracked.slice(0, 5).join(', ') + (ls.tracked.length > 5 ? ' …' : ''));
     // 负对照：给一个**确定被跟踪**的路径（仓库根自己的守卫脚本），同一判据必须能列出它。
     // 少了这条，"ls-files 永远返回空"（比如 pathspec 写错）也会全绿。
     const probe = lsFiles(['test/verify-client-sync.mjs']);
     check('negative control: 同一判据对已跟踪文件有牙（本守卫自身被列出）',
       probe.ok && probe.tracked.length === 1, 'probe=' + JSON.stringify(probe.tracked) + (probe.ok ? '' : ' · ' + probe.err));
+  }
+  // 反向判据：prebuilt 产物**必须**被跟踪。缺了它，上面那条只会因为"名单里没人"而恒绿，
+  // 而真正该入库的受控派生产物被误移出索引时（CI 会在 build 步骤炸「不在盘上」）这里没有牙。
+  for (const rel of prebuiltRels) {
+    const one = lsFiles([rel]);
+    check('prebuilt 产物必须入库：' + rel + ' 被 git 跟踪（构建期只核 sha256，不入库则 CI checkout 里没有它）',
+      !one.ok || one.tracked.length === 1,
+      one.ok ? 'ls-files=' + JSON.stringify(one.tracked) : 'git 跑不起来：' + one.err);
   }
 }
 

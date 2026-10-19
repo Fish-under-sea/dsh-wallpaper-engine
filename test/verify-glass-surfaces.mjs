@@ -152,6 +152,9 @@ const SURFACES = [
   },
   {
     id: 'better-sidebar', label: 'dsh-better-sidebar 侧栏面板',
+    // ⚠️ 只有 [data-dsh-better-sidebar]：表面所有权重构后 better-sidebar 的内部布局
+    //    **刻意保留原生**（见 src/styles-sidebar.js 的「未知 better-sidebar 内部布局保留原生」），
+    //    样式表里不再有 [data-dsh-panel] 规则头 ⇒ 把它登记成锚点就是"登记了没实现"。
     anchors: ['[data-dsh-better-sidebar]'], tier: 'private',
     // 两个配置面名：chrome 面板本身，以及它内部的"内容面"（编辑器 / 终端）。
     // 后者是同一个 CSS 面里的**子面** —— 它今天另有自己的透明度与底色键，
@@ -161,7 +164,12 @@ const SURFACES = [
   },
   {
     id: 'official-right-panel', label: '原生右栏面板',
-    anchors: ['[data-sidebar-right-panel]'], tier: 'private',
+    // [data-document-preview] = 宿主的「阅读文件页」（dsh-client-ui-sidebar-documentpreview 的
+    // TextPreview 根节点，实测自 asar）。它长在原生右栏里、吃的是同一张内容面底板
+    // （--we-content-surface-*）⇒ 归本面认领。
+    // ⚠️ 之前它没有任何规则引用它 ⇒ 不在登记表里；本轮把「内容面透明度 / 内容面底色」
+    //   接上去（用户口径："阅读文件页面的背景底色设置被删除了"）后，认领判据当场要求登记。
+    anchors: ['[data-sidebar-right-panel]', '[data-document-preview]'], tier: 'private',
     why: '与 better-sidebar 共用同一组私有旋钮（--we-sidebar-*），故同档。'
       + '枚举时看到的 data-sidebar-right-open 是**开态标记**，不是独立的面。',
   },
@@ -1942,11 +1950,13 @@ console.log('\n⑬ CSS 契约（按面变量零兜底 / 门控许可证 / 双向
   };
   const gate = gateCheck(STYLES_TEXT);
   // 覆盖面地板 = **防"解析器静默返回空表"**（本文件头注释的纪律），不是紧贴实测值：
-  // 实测 13 条，地板取 10 —— 留出正常重构的余量，同时"一条都没扫到"必红。
+  // 实测 9 条（设置窗的令牌声明已从「会画东西的 ::before」挪回对话框本体 ⇒ 那一族
+  // 不再是本判据口径下的"画东西"规则），地板取 8 —— 留出正常重构的余量，
+  // 同时"一条都没扫到"必红。
   check('门控许可证：凡**画东西**且读按面变量的规则，选择器里都必须有 JS 写出的门控属性（' + jsGates.length + ' 个候选门控）',
-    gate.bad.length === 0 && gate.checked >= 10,
+    gate.bad.length === 0 && gate.checked >= 8,
     gate.bad.length ? '无门控：' + gate.bad.slice(0, 3).join(' · ')
-      : gate.checked + ' 条规则全部带门控（覆盖面地板 10）');
+      : gate.checked + ' 条规则全部带门控（覆盖面地板 8）');
 
   // 双向对账：effects.js 写出的每个按面变量，都必须被样式表读到（防"写了没人读"的死写入）
   const written = [...new Set([...GLASS_SRC.matchAll(/setProperty\("(--we-[a-z0-9-]+)"/g)]

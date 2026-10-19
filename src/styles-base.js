@@ -233,7 +233,7 @@ const CSS_BASE = `
      "玻璃配方生效"。两者正交 —— 壁纸在场时同时成立，无壁纸时只有本锚点。
      raise border alpha for visibility, and apply the frosted-glass effect to
      opaque surfaces. */
-  body[data-we-glass-page] :where([data-chat-flow]) {
+  body[data-we-glass-page] {
     /* ── 表面令牌（#80）——在**令牌源头**接管，不逐面补选择器 ────────────────────
        宿主的对话框 / 面板 / 抬高按钮面读的都是别名层：--dsw-alias-bg-layer-1/2/3 是
        面板梯度（浅色三层同为白；深色 bluish-875/850/800 逐层抬亮），
@@ -245,7 +245,12 @@ const CSS_BASE = `
        （深色主题下必须比 layer-3 更亮，否则按钮与容器压平成同一块玻璃）。于是
        玻璃透明度 / 玻璃颜色 对 harness 自带的面同样生效，无需知道任何 CSS 模块哈希。
        代码块家族（--dsw-alias-markdown-code-block(-banner)）与行内代码 / 标签 / 分段
-       同属下面「markdown 代码块 / 行内代码」那段映射 —— 裁定档案 harness-ui-surfaces.json 同源。 */
+       同属下面「markdown 代码块 / 行内代码」那段映射 —— 裁定档案 harness-ui-surfaces.json 同源。
+       ⚠️ 作用域是**整个页面玻璃锚点**，不是聊天流：宿主自己的侧栏按钮、右栏页签栏、
+       设置窗内的卡片都读这一族令牌。5cabb9e1 的「表面所有权」重构曾把这里收窄成
+       :where([data-chat-flow])，这些面于是全部退回宿主实底（用户原话：「这些我用红色
+       矩形框选的类型的组件的玻璃效果又丢失了」）。已恢复为页面级；第三方插件的可读性
+       由每条 color-mix 里的 --we-readability-floor 兜住，不是"无下限透明"。 */
     --dsw-alias-bg-layer-1: color-mix(in srgb,
       var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
       color-mix(in srgb, var(--we-surface-tint-light, #ffffff) calc(var(--we-glass-alpha, 0.5) * 0.9 * 100%), transparent) calc((1 - var(--we-readability-floor)) * 100%));
@@ -352,7 +357,7 @@ const CSS_BASE = `
   }
   /* 深色档的**页面玻璃**映射：与上面那块逐条同形（同一张配方表、同一组层权重），
      只有玻璃色的**缺省值**不同：深色玻璃底色是深海军蓝。 */
-  body[data-ds-dark-theme][data-we-glass-page] :where([data-chat-flow]) {
+  body[data-ds-dark-theme][data-we-glass-page] {
     --dsw-alias-bg-layer-1: color-mix(in srgb,
       var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
       color-mix(in srgb, var(--we-surface-tint-dark, #0d1524) calc(var(--we-glass-alpha, 0.5) * 0.9 * 100%), transparent) calc((1 - var(--we-readability-floor)) * 100%));

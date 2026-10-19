@@ -58,7 +58,7 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { moduleScopeOf, stripComments, functionBodyOf } from './tools/js-text.mjs';
-import { buildIndex, rowRegistrationCounts, MAIN_MODULES, SUBPACKAGE_MODULES } from './tools/host-route-index.mjs';
+import { buildIndex, rowRegistrationCounts, classifyRowShape, MAIN_MODULES, SUBPACKAGE_MODULES } from './tools/host-route-index.mjs';
 import { createSubpackageHost, provideSubpackageHost } from '../lib/subpackage-boot.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -801,7 +801,7 @@ section('⑥ 组件行（P2-1/P2-2，逐行数据驱动）：patch 子行 ⇄ ex
       && freshProbe.missing.every((n, i) => n === probeDeclared[i]),
     freshProbe === null ? '读不到探针' : 'loaded ' + JSON.stringify(freshProbe.loaded) + ' · missing ' + JSON.stringify(freshProbe.missing));
   // 逐行数据驱动：期望条数由"该入口调用了哪些路由族"现算（不写死组件名，也不写死 2）。
-  const { modules: routeMods } = buildIndex();
+  const { modules: routeMods, routes } = buildIndex();
   const perComponent = new Map();
   const componentDisposers = [];
   const countIssues = [];
@@ -851,17 +851,40 @@ section('⑥ 组件行（P2-1/P2-2，逐行数据驱动）：patch 子行 ⇄ ex
   // 那是判据自己缺对象，不是实现少注册 —— 判据必须把每一类行都真跑一遍才配得上"并集"这个词。
   const subCountIssues = [];
   const perSubpackage = [];
+  // 与 `verify-route-index.mjs` ⑤ 共用同一套可数性分流：有的行（桌宠内置包）把路由注册挂在
+  // `ctx.effect(...)` 里，要真 cordis context 才能注册，且它的 `import` 要宿主注入的 peer
+  // （CI 的 `npm ci --omit=peer` 一份都不装）⇒ 这类行**不做**运行时对账，也不能只因为它跑不起来
+  // 就把整条链判红。分类函数是共享单点实现，负对照在 route-index 守卫里。
+  const indexedBySrcRows = new Map();
+  for (const r of routes) {
+    if (!indexedBySrcRows.has(r.src)) indexedBySrcRows.set(r.src, []);
+    indexedBySrcRows.get(r.src).push(r);
+  }
+  const skippedDynamicRows = [];
   for (const rel of SUBPACKAGE_MODULES) {
     // 出户组件由 ⑥ 的组件路径跑（更严：两条装载路径一致性 + 逐组件计数 + 账本），这里跳过以免重复注册。
     if (componentEntryRels.has(rel)) continue;
     const short = rel.replace(/^packages\//, '').split('/')[0];
+    const rowFns = rowRegistrationCounts(rel, routeMods);
+    const rowIndexed = indexedBySrcRows.get(rel) || [];
+    const rowKind = classifyRowShape(rowFns.fns, rowIndexed);
+    if (rowKind === 'context-only') {
+      skippedDynamicRows.push(...rowIndexed);
+      perSubpackage.push(short + '=ctx-only（跳过运行时对账）');
+      continue;
+    }
+    if (rowKind === 'unnamed') {
+      subCountIssues.push(short + ' 有 ' + rowIndexed.length + ' 条静态路由，却没有任何可数的 register 调用点');
+      perSubpackage.push(short + '=未命名');
+      continue;
+    }
     const before = registered.length;
     const subMod = await import(pathToFileURL(join(ROOT, rel)).href);
     const subApply = subMod.apply || (subMod.default && subMod.default.apply);
     const dSub = typeof subApply === 'function' ? subApply(mock) : undefined;
     if (typeof dSub === 'function') componentDisposers.push(dSub);
     const got = registered.length - before;
-    const exp = rowRegistrationCounts(rel, routeMods);
+    const exp = rowFns;
     if (exp.unknown.length) subCountIssues.push(short + ' 的调用点解析不到路由模块：' + exp.unknown.join(' '));
     else if (got !== exp.expected) subCountIssues.push(short + ' 注册 ' + got + ' 条 ≠ 路由族 ' + exp.expected + ' 条（' + exp.fns.join(' ') + '）');
     perSubpackage.push(short + '=' + got);

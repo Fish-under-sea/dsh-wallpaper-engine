@@ -247,7 +247,12 @@ function buildVideoMedia(sel, fitClass) {
     if (stillPreview) media.poster = sel.previewUrl;
   }
   media.autoplay = true;
-  media.loop = true;
+  // 轮播「当前视频播完就换下一张」档（issue #230 后续）必须**关掉 loop** ——
+  // `loop` 会让元素循环播放、`ended` 永远不触发，那条轮换信号就发不出来。
+  // 其他档照旧 loop（壁纸单张循环是产品语义）。`activeRotationGroup` 在单文件 import
+  // 的沙箱里不存在 ⇒ 用 typeof 探，缺省按 loop 开（安全方向：不改变既有行为）。
+  media.loop = !(typeof activeRotationGroup === "function"
+    && (() => { const g = activeRotationGroup(); return Boolean(g) && g.trigger === "videoEnd"; })());
   // ⚠️ 必须显式 `preload="auto"`：缺省（=metadata）+ 这几张源的 moov 在文件**尾部** ⇒
   // Chromium 取完 moov 就停，真正开始取帧要等 `play()` —— 而 play() 在**更晚的一趟**
   // syncLayers 里才被调用（自动播放被策略拒绝时那一趟永远不会来）。真机日志（桌面壳）

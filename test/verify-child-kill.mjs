@@ -99,6 +99,8 @@ function unmonitoredSpawns(code) {
 function listLib(dir = LIB, out = []) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const abs = join(dir, entry.name);
+    // 与 guard-targets 的发行面一致；历史恢复点不是当前运行的宿主入口。
+    if (relative(ROOT, abs).split('\\').join('/') === 'packages/pet/lib/pet-link-backups') continue;
     if (entry.isDirectory()) { listLib(abs, out); continue; }
     if (!entry.name.endsWith('.js')) continue;
     const rel = relative(ROOT, abs).split('\\').join('/');
@@ -238,6 +240,33 @@ const readRepoFirst = (...rels) => {
   check('negative control(B): 同一条判据吃"legacy.js 的 error 监听被改名"的变异体必须报红',
     bad.length >= 2 && sites >= 2,
     '报出=' + JSON.stringify(bad.map((b) => 'lib/' + rel + ':' + b.line + ' ' + b.recv)));
+}
+
+// 直接执行两份发行入口中的真实停止方法，不启动子进程。
+for (const rel of ['packages/pet/lib/index.js', 'packages/pet/lib/standalone.js']) {
+  const source = readFileSync(join(ROOT, rel), 'utf8');
+  const methods = source.slice(source.indexOf('\tstop(reason ='), source.indexOf('\tscheduleRestart()'));
+  const run = async (code, pid) => {
+    const signals = [];
+    let waits = 0;
+    const Helper = new Function('waitForChildExit', 'HELPER_STOP_TIMEOUT_MS',
+      'return class {' + code + '\n}')(async (child, ms, escalate) => { waits++; escalate(); }, 3000);
+    const helper = new Helper();
+    helper.logger = {};
+    helper.child = { pid, kill: (signal) => signals.push(signal || 'SIGTERM') };
+    await helper.stopAndWait();
+    return { signals, waits, stopping: helper.stopping };
+  };
+  const missing = await run(methods, undefined);
+  const spawned = await run(methods, 1234);
+  check(rel + '：无 pid 时不发信号、不等待不存在的进程',
+    missing.stopping === true && missing.signals.length === 0 && missing.waits === 0, JSON.stringify(missing));
+  check(rel + '：有 pid 时保留 SIGTERM、等待与 SIGKILL 升级',
+    spawned.stopping === true && spawned.waits === 1 && spawned.signals.join(',') === 'SIGTERM,SIGKILL', JSON.stringify(spawned));
+  const mutant = methods.replaceAll(' || child.pid === undefined', '');
+  const unguarded = await run(mutant, undefined);
+  check(rel + '：移除真实 pid 守卫的变异体必须误杀无 pid 句柄',
+    mutant !== methods && unguarded.signals.length > 0 && unguarded.waits === 1);
 }
 
 const failed = results.filter((r) => !r.ok);

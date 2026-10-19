@@ -257,11 +257,16 @@ assert.ok(!code.includes(wallpaperGatedSidebarSelector), 'legacy wallpaper-gated
 // 把让开那两条挪进页面玻璃块 ⇒ 第二条红。
 // 朴素块体切片：实现在 `test/tools/assert-harness.mjs`（契约 = 两个 `indexOf`，不跳字符串/注释）。
 const blockBodyOf = (needle) => naiveBlockBody(code, needle);
-const pageGlassBlock = blockBodyOf('body[data-we-glass-page] :where([data-chat-flow]) {');
+const pageGlassBlock = blockBodyOf('body[data-we-glass-page] {');
 const wallpaperBlock = blockBodyOf('body[data-we-wallpaper] {');
 assert.ok(pageGlassBlock && pageGlassBlock.includes('--dsw-alias-bg-layer-1')
   && pageGlassBlock.includes('--dsw-alias-markdown-code-block'),
   'page-glass token mapping must sit on body[data-we-glass-page] (glass works without a wallpaper)');
+// ⚠️ 作用域是**整页**，不是聊天流：5cabb9e1 曾把它收窄成 :where([data-chat-flow])，
+//    于是宿主自己的侧栏按钮 / 右栏页签栏 / 设置窗卡片全部退回实底（用户报障）。
+//    这条负对照把"再收窄回去"钉成红。
+assert.ok(!code.includes('body[data-we-glass-page] :where([data-chat-flow])'),
+  'page-glass token mapping must stay page-wide (host chrome outside the chat flow needs it too)');
 assert.ok(wallpaperBlock && wallpaperBlock.includes('--dsw-alias-bg-base: transparent')
   && !wallpaperBlock.includes('--dsw-alias-bg-layer-1'),
   'the page-let-the-wallpaper-through block stays wallpaper-only (no glass mapping inside)');
@@ -1423,7 +1428,13 @@ setTimeout(async () => {
     //    "它是一道折叠门（可收起）"这件事由下面的 aria-expanded 与翻转用例承担，
     //    不再靠"默认收起所以看不见"来表达。 ──
     assert.equal(findCtlInput(tree, '侧栏玻璃·独立配置'), null, '设置页不画「侧栏玻璃·独立配置」（已迁侧栏折叠块）');
-    assert.equal(findCtlInput(tree, '内容面玻璃·独立配置'), null, '设置页不画「内容面玻璃·独立配置」（已迁侧栏折叠块）');
+    // ⚠️ **内容面是这一族的例外**（用户口径："侧边栏阅读文件页面的背景底色的设置被删除了，
+    //    需要找回"）：它此前也只在侧栏「详细玻璃调节」展开时才可达 ⇒ 设置页与侧栏收起态
+    //    **两条路都够不着**，观感就是"设置没了"。这一面看的是正文（阅读文件页 / 编辑器 /
+    //    终端），调整期望远高于其余独立配置 ⇒ 从折叠块里提出来、**两档都画**
+    //    （仍在节的 `open` 门内，节收起时随节收起）。
+    assert.ok(findCtlInput(tree, '内容面玻璃·独立配置'),
+      '设置页必须画「内容面玻璃·独立配置」（阅读页底色 / 透明度的唯一入口，用户要求找回）');
     assert.equal(findSliderRow(tree, '侧栏模糊'), null, '设置页不画「侧栏模糊」（精确标签，防 tooltip 骗过）');
     assert.equal((JSON.stringify(tree).match(/"aria-label":"侧栏玻璃颜色 /g) || []).length, 0,
       '设置页不画侧栏玻璃颜色色板（已迁侧栏折叠块）');

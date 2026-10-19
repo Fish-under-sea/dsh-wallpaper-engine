@@ -1048,6 +1048,7 @@ function seedGroupsFromPlaylists() {
     name: typeof source.name === "string" && source.name.trim() ? source.name.trim() : weT("轮播列表"),
     interval: DEFAULTS.rotationInterval,
     order: source.order === "random" ? "random" : "sequence",
+    trigger: "interval",
     wallpaperIds: ids,
   });
   selection.rotationGroupId = selection.rotationGroups[selection.rotationGroups.length - 1].id;
@@ -1113,8 +1114,16 @@ function syncRotationTimer() {
   clearRotationTimer();
   if (!selection.rotationEnabled || !selection.id) return;
   if (rotationCandidates().length < 2) return;
-  if (typeof window === "undefined" || typeof window.setTimeout !== "function") return;
   const group = activeRotationGroup();
+  // 「当前视频播完就换」档（issue #230 后续诉求）：**不计时** —— 推进由视频的 ended
+  // 事件驱动（watchVideoState 里那一支）。这里只把上一次留下的计时收掉（上面已调
+  // clearRotationTimer），于是切回「按间隔」档时由下一次 sync 重新 arm。
+  const trigger = group && group.trigger === "videoEnd" ? "videoEnd" : "interval";
+  if (trigger === "videoEnd") {
+    liveLog("rotation-arm", "跟随视频播放结束（不计时，候选 " + rotationCandidates().length + " 张）");
+    return;
+  }
+  if (typeof window === "undefined" || typeof window.setTimeout !== "function") return;
   const minutes = group ? group.interval : DEFAULTS.rotationInterval;
   // 开发/测试覆盖钩子：localStorage.weRotationTestSec（秒）可临时缩短轮换
   // 间隔（冒烟测试与手动预览用）；未设置时按组间隔正常运转（缺省值见 lib/settings-schema.js
@@ -1286,6 +1295,7 @@ function startCreateGroup() {
     name: weT("轮播列表 {index}", { index: selection.rotationGroups.length + 1 }),
     interval: DEFAULTS.rotationInterval,
     order: "sequence",
+    trigger: "interval",
     wallpaperIds: [],
   });
   emit();
@@ -1298,7 +1308,8 @@ function saveEditingGroup() {
   const cleaned = {
     id: draft.id,
     name: typeof draft.name === "string" && draft.name.trim() ? draft.name.trim() : weT("轮播列表"),
-    interval: clampNum(draft.interval, ...schemaRange("rotationInterval"), DEFAULTS.rotationInterval),
+    interval: clampNum(draft.interval, ROTATION_INTERVAL_MIN, ROTATION_INTERVAL_MAX, DEFAULTS.rotationInterval),
+    trigger: draft.trigger === "videoEnd" ? "videoEnd" : "interval",
     order: draft.order === "random" ? "random" : "sequence",
     wallpaperIds: Array.isArray(draft.wallpaperIds)
       ? draft.wallpaperIds.filter((x) => typeof x === "string" && x)
@@ -1810,6 +1821,27 @@ function watchVideoState(video) {
   for (const t of ["play", "playing", "pause", "ended", "error", "emptied"]) {
     try { video.addEventListener(t, () => syncVideoState(video)); } catch { /* ignore */ }
   }
+  // 「当前视频播完就换下一张」（issue #230 后续诉求）：轮播组选了 `trigger: 'videoEnd'`
+  // 时，壁纸视频的 ended 就是轮换信号 —— 与计时器二选一（syncRotationTimer 在该档不计时）。
+  // 只认**当前层**那个 <video>：预热 / 探测元素也走 watchVideoState，它们播完不代表壁纸播完。
+  // `loop` 会把 ended 吞掉，所以按 trigger 在建层时关掉 loop（见 video-layer 的
+  // loop 分支）—— 这里再加一道 `video.loop` 判断，防止旧层残留的 ended 误触。
+  try {
+    video.addEventListener("ended", () => {
+      if (video.loop) return;
+      if (!selection.rotationEnabled || !selection.id) return;
+      const group = activeRotationGroup();
+      if (!group || group.trigger !== "videoEnd") return;
+      const cur = (selection.inventory && selection.inventory.wallpapers || []).find((w) => w && w.id === selection.id);
+      // 只对**视频**壁纸生效：场景内嵌视频播完不等于场景结束（它可能还有别的动画）；
+      // 图片 / 网页壁纸没有 ended 语义，真出现了也按"不是这个档该管的事"跳过。
+      if (!cur || cur.type !== "video") return;
+      if (video.currentSrc && selection.url && video.currentSrc.indexOf(String(selection.url).split("?")[0]) < 0) return;
+      if (rotationCandidates().length < 2) return;
+      liveLog("rotation-video-end", "视频播完 → 换下一张（候选 " + rotationCandidates().length + " 张）");
+      beginRotationPrepare(new Set());
+    });
+  } catch { /* ignore */ }
   // 媒体就绪后按意图自动补一次播放：play() 最常见的失败是被紧接着的 src 切换
   // （转码替换 / 换源）打断 —— 那一刻元素已经 paused，用户看到的就是冻在首帧
   // 的静止画面。就绪事件里重试即可自愈；真的被拒过时由 wePlayRefused 兜底，
@@ -2272,7 +2304,16 @@ function onEditName(e) {
 }
 function onEditInterval(e) {
   if (!selection.editing) return;
-  selection.editing.interval = clampNum(Number(e.target.value), ...schemaRange("rotationInterval"), DEFAULTS.rotationInterval);
+  // ⚠️ 取值域用 ROTATION_INTERVAL_MIN/MAX 而不是 schemaRange("rotationInterval")：
+  // `rotationInterval` 是 DEFAULTS_ONLY 键（**不在 KINDS 里**）⇒ 问 KINDS 得到的是
+  // [undefined, undefined] ⇒ clampNum 恒回落默认值 30，界面上"选任何时间都无效"
+  // （issue #230 的根因）。真源见 lib/settings-schema.js 的那对常量。
+  selection.editing.interval = clampNum(Number(e.target.value), ROTATION_INTERVAL_MIN, ROTATION_INTERVAL_MAX, DEFAULTS.rotationInterval);
+  emit();
+}
+function onEditTrigger(e) {
+  if (!selection.editing) return;
+  selection.editing.trigger = e.target.value === "videoEnd" ? "videoEnd" : "interval";
   emit();
 }
 function onEditOrder(e) {
@@ -2712,6 +2753,13 @@ async function postImageAsset(path, blob, what) {
 function onAvatarEnabled(e) { setSetting("avatarEnabled", e.target.checked); emit(); }
 function onAvatarSize(v, live) { commitLiveSetting("avatarSize", v, live); if (live) syncAvatarLayer(); }
 function onAvatarRadius(v, live) { commitLiveSetting("avatarRadius", v, live); if (live) syncAvatarLayer(); }
+/** 助手头像的出现间隔（issue #231）：只影响分组判定，没有样式变量 ⇒ 抬手那一次 emit 重算即可
+ *  （渲染器不重算分组；分组由 emit 订阅链里的 syncAvatarLayer 触发，见下）。 */
+function onAvatarAiRepeatRows(v, live) {
+  // 取值域走 schemaRange（与其它滑块同一口径：改 KINDS 不会漏改这里的第二份数字）。
+  commitLiveSetting("avatarAiRepeatRows", clampNum(Math.round(Number(v)), ...schemaRange("avatarAiRepeatRows"), DEFAULTS.avatarAiRepeatRows), live);
+  if (live) syncAvatarLayer();
+}
 // 上传裁切（issue #191 问题 1）：用户口径是"上传非正方形、或主体不在中央时效果很差"。
 // 做法是**导入时先裁再传**（而不是存裁切参数第二次渲染）：
 //   · 盘上那张就是裁完的方形图 ⇒ 预览、会话里、以及"以后任何读到它的地方"天然一致，
@@ -2809,10 +2857,15 @@ async function openAvatarCrop(side, file) {
     return;
   }
   let url;
+  // ⚠️ `w` / `h` 必须声明在 try **之外**：它们要在 catch 之后写进瞬态（`avatarCropW/H`）。
+  // 写进 try 内曾让这两行抛 `ReferenceError: w is not defined` —— 结果是裁切弹窗弹出但
+  // 几何恒为 0（图不可见）、且 `emit()` 永远到不了（首次选图界面毫无反应）。
+  let w;
+  let h;
   try {
     const src = await decodeImageFile(file);
-    const w = Number(src.width) || 0;
-    const h = Number(src.height) || 0;
+    w = Number(src.width) || 0;
+    h = Number(src.height) || 0;
     if (src.close) { try { src.close(); } catch { /* ignore */ } }
     if (!w || !h) throw new Error(weT("读不出图片尺寸"));
     url = URL.createObjectURL(file);
@@ -2871,21 +2924,70 @@ function avatarCropGeometry() {
     dy: -slackY * ny,
   };
 }
-/** 拖动取景：把指针位移换成归一化平移（1 = 可用位移的满量）。 */
+/**
+ * 拖动 / 缩放期间把取景框里那张图**就地**挪到新几何（live 档的"看得见的那部分"）。
+ *
+ * 为什么不是 emit：拖动与滚轮一次就是上百个事件，emit 会重渲染整棵设置面板（与
+ * `commitLiveSetting` 的两档纪律相同）。渲染器只在完整渲染时按 ctx 里的几何写 inline
+ * style，而 live 档**没有**重渲染 ⇒ 图必须由这里自己挪。几何仍然只来自唯一实现
+ * `avatarCropGeometry()`；抬手那一次照常 emit，React 写回的值与这里逐字相同。
+ */
+function syncAvatarCropLive() {
+  if (typeof document === "undefined" || typeof document.querySelector !== "function") return;
+  let view;
+  try { view = document.querySelector(".we-crop__view"); } catch { return; }
+  const img = view && typeof view.querySelector === "function" ? view.querySelector(".we-crop__img") : null;
+  if (!img || !img.style) return;
+  const geo = avatarCropGeometry();
+  img.style.width = geo.dw + "px";
+  img.style.height = geo.dh + "px";
+  img.style.left = ((AVATAR_CROP_VIEW - geo.dw) / 2 + geo.dx) + "px";
+  img.style.top = ((AVATAR_CROP_VIEW - geo.dh) / 2 + geo.dy) + "px";
+  // 缩放滑块也跟着回真值：live 档没有重渲染，不补这一下，滚轮放大了图而滑块还停在 100%
+  // （滑块自己的 liveFill 只在**它的** input 事件里跑，滚轮不经过它）。
+  try {
+    const row = document.querySelector(".we-crop");
+    const range = row && typeof row.querySelector === "function" ? row.querySelector('input[type="range"]') : null;
+    if (!range) return;
+    const pct = Math.round((Math.max(1, Number(selection.avatarCropZoom) || 1)) * 100);
+    range.value = String(pct);
+    const lo = Number(range.min); const hi = Number(range.max);
+    if (typeof range.style.setProperty === "function" && isFinite(lo) && isFinite(hi) && hi > lo) {
+      range.style.setProperty("--we-fill", ((pct - lo) / (hi - lo) * 100) + "%");
+    }
+    const out = row.querySelector(".we-picker__value");
+    if (out) out.textContent = pct + "%";
+  } catch { /* 回显是增强，失败不影响取值 */ }
+}
+/** 拖动取景：把**这一步**的指针增量换成归一化平移（1 = 可用位移的满量）。 */
 function onAvatarCropDrag(dxPx, dyPx) {
   const geo = avatarCropGeometry();
   const slackX = Math.max(0, (geo.dw - AVATAR_CROP_VIEW) / 2);
   const slackY = Math.max(0, (geo.dh - AVATAR_CROP_VIEW) / 2);
   const nx = slackX > 0 ? (Number(selection.avatarCropX) || 0) - dxPx / slackX : 0;
   const ny = slackY > 0 ? (Number(selection.avatarCropY) || 0) - dyPx / slackY : 0;
-  // 拖动是"看得见的那部分" ⇒ 走 live 档（面板不重渲染；预览图由控件按新值自己挪）。
+  // 拖动是"看得见的那部分" ⇒ 走 live 档（面板不重渲染），图由 syncAvatarCropLive 就地挪。
   commitLiveTransient("avatarCropX", Math.max(-1, Math.min(1, nx)), true);
   commitLiveTransient("avatarCropY", Math.max(-1, Math.min(1, ny)), true);
+  syncAvatarCropLive();
 }
-/** 缩放取景（滚轮 / 滑块）。 */
+/** 缩放取景（滑块：绝对值）。 */
 function onAvatarCropZoom(z, live) {
   const v = Math.max(1, Math.min(4, Number(z) || 1));
   commitLiveTransient("avatarCropZoom", v, live);
+  if (live) syncAvatarCropLive();
+}
+/**
+ * 滚轮缩放（增量）。**必须从 `selection` 现读当前值**：live 档不 emit，渲染器手里的
+ * `sel.avatarCropZoom` 会停在事件发生前那一版 —— 拿它累加的话连滚十格也只放大一步。
+ */
+function onAvatarCropWheel(delta) {
+  const cur = Math.max(1, Number(selection.avatarCropZoom) || 1);
+  // 按百分位取整：滚轮一格是 ±0.1，浮点累加会留下 1.2000000000000002 这类尾巴
+  // （它会被写进滑块回显，也让「滚十格正好到上限」变得不确定）。
+  const v = Math.round(Math.max(1, Math.min(4, cur + (Number(delta) || 0))) * 100) / 100;
+  commitLiveTransient("avatarCropZoom", v, true);
+  syncAvatarCropLive();
 }
 /** 把取景框里那一块**按原图分辨率**裁出来（再用既有 downscale 链缩到 512）。 */
 async function cropAvatarToBlob() {
@@ -3800,12 +3902,31 @@ const onEdgeCompatChange = (checked) => {
 };
 // Per-group interval: writes straight into the active group so each rotation
 // list keeps its own switch cadence.
-const onGroupInterval = (e) => {
+function onGroupInterval(e) {
   const group = activeRotationGroup();
   if (!group) return;
-  group.interval = clampNum(Number(e.target.value), ...schemaRange("rotationInterval"), DEFAULTS.rotationInterval);
+  group.interval = clampNum(Number(e.target.value), ROTATION_INTERVAL_MIN, ROTATION_INTERVAL_MAX, DEFAULTS.rotationInterval);
   persistSelection();
   syncRotationTimer();
+  emit();
+};
+/**
+ * 轮播推进方式（「按间隔」/「当前视频播完就换」）。写进**当前列表**（与 interval 同口径：
+ * 每个列表记自己的节奏），然后重排计时器 —— 视频结束档要在建层时关掉 loop，而已经上屏
+ * 的那一层不会自己变，所以这里额外触发一次层同步。
+ */
+const onGroupTrigger = (e) => {
+  const group = activeRotationGroup();
+  if (!group) return;
+  group.trigger = e.target.value === "videoEnd" ? "videoEnd" : "interval";
+  persistSelection();
+  syncRotationTimer();
+  // 已经上屏的视频层要跟着换 loop 语义（否则"切到视频结束档"要等下一次换壁纸才生效）。
+  const layer = typeof document !== "undefined" && document.getElementById ? document.getElementById(LAYER_ID) : null;
+  const media = layer && typeof layer.querySelector === "function" ? layer.querySelector("video") : null;
+  if (media && "loop" in media) {
+    try { media.loop = group.trigger !== "videoEnd"; } catch { /* ignore */ }
+  }
   emit();
 };
 // 「删除」按钮**只置令牌**；真正的删除在问句行的「确认」里（不变量 2）。两件事分开的
@@ -4364,9 +4485,9 @@ function WallpaperPicker() {
     // **插件前端那一块自己的开关**（用户诉求 m03549）关着时层也不认它们，面板就跟着空 ——
     // 名单与"真的会动"必须同源，否则会出现点了没反应的滑杆。它与「界面元素跟随」互不依赖。
     parallaxPluginSlots: sel.parallaxPlugin === true ? weDiscoveredGroupsOf('parallax').sort() : [],
-    onAvatarEnabled, onAvatarSize, onAvatarRadius, onAvatarPick, onAvatarClear,
+    onAvatarEnabled, onAvatarSize, onAvatarRadius, onAvatarAiRepeatRows, onAvatarPick, onAvatarClear,
     // 上传裁切（issue #191 问题 1）：几何在这里现算（唯一实现），渲染器只读结果。
-    onAvatarCropZoom, onAvatarCropDrag, onAvatarCropConfirm, onAvatarCropCancel: closeAvatarCrop,
+    onAvatarCropZoom, onAvatarCropDrag, onAvatarCropWheel, onAvatarCropConfirm, onAvatarCropCancel: closeAvatarCrop,
     avatarCropGeo: avatarCropGeometry(), avatarCropView: AVATAR_CROP_VIEW,
     // 超限拦截（#185 后续）：面板画提示行 + 「自动压缩后导入」按钮，处理器在 client 这一侧。
     onAvatarAutoCompress,
@@ -4440,7 +4561,7 @@ function WallpaperPicker() {
     );
     return renderWallpaperTab({
       setSetting, setTransient,
-      INTERVALS, armedConfirm: sel.armedConfirm, cdMode, current, editing, editorPageView, group, groups, isLiveScene, onArmConfirm: armConfirm, onArmDeleteGroup, onCancelEditUploadDir, onCancelEditWeAssetsDir, onClear, onDeleteGroup, onDisarmConfirm: disarmConfirm, onEditInterval, onEditName, onEditOrder, onGroupChange, onGroupInterval, onOpenPicker, onOpenPickerDraft, onRefresh, onStartEditUploadDir, onStartEditWeAssetsDir, onSwitchTransition, onSwitchTransitionDir, onSwitchTransitionSpeed, onToggleAudio, onTogglePlay, onTogglePropsPanel, onToggleRotation, onUploadDirDraft, onWeAssetsDirDraft, pagerRow, playableCount, playableList, playbackLive, propsPanelOpen, renderUserPropsPanel, sel, setPickerOpener, uploadedList,
+      INTERVALS, armedConfirm: sel.armedConfirm, cdMode, current, editing, editorPageView, group, groups, isLiveScene, onArmConfirm: armConfirm, onArmDeleteGroup, onCancelEditUploadDir, onCancelEditWeAssetsDir, onClear, onDeleteGroup, onDisarmConfirm: disarmConfirm, onEditInterval, onEditName, onEditOrder, onEditTrigger, onGroupChange, onGroupInterval, onGroupTrigger, onOpenPicker, onOpenPickerDraft, onRefresh, onStartEditUploadDir, onStartEditWeAssetsDir, onSwitchTransition, onSwitchTransitionDir, onSwitchTransitionSpeed, onToggleAudio, onTogglePlay, onTogglePropsPanel, onToggleRotation, onUploadDirDraft, onWeAssetsDirDraft, pagerRow, playableCount, playableList, playbackLive, propsPanelOpen, renderUserPropsPanel, sel, setPickerOpener, uploadedList,
     });
   };
   const tabIdx = Math.max(0, visibleTabs.findIndex((t) => t.id === activeTab));

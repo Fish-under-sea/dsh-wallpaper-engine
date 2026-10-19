@@ -371,7 +371,12 @@ const CSS_PANEL = `  /* ── 吉祥物形态**3D 圆环转盘**（四次返工
      (1 - readability-floor) 地板段，随「设置窗口·透明度」滑杆变化。挂 data-we-glass-page
      门（applyGlass 恒挂 ⇒ 规则匹配时 --we-settings-window-alpha 必已写出，按面变量零兜底，
      与 ⑬ 契约同判据）；readability-base/floor 无兜底（styles-base 声明、F1c 锁定），
-     tint 保留缺省形态。深色整组分叉（tint-dark/floor-deep）。 */
+     tint 保留缺省形态。深色整组分叉（tint-dark/floor-deep）。
+     ⚠️ 上游 99e1869 主张把这一整块删掉、让自有控件吃 body 级页面令牌 —— 那是针对
+     「92% 实底」旧形态的修法。本基线已把这块换成与设置窗同源的**两段玻璃配方**
+     （不是实底），并带 computed 精确判据（verify-glass-runtime-browser 的
+     「own四元素=两段配方解析值」+ 两条反事实负控）⇒ 观感与宿主面一致，且比吃页面
+     令牌更贴合「设置窗口·透明度」这根滑杆。所以这里保留本基线版本，不取上游的删除。 */
   body[data-we-glass-page] .we-picker,
   body[data-we-glass-page] .we-picker__modal,
   body[data-we-glass-page] .we-qp {

@@ -22,6 +22,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import assert from 'node:assert/strict';
+import { ensureUpstreamSource } from './tools/upstream-source.mjs';
 import {
   upstreamForkOf, sourceOf,
 } from './tools/subpackage-shapes.mjs';
@@ -55,7 +57,52 @@ check('清单带 _upstream 来源登记（package/version/sha256/bytes/entries �
   && petManifest._upstream.bytes === src.bytes
   && petManifest._upstream.entries === src.entries,
   JSON.stringify(petManifest._upstream));
-check('上游 tgz 在盘且字节数/条目数与登记一致',
+// 干净 checkout 没有本机忽略的归档；准备路径必须可复现，不能跳过来源校验。
+{
+  const dir = mkdtempSync(join(tmpdir(), 'we-pet-source-'));
+  const bytes = Buffer.from('pinned source archive');
+  const fixture = { ...src, tgz: '.artifacts/source.tgz', bytes: bytes.length,
+    sha256: createHash('sha256').update(bytes).digest('hex') };
+  const response = (body, status = 200) => ({ ok: status === 200, status, arrayBuffer: async () => body });
+  const cases = [
+    ['缺缓存时只获取固定版本 URL，验证后落盘', async (root) => {
+      const urls = [];
+      const path = await ensureUpstreamSource(fixture, { root, fetchImpl: async (url) => { urls.push(url); return response(bytes); } });
+      assert.deepEqual(urls, ['https://registry.npmjs.org/dsh-pet/-/dsh-pet-0.3.7.tgz']);
+      assert.deepEqual(readFileSync(path), bytes);
+    }],
+    ['有效缓存不联网，损坏缓存不得放行或被悄悄覆盖', async (root) => {
+      const path = join(root, fixture.tgz);
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, bytes);
+      const options = { root, fetchImpl: async () => { throw new Error('cache must not fetch'); } };
+      assert.equal(await ensureUpstreamSource(fixture, options), path);
+      const bad = Buffer.alloc(bytes.length, 0);
+      writeFileSync(path, bad);
+      await assert.rejects(ensureUpstreamSource(fixture, options), /sha256/);
+      assert.deepEqual(readFileSync(path), bad);
+    }],
+    ...[
+      ['HTTP 失败', async () => response(bytes, 503), /HTTP 503/],
+      ['网络失败', async () => { throw new Error('fixture network failure'); }, /network failure/],
+      ['长度不符', async () => response(Buffer.from('short')), /bytes/],
+      ['同长但哈希不符', async () => response(Buffer.alloc(bytes.length, 0)), /sha256/],
+    ].map(([label, fetchImpl, error]) => [label + '不留下可信归档', async (root) => {
+      await assert.rejects(ensureUpstreamSource(fixture, { root, fetchImpl }), error);
+      assert.equal(existsSync(join(root, fixture.tgz)), false);
+    }]),
+  ];
+  try {
+    for (const [i, [label, run]] of cases.entries()) {
+      const root = join(dir, String(i));
+      try { await run(root); check('来源准备：' + label, true); }
+      catch (e) { check('来源准备：' + label, false, e.message); }
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}
+try { await ensureUpstreamSource(src, { root: ROOT }); }
+catch (e) { check('固定来源归档准备成功（字节数 + sha256）', false, e.message); }
+check('上游 tgz 在盘且字节数与登记一致（归档另验 sha256）',
   isFile(join(ROOT, src.tgz)) && statSync(join(ROOT, src.tgz)).size === src.bytes,
   '期望 ' + src.bytes + ' B');
 check('LICENSE 与派生说明在发行面内（MIT 派生必须随包带许可）',

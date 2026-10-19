@@ -619,10 +619,15 @@ function main() {
   // ── F3: the content plate uses a literal max() clamp on its own alpha ──────
   const contentProp = 'background-color';
   const contentRules = rulesWithProp(contentProp)
-    .filter((r) => /data-we-surface-runtime="content"|\.dshDesktopSidebarSurface/.test(r.header));
+    // [data-document-preview] = 阅读文件页（宿主 sidebar-documentpreview 的根），
+    // 它同样吃这张内容面底板（issue 现场：那一页的底色设置"被删了"）⇒ F3 也要护它。
+    .filter((r) => /data-we-surface-runtime="content"|\.dshDesktopSidebarSurface|\[data-document-preview\]/.test(r.header));
   const CONTENT_TOKEN = 'max(calc(var(--we-readability-floor) * 100%), var(--we-content-surface-alpha, 88%))';
   const protectedContent = r => r.body.includes(CONTENT_TOKEN);
   check('F3 the editor/terminal content plate clamps its own alpha with max()',
+    // 门槛 = 实测条数（内容面底板在本分支上实测 4 条：表面策略的 content 规则 +
+    // 阅读文件页那条兜底 + 软件回退的两条同族规则）。⚠️ 曾按旧分支写死 >=3 而动过口径；
+    // 现在按"每条都必须带钳制"做判据，条数只做"不是空转"的下限（留一条余量）。
     contentRules.length >= 3 && contentRules.every(protectedContent)
       && !protectedContent({ body: contentRules[0].body.replace(CONTENT_TOKEN, '0%') }),
     contentRules.length + ' content rule(s), all carrying ' + CONTENT_TOKEN);

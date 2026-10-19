@@ -298,14 +298,14 @@ export function subpackageModules() {
 
 /**
  * 子包行的宿主入口**双向对账**（纯函数，供守卫做负对照 —— 合成输入必须喂**同一个**判据）：
- *   · patch 里每条子包行（`<主包名>-<pkg>`，裸名）都必须在
+ *   · patch 里每条独立子包行（排除主包与子路径行）都必须在
  *     `packages/<dir>/package.json` 里被 `name` 逐字认领（否则是死行）；
  *   · 每个包都必须有行（只看磁盘 ⇒ 还没登记的包会被当成"运行时会注册的行"，§2.2 的静默失效）；
  *   · 认领到的 `main` 必须解析到**磁盘上存在**的文件（缺入口 = 行装不起来，`MAIN_MODULES` 会静默少一行）。
  * `fileExists(rel)` 注入 ⇒ 合成 "main 指向不存在的路径" 也能走同一条判据。返回违规清单（空 = 干净）。
  */
 export function subpackageModuleViolations(rows, packages, fileExists) {
-  const rowSet = new Set(rows.filter((n) => n.startsWith(PKG_NAME + '-') && !n.includes('/')));
+  const rowSet = new Set(rows.filter((n) => n !== PKG_NAME && !n.includes('/')));
   const bad = [];
   const claimed = new Set();
   for (const p of packages) {
@@ -350,6 +350,44 @@ export const SUBPACKAGE_MODULES = subpackageModules();
  * 组件行出户后，"这一行注册几条"必须由它调用的路由族条数现算，不能写死 2）。
  * 返回 `{ fns, expected, unknown }`：`unknown` 非空 = 调用点解析不到路由模块（判据要红，别静默算 0）。
  */
+/**
+ * 「这一行的注册条数能不能在 webServer-only mock 上跑出来」——**唯一实现**，两个守卫共用。
+ *
+ * 运行时对账的姿势是 `import(入口)` → `apply(mock)` → 数 `webServer.register` 的调用次数，
+ * 再与「该行调用的路由族条数」做等式。它对下面几种形态**不成立**，必须分流：
+ *   · `countable`   —— 有 `registerXxxRoutes(webServer, …)` 调用点 ⇒ 照旧对账。
+ *   · `empty`       —— 无调用点、索引里也没有静态路由 ⇒ 合法的零路由空壳行（fx / parallax）。
+ *   · `context-only`—— 无调用点，索引里**全是** `(动态路径)` ⇒ 注册点藏在上下文里
+ *                      （桌宠内置包：`ctx.effect(() => ctx.webServer.register({…}))`）。
+ *                      这种注册要真 cordis context，mock 给不出；连 `import` 都要宿主注入的
+ *                      peer（`npm ci --omit=peer` 一份都不装）⇒ **不做**运行时对账。
+ *   · `unnamed`     —— 无调用点，却有静态路由 ⇒ 既数不出也跳不得，调用方必须记 issue。
+ * 返回 `{ kind, exp, indexed }`；`indexed` 是索引里 `src === rel` 的那些路由。
+ * 纯函数 + 单点实现：守卫的负对照必须喂**同一个**，否则两处各写一份会悄悄分叉。
+ */
+export function classifyRowShape(fns, indexed) {
+  return fns.length > 0 ? 'countable'
+    : indexed.length === 0 ? 'empty'
+      : indexed.every((r) => r.dynamic) ? 'context-only'
+        : 'unnamed';
+}
+
+/**
+ * 把**已跳过**的 `context-only` 行的那几条动态路由，逐条回源码核「注册点确实包在 ctx.effect 里」。
+ * 光凭"索引里标了 dynamic"就能跳过太松：那样把任意行写成插值路径即可逃掉运行时对账。
+ * 返回无证据的 `path@src:line` 清单（空 = 全部有证据）。
+ */
+export function dynamicRowsWithoutEffectEvidence(skipped) {
+  const bad = [];
+  for (const r of skipped) {
+    const lines = readFileSync(join(ROOT, r.src), 'utf8').split('\n');
+    // 从注册点往上找 `ctx.effect(`（注册点是该回调的第一层语句）。
+    const head = lines.slice(Math.max(0, r.line - 40), r.line).join('\n');
+    if (!/ctx\.effect\(/.test(head)) bad.push(r.path + '@' + r.src + ':' + r.line);
+  }
+  return bad;
+}
+
 export function rowRegistrationCounts(rel, modules) {
   const raw = readFileSync(join(ROOT, rel), 'utf8');
   const byFn = new Map(modules.map((m) => [m.fnName, m.routes.length]));

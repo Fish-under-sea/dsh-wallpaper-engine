@@ -23,7 +23,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { buildIndex, parseRouteModuleText, SUBPACKAGE_MODULES, rowRegistrationCounts } from './tools/host-route-index.mjs';
+import { buildIndex, parseRouteModuleText, SUBPACKAGE_MODULES, rowRegistrationCounts, classifyRowShape, dynamicRowsWithoutEffectEvidence } from './tools/host-route-index.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 let failed = 0;
@@ -211,16 +211,54 @@ console.log('\n⑤ 索引 == 运行时真实注册的路由（唯一能发现"�
   const subpackageDisposers = [];
   const perSubpackage = [];
   const outMovedComponents = new Set(componentEntryRels);
+  // ── 哪些子包行能做「运行时对账」，哪些只能做「静态对账」 ─────────────────────────
+  // 本节的姿势是：`await import(入口)` → `apply(webServer-only mock)` → 数注册条数，再与
+  // 「该行调用的路由族条数」做等式。它对「路由在 apply 里**直接**调
+  // `registerXxxRoutes(webServer, …)`」的行成立，对下面两种不成立：
+  //   · `fns` 为空、索引里却有**静态**路由 ⇒ 注册点藏在别处（门面分发 / 循环）。判据必须红：
+  //     静默算成 0 会让等式对"一支根本不注册的入口"也成立。
+  //   · `fns` 为空、索引里的路由**全是 `(动态路径)`** ⇒ 注册点藏在 `ctx.effect(…)` 里
+  //     （桌宠内置包实测：`ctx.effect(() => ctx.webServer.register({ kind:'prefix',
+  //     path: ROUTE_PREFIX, … }))`）。这种注册**要真的 cordis context**，webServer-only
+  //     mock 给不出来；连 `import` 都要宿主注入的 peer（`@deepseek-ai/dsh-home-paths` /
+  //     `dsh-llm` / `@electron/get`），而 CI 的 `npm ci --omit=peer` 一份都不装。
+  //     ⇒ 这类行**不做**运行时对账，改为静态断言 + 从等式右边扣掉它那几条动态路由。
+  const indexedBySrc = new Map();
+  for (const r of routes) {
+    if (!indexedBySrc.has(r.src)) indexedBySrc.set(r.src, []);
+    indexedBySrc.get(r.src).push(r);
+  }
+  // 纯函数分流走共享实现（`classifyRowShape` / `dynamicRowsWithoutEffectEvidence`）——
+  // 同一套判据另一个守卫 `verify-bundle-rows.mjs` 也在用，两处各写一份会悄悄分叉。
+  const classifyRow = (rel) => {
+    const exp = rowRegistrationCounts(rel, modules);
+    const indexed = indexedBySrc.get(rel) || [];
+    return { kind: classifyRowShape(exp.fns, indexed), exp, indexed };
+  };
+  const skippedDynamic = [];
   for (const rel of SUBPACKAGE_MODULES) {
     // P-F：出户组件已在上面的组件节按门面分发点姿势跑过 ⇒ 这里跳过，避免同一 mock 重复注册。
     if (outMovedComponents.has(rel)) continue;
     const short = rel.replace(/^packages\//, '').split('/')[0];
+    const cls = classifyRow(rel);
+    if (cls.kind === 'context-only') {
+      // 不做运行时对账；它的动态路由**客观存在**，只是数不出来 ⇒ 从等式右边扣掉。
+      skippedDynamic.push(...cls.indexed);
+      perSubpackage.push(short + '=ctx-only（跳过运行时对账）');
+      continue;
+    }
+    if (cls.kind === 'unnamed') {
+      // 有静态路由却找不到调用点：既不能数也不能跳过 —— 记成 issue，让它在本节判据里现形。
+      countIssues.push(short + ' 有 ' + cls.indexed.length + ' 条静态路由，却没有任何可数的 register 调用点');
+      perSubpackage.push(short + '=未命名');
+      continue;
+    }
     const before = registered.length;
     const entry = await import(pathToFileURL(join(ROOT, rel)).href);
     const applyFn = entry.apply || (entry.default && entry.default.apply);
     subpackageDisposers.push(typeof applyFn === 'function' ? applyFn(mock) : undefined);
     const got = registered.length - before;
-    const exp = rowRegistrationCounts(rel, modules);
+    const exp = cls.exp;
     if (exp.unknown.length) countIssues.push(short + ' 调用点解析不到路由模块：' + exp.unknown.join(' '));
     else if (got !== exp.expected) countIssues.push(short + ' 注册 ' + got + ' 条 ≠ 路由族 ' + exp.expected + ' 条（' + exp.fns.join(' ') + '）');
     perSubpackage.push(short + '=' + got);
@@ -228,8 +266,33 @@ console.log('\n⑤ 索引 == 运行时真实注册的路由（唯一能发现"�
   check('每个子包行在同一个 mock 上注册的条数 == 它调用的路由族条数（逐行数据驱动，含零路由空壳行）',
     SUBPACKAGE_MODULES.length >= 1 && countIssues.length === 0,
     countIssues.join('；') || perSubpackage.join(' '));
-  check('运行时注册条数 == 索引行数（裸行 + 组件行 + 子包行的并集）', registered.length === routes.length,
-    `运行时 ${registered.length} / 索引 ${routes.length}`);
+  // 分流的负对照：四个分支各喂一个合成输入，**共享的** classifyRowShape 必须给出各自的分类 ——
+  // 少了这条，把 classifyShape 写成恒返回 'countable' 也照样全绿（那就会重新回到"pet 一 import 就炸"）。
+  {
+    const dyn = { dynamic: true };
+    const stat = { dynamic: false };
+    const cases = [
+      ['可数（有 register 调用点）', classifyRowShape(['registerXRoutes'], [stat]) === 'countable'],
+      ['空壳（无调用点、索引里也没静态路由）', classifyRowShape([], []) === 'empty'],
+      ['只有动态路由（上下文里注册，跳过运行时对账）', classifyRowShape([], [dyn]) === 'context-only'],
+      ['不可数（无调用点却有静态路由 ⇒ 必须报出来）', classifyRowShape([], [stat]) === 'unnamed'],
+    ];
+    const bad = cases.filter((c) => !c[1]).map((c) => c[0]);
+    check('负对照：可数性分流对四种合成输入各归其类（含"不可数必须报错"）', bad.length === 0,
+      bad.length ? '归错类：' + bad.join('、') : cases.map((c) => c[0]).join(' · '));
+  }
+  check('运行时注册条数 == 索引里**可数**路由的条数（裸行 + 组件行 + 子包行的并集）',
+    registered.length === routes.length - skippedDynamic.length,
+    `运行时 ${registered.length} / 索引 ${routes.length} 减 上下文注册 ${skippedDynamic.length}`
+      + (skippedDynamic.length ? '（' + skippedDynamic.map((r) => r.path + '@' + r.src + ':' + r.line).join(' ') + '）' : ''));
+  // 被跳过的那几条，必须有**静态证据**证明它们真的是「在 ctx.effect 里注册」（共享实现）。
+  {
+    const noEvidence = dynamicRowsWithoutEffectEvidence(skippedDynamic);
+    check('被跳过的动态路由都有静态证据：注册点确实包在 ctx.effect(…) 里（防止靠标 dynamic 逃掉对账）',
+      noEvidence.length === 0,
+      noEvidence.length ? '找不到 ctx.effect 包裹：' + noEvidence.join(' ')
+        : skippedDynamic.map((r) => r.path + '@' + r.src + ':' + r.line).join(' ') + ' 均在 ctx.effect 内');
+  }
   // 跨行 (kind, path) 不得重复：宿主对重复注册**可能**抛错（R1 未证实），这里兜底钉住"两行注册面不相交"。
   const keyed = registered.map((r) => r.kind + ' ' + r.path);
   const dupes = [...new Set(keyed.filter((k, i) => keyed.indexOf(k) !== i))];

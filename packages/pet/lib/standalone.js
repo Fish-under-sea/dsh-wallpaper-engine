@@ -723,7 +723,7 @@ var HelperProcess = class {
 		this.restartTimer = void 0;
 		this.logger.debug?.(`dsh-pet desktop helper stopping (${reason})`);
 		const child = this.child;
-		if (!child) return;
+		if (!child || child.pid === undefined) return;
 		child.kill();
 	}
 	/**
@@ -738,7 +738,7 @@ var HelperProcess = class {
 	async stopAndWait(reason = "plugin-disposed", timeoutMs = HELPER_STOP_TIMEOUT_MS) {
 		this.stop(reason);
 		const child = this.child;
-		if (!child) return;
+		if (!child || child.pid === undefined) return;
 		await waitForChildExit(child, timeoutMs, () => {
 			this.logger.warn?.(`dsh-pet desktop helper 未在 ${timeoutMs}ms 内退出，升级 SIGKILL（${reason}）`);
 			try {

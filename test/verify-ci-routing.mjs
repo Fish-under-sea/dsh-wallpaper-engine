@@ -251,6 +251,47 @@ try {
     sForceDocs.code === EXIT_REFUSED,
     'exit=' + sForceDocs.code);
 
+  // ── 新建分支 / 首次推送：push 事件的 before 是**全零 SHA** ──────────────────────
+  // GitHub 在分支此前不存在时把 `before` 填成 40 个 0。它不是 git 对象，直接送去
+  // `git diff` 只会 `fatal: bad object` ⇒ 以前这里**必然误报**（"跑不了"被读成阻断，
+  // 而分支之前根本不存在，整条历史都是本次推送新增的）。语义上空树才是对的边界：
+  // 该提交的全部文件都计为新增，仍在 fail-closed 方向上（差异只会更大，不会漏）。
+  // 两条断言各管一半：①全零 ⇒ 走空树并判 full；②非全零 ⇒ **绝不**走空树（防误判）。
+  const ZERO_SHA = '0'.repeat(40);
+  const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+  const zeroCalls = [];
+  const sZero = runMain(['check', '--base', ZERO_SHA, '--head', 'HEAD', '--base-mode', 'exact', '--json'], {
+    root: repoForce,
+    git: (args) => {
+      zeroCalls.push(args.join(' '));
+      if (args[0] === 'hash-object') return { ok: true, out: EMPTY_TREE + '\n', err: '' };
+      if (args[0] === 'diff') {
+        return { ok: true, out: ':000000 100644 0000000 1111111 A\0app/index.js\0', err: '' };
+      }
+      return { ok: false, out: '', err: '注入：意外参数 ' + args.join(' ') };
+    },
+  });
+  const pZero = jsonOf(sZero.out);
+  add('push 的 before 是全零 SHA（新建分支）⇒ 按空树 diff 判 full，不再 fatal: bad object',
+    sZero.code === 0 && pZero.mode === 'full'
+      && zeroCalls.some((c) => c.startsWith('hash-object'))
+      && zeroCalls.some((c) => c.startsWith('diff --raw') && c.includes(EMPTY_TREE)),
+    'exit=' + sZero.code + ' mode=' + pZero.mode + ' calls=' + JSON.stringify(zeroCalls.slice(0, 3)));
+
+  const realCalls = [];
+  const nonZeroBase = 'abc1234' + 'a'.repeat(33);
+  runMain(['check', '--base', nonZeroBase, '--head', 'HEAD', '--base-mode', 'exact', '--json'], {
+    root: repoForce,
+    git: (args) => {
+      realCalls.push(args.join(' '));
+      if (args[0] === 'diff') return { ok: true, out: ':100644 100644 aaa bbb M\0src/x.js\0', err: '' };
+      return { ok: false, out: '', err: '注入：意外参数 ' + args.join(' ') };
+    },
+  });
+  add('非全零 base 仍原样使用（不得被空树分支误吞）',
+    !realCalls.some((c) => c.startsWith('hash-object')) && realCalls.some((c) => c.includes(nonZeroBase)),
+    'calls=' + JSON.stringify(realCalls.slice(0, 2)));
+
   // ── fail-closed：git 取不到差异 ⇒ 阻断（exit 2），GITHUB_OUTPUT 里 mode=full ──
   const s8 = runMain(['check', '--json'], {
     root: repoRefuse,
