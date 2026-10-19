@@ -626,6 +626,26 @@ async function verifySelectionStateMachines() {
           h.run('buildVideoMedia(selection, "")') === media && media.srcWrites === 1 && !media._loadCount);
       } finally { h.dispose(); }
     }
+    // ── PR#1 ④（适配本仓）：轮播「视频播完就换」档必须**关 loop** ────────────────────
+    // 为什么这是行为级而非源码形状判据：`loop` 会让 `ended` **永不触发** ⇒ 那条换页信号
+    // 根本发不出来（"播完就换"退化成"永远不换"）。真跑 buildVideoMedia 才算数。
+    // 档位由调用方经 `sel.videoEndTrigger` 传进来（视频通道是独立内联模块，看不到
+    // 主作用域的 activeRotationGroup）。
+    {
+      const h = stateMachineHarness(parts);
+      try {
+        Object.assign(h.selection, { type: 'video', url: '/wallpaper-engine/media/fixture-token' });
+        // 默认档（未声明该位）：loop 必须保持 true —— 单张壁纸循环是产品语义。
+        const normal = h.run('buildVideoMedia(selection, " we-media--fit")');
+        checkState('默认档（非 videoEnd）仍然 loop —— 单张壁纸循环语义逐字不变', normal.loop === true);
+        // videoEnd 档：必须关 loop，否则 ended 永不触发。
+        Object.assign(h.selection, { videoEndTrigger: true });
+        const ve = h.run('buildVideoMedia(selection, " we-media--fit")');
+        checkState('videoEnd 档关 loop（否则 ended 永不触发 ⇒「播完就换」永远不换）', ve.loop === false);
+        // 负对照：同一条判据对"开着 loop"必须判假（证明它不是恒真）。
+        checkState('负对照：loop=true 不等于 false，判据能区分', (ve.loop === false) !== (normal.loop === false));
+      } finally { h.dispose(); }
+    }
   }
 }
 

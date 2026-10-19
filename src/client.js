@@ -1113,8 +1113,16 @@ function syncRotationTimer() {
   clearRotationTimer();
   if (!selection.rotationEnabled || !selection.id) return;
   if (rotationCandidates().length < 2) return;
+  // 推进方式 = 「当前视频播完就换」时**不装定时器**：那一条信号由视频元素的 `ended` 事件
+  // 发（见 watchVideoState 的 ended 分支 ⇒ requestRotationByVideoEnd）。装了定时器反而
+  // 会让"播完就换"退化成"按间隔换"，两条推进方式互相打架。
+  const active = activeRotationGroup();
+  if (active && active.trigger === "videoEnd") {
+    liveLog("rotation-arm", "videoEnd 档：等当前视频播完（不装定时器，候选 " + rotationCandidates().length + " 张）");
+    return;
+  }
   if (typeof window === "undefined" || typeof window.setTimeout !== "function") return;
-  const group = activeRotationGroup();
+  const group = active;
   const minutes = group ? group.interval : DEFAULTS.rotationInterval;
   // 开发/测试覆盖钩子：localStorage.weRotationTestSec（秒）可临时缩短轮换
   // 间隔（冒烟测试与手动预览用）；未设置时按组间隔正常运转（缺省值见 lib/settings-schema.js
@@ -1286,6 +1294,7 @@ function startCreateGroup() {
     name: weT("轮播列表 {index}", { index: selection.rotationGroups.length + 1 }),
     interval: DEFAULTS.rotationInterval,
     order: "sequence",
+    trigger: "interval",
     wallpaperIds: [],
   });
   emit();
@@ -1298,8 +1307,9 @@ function saveEditingGroup() {
   const cleaned = {
     id: draft.id,
     name: typeof draft.name === "string" && draft.name.trim() ? draft.name.trim() : weT("轮播列表"),
-    interval: clampNum(draft.interval, ...schemaRange("rotationInterval"), DEFAULTS.rotationInterval),
+    interval: clampNum(draft.interval, ROTATION_INTERVAL_MIN, ROTATION_INTERVAL_MAX, DEFAULTS.rotationInterval),
     order: draft.order === "random" ? "random" : "sequence",
+    trigger: draft.trigger === "videoEnd" ? "videoEnd" : "interval",
     wallpaperIds: Array.isArray(draft.wallpaperIds)
       ? draft.wallpaperIds.filter((x) => typeof x === "string" && x)
       : [],
@@ -1807,9 +1817,19 @@ function syncVideoState(video) {
 function watchVideoState(video) {
   if (!video || !video.dataset || video.dataset.weStateWatched === "1") return;
   video.dataset.weStateWatched = "1";
-  for (const t of ["play", "playing", "pause", "ended", "error", "emptied"]) {
+  for (const t of ["play", "playing", "pause", "error", "emptied"]) {
     try { video.addEventListener(t, () => syncVideoState(video)); } catch { /* ignore */ }
   }
+  // `ended` 有两件事：① 状态同步（与上面同）；② **推进方式 = videoEnd 时的换页信号**。
+  // 为什么推进方式那一档必须靠 `ended` 而不是定时器：该档的产品语义就是「当前视频播完
+  // 就换下一张」。而 `loop` 会让 `ended` 永不触发（见 buildVideoMedia 里按本档关 loop），
+  // 所以这一条只在该档下真的会来。
+  try {
+    video.addEventListener("ended", () => {
+      syncVideoState(video);
+      requestRotationByVideoEnd(video);
+    });
+  } catch { /* ignore */ }
   // 媒体就绪后按意图自动补一次播放：play() 最常见的失败是被紧接着的 src 切换
   // （转码替换 / 换源）打断 —— 那一刻元素已经 paused，用户看到的就是冻在首帧
   // 的静止画面。就绪事件里重试即可自愈；真的被拒过时由 wePlayRefused 兜底，
@@ -1817,6 +1837,31 @@ function watchVideoState(video) {
   for (const t of ["loadeddata", "canplay"]) {
     try { video.addEventListener(t, () => applyVideoPlayback(video)); } catch { /* ignore */ }
   }
+}
+/**
+ * 「视频播完就换」的换页信号（`trigger === 'videoEnd'` 档）。
+ *
+ * 三条门都必须过，缺一条就不换：
+ *   · 轮播在开、且当前活动列表的推进方式是 `videoEnd`（别的档由定时器驱动，不认这个信号）；
+ *   · 候选 ≥ 2（只有一张换不动）；
+ *   · **只认当前层那个元素**：切页会新建 `<video>`，旧元素迟来的 `ended` 不能把用户
+ *     刚切到的壁纸再顶掉一次。本仓口径 = `LAYER_ID` 容器里那个 `video`
+ *     （与 onTogglePlay / syncVideoState 同一取法）；取不到时不判（单测 / 别的层形态）。
+ * 走的是与定时器到点**完全相同**的那条路径（beginRotationPrepare ⇒ 就绪才切），
+ * 所以"卡在首帧的下一张""交叉淡化"这些既有行为逐字不变。
+ */
+function requestRotationByVideoEnd(video) {
+  if (!selection.rotationEnabled || !selection.id) return;
+  const group = activeRotationGroup();
+  if (!group || group.trigger !== "videoEnd") return;
+  if (rotationCandidates().length < 2) return;
+  if (video && typeof document !== "undefined" && document.getElementById) {
+    const layer = document.getElementById(LAYER_ID);
+    const current = layer && layer.querySelector ? layer.querySelector("video") : null;
+    if (current && current !== video) return; // 迟到的旧层信号：丢掉
+  }
+  liveLog("rotation-video-end", "当前视频播完 ⇒ 准备换下一张");
+  beginRotationPrepare(new Set());
 }
 // 应用期望的播放态，语义是「可重试 + 不说谎」：
 //   * 意图 = 暂停            → pause()；
@@ -2272,7 +2317,16 @@ function onEditName(e) {
 }
 function onEditInterval(e) {
   if (!selection.editing) return;
-  selection.editing.interval = clampNum(Number(e.target.value), ...schemaRange("rotationInterval"), DEFAULTS.rotationInterval);
+  // ⚠️ 取值域用**具名边界**，不问 `schemaRange("rotationInterval")`：`rotationInterval` 是
+  // `DEFAULTS_ONLY` 键（不在 KINDS）⇒ 那样问出来的 lo/hi 都是 undefined ⇒ clampNum 恒回落
+  // 默认值 30 ⇒ 「选任何时间都无效」。真源见 lib/settings-schema.js 的 ROTATION_INTERVAL_MIN/MAX。
+  selection.editing.interval = clampNum(Number(e.target.value), ROTATION_INTERVAL_MIN, ROTATION_INTERVAL_MAX, DEFAULTS.rotationInterval);
+  emit();
+}
+/** 编辑草稿的**推进方式**（interval 默认 / videoEnd「当前视频播完就换」）。 */
+function onEditTrigger(e) {
+  if (!selection.editing) return;
+  selection.editing.trigger = e.target.value === "videoEnd" ? "videoEnd" : "interval";
   emit();
 }
 function onEditOrder(e) {
@@ -3878,7 +3932,17 @@ const onEdgeCompatChange = (checked) => {
 const onGroupInterval = (e) => {
   const group = activeRotationGroup();
   if (!group) return;
-  group.interval = clampNum(Number(e.target.value), ...schemaRange("rotationInterval"), DEFAULTS.rotationInterval);
+  // 同 onEditInterval：取值域走具名边界（见那里的注释）。
+  group.interval = clampNum(Number(e.target.value), ROTATION_INTERVAL_MIN, ROTATION_INTERVAL_MAX, DEFAULTS.rotationInterval);
+  persistSelection();
+  syncRotationTimer();
+  emit();
+};
+/** 活动列表的推进方式：`videoEnd` 档到位即停表（改由视频 `ended` 驱动）。 */
+const onGroupTrigger = (e) => {
+  const group = activeRotationGroup();
+  if (!group) return;
+  group.trigger = e.target.value === "videoEnd" ? "videoEnd" : "interval";
   persistSelection();
   syncRotationTimer();
   emit();
@@ -4515,7 +4579,7 @@ function WallpaperPicker() {
     );
     return renderWallpaperTab({
       setSetting, setTransient,
-      INTERVALS, armedConfirm: sel.armedConfirm, cdMode, current, editing, editorPageView, group, groups, isLiveScene, onArmConfirm: armConfirm, onArmDeleteGroup, onCancelEditUploadDir, onCancelEditWeAssetsDir, onClear, onDeleteGroup, onDisarmConfirm: disarmConfirm, onEditInterval, onEditName, onEditOrder, onGroupChange, onGroupInterval, onOpenPicker, onOpenPickerDraft, onRefresh, onStartEditUploadDir, onStartEditWeAssetsDir, onSwitchTransition, onSwitchTransitionDir, onSwitchTransitionSpeed, onToggleAudio, onTogglePlay, onTogglePropsPanel, onToggleRotation, onUploadDirDraft, onWeAssetsDirDraft, pagerRow, playableCount, playableList, playbackLive, propsPanelOpen, renderUserPropsPanel, sel, setPickerOpener, uploadedList,
+      INTERVALS, armedConfirm: sel.armedConfirm, cdMode, current, editing, editorPageView, group, groups, isLiveScene, onArmConfirm: armConfirm, onArmDeleteGroup, onCancelEditUploadDir, onCancelEditWeAssetsDir, onClear, onDeleteGroup, onDisarmConfirm: disarmConfirm, onEditInterval, onEditName, onEditOrder, onEditTrigger, onGroupChange, onGroupInterval, onGroupTrigger, onOpenPicker, onOpenPickerDraft, onRefresh, onStartEditUploadDir, onStartEditWeAssetsDir, onSwitchTransition, onSwitchTransitionDir, onSwitchTransitionSpeed, onToggleAudio, onTogglePlay, onTogglePropsPanel, onToggleRotation, onUploadDirDraft, onWeAssetsDirDraft, pagerRow, playableCount, playableList, playbackLive, propsPanelOpen, renderUserPropsPanel, sel, setPickerOpener, uploadedList,
     });
   };
   const tabIdx = Math.max(0, visibleTabs.findIndex((t) => t.id === activeTab));

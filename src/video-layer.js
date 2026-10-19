@@ -247,7 +247,14 @@ function buildVideoMedia(sel, fitClass) {
     if (stillPreview) media.poster = sel.previewUrl;
   }
   media.autoplay = true;
-  media.loop = true;
+  // 轮播「当前视频播完就换下一张」档（`trigger === 'videoEnd'`）必须**关掉 loop**：
+  // `loop` 会让元素循环播放、`ended` **永远不触发** ⇒ 那条换页信号就发不出来。
+  // 其他档照旧 loop（单张壁纸循环是产品语义）。
+  // ⚠️ 档位由**调用方经 `sel` 传进来**（`sel.videoEndTrigger`，见 src/media-prep.js 的组装点），
+  //    不在本模块里去问 `activeRotationGroup()` —— 本文件是**独立内联模块**，与主 client
+  //    不在同一作用域里（那里的函数名在这儿根本不存在）。与 `sel.edgeCompat` /
+  //    `sel.playbackRate` 同一条传参口径。
+  media.loop = sel.videoEndTrigger !== true;
   // ⚠️ 必须显式 `preload="auto"`：缺省（=metadata）+ 这几张源的 moov 在文件**尾部** ⇒
   // Chromium 取完 moov 就停，真正开始取帧要等 `play()` —— 而 play() 在**更晚的一趟**
   // syncLayers 里才被调用（自动播放被策略拒绝时那一趟永远不会来）。真机日志（桌面壳）

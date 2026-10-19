@@ -4107,6 +4107,7 @@
             "name": "我的列表",
             "interval": 30,
             "order": "random",
+            "trigger": "interval",
             "wallpaperIds": [
               "w1"
             ]
@@ -4283,6 +4284,7 @@
             "name": "我的列表",
             "interval": 30,
             "order": "random",
+            "trigger": "interval",
             "wallpaperIds": [
               "w1"
             ]

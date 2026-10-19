@@ -617,6 +617,13 @@ function buildMedia(sel) {
   const fitClass = " we-media--fit";
   let media;
   if (sel.type === "video") {
+    // 轮播推进方式 = 「当前视频播完就换下一张」时，**建层就要关 loop**（否则 `ended`
+    // 永不触发、换页信号发不出来）。这一位经 `sel` 传给视频通道 —— 那边是**独立内联
+    // 模块**、看不到本作用域的函数（与 `edgeCompat` / `playbackRate` 同一条传参口径）。
+    if (typeof activeRotationGroup === "function") {
+      const rot = activeRotationGroup();
+      sel.videoEndTrigger = !!(rot && rot.trigger === "videoEnd" && selection.rotationEnabled);
+    }
     // 视频档的媒体构建归**视频通道**（见 src/video-layer.js 的 buildVideoMedia）：
     // Edge 那条腿会在通道里返回 [media, canvas]（镜像画布）⇒ 这里照原样把两条腿返回出去。
     const builtVideo = buildVideoMedia(sel, fitClass);

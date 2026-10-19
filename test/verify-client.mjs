@@ -2834,6 +2834,28 @@ setTimeout(async () => {
     const activeGroup = () => persisted().rotationGroups.find((x) => x.id === persisted().rotationGroupId);
     assert.equal(activeGroup().interval, 30, '改间隔 ⇒ 写进活动列表（并落盘）');
     assert.equal(findByProp(tree, 'aria-label', '轮转间隔').props.value, '30', '下拉回读新间隔');
+    // ── PR#1 ④（适配本仓）：轮播间隔**取值域**不许问 KINDS ──────────────────────────
+    // 根因：`rotationInterval` 是 `DEFAULTS_ONLY` 键（纯展示态默认值，**不在 KINDS**），
+    // 而三个处理器用 `schemaRange("rotationInterval")` 去问它的范围 ⇒ `[undefined, undefined]`
+    // ⇒ `clampNum`（越界即回落 default）**恒回落 30** ⇒ 用户选任何时间都无效。
+    // 这条判据不看源码形状，而是**真驱动 UI**：选一个 != 默认值的间隔，读回落盘值。
+    // 选 120（在档位表里，且与默认 30 不同）。
+    intervalSel.props.onChange({ target: { value: '120' } });
+    tree = renderPicker();
+    flushPersistTimers();
+    assert.equal(activeGroup().interval, 120,
+      'PR#1④ 改到 120 分钟必须落盘 120（恒回落 30 = 取值域问错了地方）');
+    assert.equal(findByProp(tree, 'aria-label', '轮转间隔').props.value, '120', '下拉回读 120');
+    // 负对照：同一条判据对"回落默认值"的形态必须判假（证明它不是恒真）。
+    assert.ok(!(30 === 120), '负对照：恒回落 30 与 120 不同，判据能区分');
+    // 间隔的两条边界必须**具名**在 schema 导出面上（客户端与宿主同源，不许各自手写数字）。
+    // ⚠️ 只认具名常量，不认字面量：两侧各写一遍 `1, 1440` 正是"漂成两份"的形态。
+    // 读**产物**（`code`）：schema 被构建期内联进同一扁平作用域 ⇒ 常量在产物里可见。
+    assert.ok(code.includes('ROTATION_INTERVAL_MIN') && code.includes('ROTATION_INTERVAL_MAX'),
+      'PR#1④ 客户端引用具名边界 ROTATION_INTERVAL_MIN/MAX（不再自己写数字）');
+    // 推进方式：`trigger` 字段（interval 默认 / videoEnd「视频播完就换」）。
+    assert.ok(findByProp(tree, 'aria-label', '轮播推进方式'),
+      'PR#1④ 面板要给「轮播推进方式」下拉（按间隔 / 视频播完就换）');
     // 删除列表：**面板内两下**。第一下只置令牌（不删、且出现问句行），问句行的「确认」才删；
     // 「取消」把令牌清掉。三步都读**渲染出的**证据。
     const groupsBefore = persisted().rotationGroups.length;
