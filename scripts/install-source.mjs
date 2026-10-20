@@ -42,7 +42,7 @@ export function installSource(options, run = runTool) {
   const args = ['plugin', '--profile', options.profile, 'add', ...plan.specs];
   const cli = resolveDshCli(options.cli);
   run(cli ? process.execPath : 'dsh', cli ? [cli, ...args] : args, { cwd: plan.root, env });
-  // All nine packages are durable dependencies, but only the main patch owns the family rows.
+  // All packages are durable dependencies, but only the main patch owns the family rows.
   const manifest = retainMainBundle(JSON.parse(readFileSync(manifestPath, 'utf8')), plan);
   const temp = manifestPath + '.wallpaper-tmp';
   writeFileSync(temp, JSON.stringify(manifest, null, 2) + '\n', { flag: 'wx' });

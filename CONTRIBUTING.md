@@ -86,9 +86,9 @@ Use `web` for the web profile. Add `--dry-run` to inspect the target without cha
 
 网页宿主使用 `--profile web`。先加 `--dry-run` 可只核对目标。桌面 profile 必须使用桌面宿主安装的 carrier CLI；独立 npm CLI 不允许管理 `desktop`。网页版找不到 `dsh` 命令时，可传入 `--dsh-cli "<DSH CLI 的 lib/bin.js 路径>"`。
 
-The installer runs `npm ci`, builds the clients, and registers all nine packages as persistent `link:` dependencies. Only the main bundle remains selected; it owns the complete patch, so selecting the child bundles as well duplicates their rows. Other bundle selections and row-level settings remain unchanged.
+The installer runs `npm ci`, builds the clients, and registers all eight packages as persistent `link:` dependencies. Only the main bundle remains selected; it owns the complete patch, so selecting the child bundles as well duplicates their rows. Other bundle selections and row-level settings remain unchanged.
 
-脚本安装仓库依赖、构建客户端，通过 DSH 将主包和 8 个子包登记为持久 `link:` 依赖。只保留主包 bundle 选择，避免子包 patch 重复插入行；其他 bundle 选择和现有行级开关不变。不要只链接主包，也不要把临时 junction 工具当成正式安装流程。
+脚本安装仓库依赖、构建客户端，通过 DSH 将主包和 7 个子包登记为持久 `link:` 依赖。只保留主包 bundle 选择，避免子包 patch 重复插入行；其他 bundle 选择和现有行级开关不变。不要只链接主包，也不要把临时 junction 工具当成正式安装流程。
 
 For an update, close the host, update the entire checkout, and rerun the same command. Keep the source directory in place while installed.
 
@@ -100,9 +100,9 @@ For an update, close the host, update the entire checkout, and rerun the same co
 npm run pack:release
 ```
 
-This builds clients and creates nine tarballs plus `release-set.json` under a unique `.test-cache/release/set-*` directory. The staged main manifest uses each child's exact real version as a runtime dependency, including the independently versioned built-in pet. Publish the children first and the main package last, following `publishOrder`. This command does not publish anything. A raw root `npm pack` uses the development manifest and is not the complete release set. Do not publish a gray-test version without explicit release approval.
+This builds clients and creates eight tarballs plus `release-set.json` under a unique `.test-cache/release/set-*` directory. The staged main manifest lists each of the seven child packages at its exact real version, with no pet or Electron dependency. Publish children first and the main package last, following `publishOrder`. This command never publishes anything. A raw root `npm pack` uses the development manifest, not the complete release set. Do not publish a test version without explicit approval.
 
-该命令构建客户端，在独立的 `.test-cache/release/set-*` 目录生成九个 tarball 和 `release-set.json`。发布形态主包将各子包的真实精确版本列为运行依赖，内置桌宠保留独立版本。正式发布按 `publishOrder` 先子包、后主包。此命令不执行发布；源码根目录直接 `npm pack` 仍是开发清单，不能当成完整发布集。灰测阶段未经明确发布批准，不要发布 npm。
+该命令构建客户端，在独立的 `.test-cache/release/set-*` 目录生成八个 tarball 和 `release-set.json`。发布形态主包将七个子包的真实精确版本列为运行依赖，不包含 pet 或 Electron。正式发布按 `publishOrder` 先子包、后主包。此命令不执行发布；源码根目录直接 `npm pack` 仍是开发清单，不能当成完整发布集。灰测阶段未经明确批准，不要发布 npm。
 
 On Windows, use a current patched Node.js release for packaging. A minimal directory-copy test with a Chinese path exits unexpectedly on Node.js 24.14.0; the same test and the release-set build succeed on 24.21.0. Ensure npm uses the same Node.js runtime.
 

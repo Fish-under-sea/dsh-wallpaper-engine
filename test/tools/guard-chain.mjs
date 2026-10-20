@@ -136,13 +136,9 @@ export function compositionDiff(chains) {
  * 判据见 `test/verify-guard-chain.mjs` ⑤（正判据与负对照走 `offChainDiff` 同一个函数）。
  */
 export const OFF_CHAIN_WHY = {
-  'verify-pet-link.mjs': '快捷汇总入口 npm run verify:pet-link；其十二个离线用例已逐项接入默认 verify 链，不重复运行汇总器。',
-  'verify-pet-hotplug-integration.mjs': '显式安装集成入口，需要受支持原版桌宠夹具与真实 Cordis 模块；不得在离线 verify 链隐式下载或修改用户安装。',
-  'verify-pet-hotplug-browser.mjs': '完整 React 与真实视频集成，需要独立 Edge、ReactDOM 和已准备隔离 profile，使用 verify:pet-link:browser 显式运行。',
+  'verify-pet-link.mjs': '快捷汇总入口 npm run verify:pet-link；其离线用例已逐项接入默认 verify 链，不重复运行汇总器。',
+  'verify-pet-hotplug-integration.mjs': '真实 Cordis 正式桥接生命周期入口；需要宿主 peer 模块，独立运行，不下载或修改官方 pet。',
   'verify-pet-sidebar-glass-browser-case.mjs': '用例模块由链上的 verify-glass-runtime-browser.mjs 导入并执行，使用其 CDP 会话，不是独立命令。',
-  'verify-pet-egg2-browser-case.mjs': '完整浏览器入口导入的彩蛋二用例模块，依赖其 CDP 会话与真实视频，不是独立命令。',
-  'verify-pet-egg1-native-browser.mjs': '真实原生抛掷与媒体验收，需要独立 Edge 和显式 PET_TEST_CLIENT 隔离客户端。',
-  'verify-pet-phase-browser.mjs': '真实阶段接管验收，需要独立 Edge 和显式 PET_TEST_CLIENT 隔离客户端。',
   'verify-pet-tuner-browser.mjs': '真实面板几何和动效验收，需要独立 Edge；默认链保留无外部依赖的面板 DOM 回归。',
   'compat-harness-live.mjs': '真跑**活** harness 页面（需要宿主实际启动）：本地/CI 都按需手动跑，由 .github/workflows/harness-compat.yml 单独触发；verify 链要求零外部环境依赖。',
   'compat-harness-pages.mjs': '同族：活 harness 的页面面普查，断言依赖真实宿主实例，不进链。',
@@ -151,7 +147,6 @@ export const OFF_CHAIN_WHY = {
   'verify-bridge-ci.mjs': '`npm run verify:bridge` 的**判词入口**（要下载产物并真跑中间件）⇒ 独立 CI 步骤，不进 verify 链（链上零下载、零外部进程）。',
   'verify-bundle-rows.mjs': '有意脱链：链尾有一条**真 cordis 往返**（按路径拼接动态 `import` 宿主 peer 包 `@deepseek-ai/cordis`，见本文件 `cordisPath` / `pathToFileURL` 那处），而 CI 是 `npm ci --omit=peer` ⇒ 挂链只会让它永久"出声 SKIP"（P5 的字面量扫描看不到路径拼接的说明符，所以挂链并不会被 P5 判红 —— 但"链上恒跳过"比脱链更坏）；故留在链外 + 每次改行/包必须手跑一次（BUNDLE-SPLIT §10.1 #2）。',
   'verify-static.mjs': '静态棘轮入口（ESLint / tsc 都是 devDependencies）⇒ CI 独立步骤 `npm run verify:static`；链上零裸依赖容不下它。',
-  'verify-pet-eslint-compat.mjs': '内置桌宠静态兼容适配的**边界**判据：`import { ESLint } from "eslint"`（devDependency，与 verify-static 同族）⇒ 链上零裸依赖容不下它；判据本体可随时 `node test/verify-pet-eslint-compat.mjs` 手跑，并由 t12 定向验证消费。',
 };
 
 /** 守卫面地板（防"面变空 ⇒ 脱链判据永真"）。实测 2026-10-16 = 88。 */

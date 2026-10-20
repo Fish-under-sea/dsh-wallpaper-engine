@@ -175,7 +175,7 @@
     "verify:deployment": "node test/verify-deployment.mjs",
     "verify:pet-link": "node test/verify-pet-link.mjs",
     "verify:pet-link:integration": "node test/verify-pet-hotplug-integration.mjs",
-    "verify:pet-link:browser": "node test/verify-pet-hotplug-browser.mjs",
+    "verify:pet-link:browser": "node test/verify-pet-tuner-browser.mjs",
     "verify": "node test/run-guards.mjs verify",
     "verify:docs": "node test/run-guards.mjs docs",
     "verify:bridge": "node test/verify-bridge-ci.mjs --provision",
@@ -223,7 +223,6 @@
     "dsh-plugin-wallpaper-engine-media-bridge": "file:packages/media-bridge",
     "dsh-plugin-wallpaper-engine-parallax": "file:packages/parallax",
     "dsh-plugin-wallpaper-engine-pet-link": "file:packages/pet-link",
-    "dsh-we-pet-builtin": "file:packages/pet",
     "eslint": "^10.12.0",
     "typescript": "^7.0.2"
   }

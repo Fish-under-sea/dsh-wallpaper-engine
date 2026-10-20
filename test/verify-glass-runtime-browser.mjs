@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, existsSync, openSync, closeSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { cssBodyOf } from './tools/src-scope.mjs';
@@ -27,10 +27,15 @@ const browsers = process.platform === 'win32'
 const browser = process.env.WE_TEST_BROWSER || browsers.find(existsSync);
 assert.ok(browser && existsSync(browser), '缺少 Chromium 浏览器；请用 WE_TEST_BROWSER 指定可执行文件，浏览器回归不会跳过。');
 const profile = mkdtempSync(join(out, 'profile-'));
+const browserLogPath = join(profile, 'browser-stderr.log');
+const browserLog = openSync(browserLogPath, 'w');
 const child = spawn(browser, [
   '--headless=new', '--no-first-run', '--remote-debugging-port=0', '--user-data-dir=' + profile,
   ...(process.env.WE_TEST_BROWSER_LOG ? ['--enable-logging=stderr', '--log-level=0'] : []), 'about:blank',
-], { stdio: process.env.WE_TEST_BROWSER_LOG ? 'inherit' : 'ignore' });
+], { stdio: process.env.WE_TEST_BROWSER_LOG ? 'inherit' : ['ignore', 'ignore', browserLog] });
+closeSync(browserLog);
+const launchDetails = () => JSON.stringify({ browser, exitCode: child.exitCode, signal: child.signalCode,
+  stderr: readFileSync(browserLogPath, 'utf8').slice(-16384) });
 let socket, launchError, counter = 0;
 const pending = new Map(), failures = [], report = [];
 child.on('error', error => { launchError = error; });
@@ -72,11 +77,12 @@ try {
   const deadline = Date.now() + 20000;
   while (!port && Date.now() < deadline) {
     if (launchError) throw launchError;
+    assert.ok(child.exitCode === null && child.signalCode === null, '浏览器在调试端口就绪前退出：' + launchDetails());
     try { port = Number(readFileSync(join(profile, 'DevToolsActivePort'), 'utf8').split('\n')[0]); }
     catch (error) { if (!['ENOENT', 'EBUSY'].includes(error.code)) throw error; }
     if (!port) await delay(100);
   }
-  assert.ok(port, '浏览器调试端口未就绪');
+  assert.ok(port, '浏览器调试端口未就绪：' + launchDetails());
   const pages = await (await fetch('http://127.0.0.1:' + port + '/json/list')).json();
   socket = new WebSocket(pages.find(page => page.type === 'page').webSocketDebuggerUrl);
   await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
@@ -172,6 +178,36 @@ try {
       await until('!!document.querySelector("[data-we-surface-plate=right-sidebar]")');
       check(tag + ' 隐藏会话的右栏面板不夺走接管资格', await evaluate(`document.querySelector('#right').getAttribute('data-we-surface-runtime')==='right-sidebar' && !document.querySelector('#ghost-right').hasAttribute('data-we-surface-runtime') && !!document.querySelector('[data-we-surface-plate="right-sidebar"]')`));
       await evaluate("document.querySelector('#ghost-session').remove();__glass.sync()");
+      // Blink 布局以 1/64 CSS px 量化；用可精确表达的 1/8 px，避免 0.0001px 被取整。
+      await evaluate(`(() => {
+        const wrap=document.createElement('div');wrap.id='clip-wrap';
+        wrap.style.cssText='position:fixed;top:0;left:0;width:'+(innerWidth-0.125)+'px;height:'+innerHeight+'px;overflow:hidden';
+        document.body.append(wrap);
+        const right=document.querySelector('#right');
+        right.style.width='25%'; right.style.height='180px';
+        wrap.append(right);
+        __glass.sync();return true;
+      })()`);
+      for (const scale of [1, 1.25, 1.5]) {
+        await send('Emulation.setDeviceMetricsOverride', { width, height: 820, deviceScaleFactor: scale, mobile: false });
+        await evaluate("document.querySelector('#clip-wrap').style.width=(innerWidth-0.125)+'px';__glass.sync()");
+        const subpixel = await evaluate(`(()=>{const r=document.querySelector('#right'),w=document.querySelector('#clip-wrap');return {delta:r.getBoundingClientRect().right-w.getBoundingClientRect().right,rt:r.getAttribute('data-we-surface-runtime'),plate:!!document.querySelector('[data-we-surface-plate="right-sidebar"]')};})()`);
+        check(tag + ' DPR ' + scale + ' 祖先裁剪差 0.125px 仍接管',
+          Math.abs(subpixel.delta - 0.125) < 0.001 && subpixel.rt === 'right-sidebar' && subpixel.plate,
+          subpixel);
+        await evaluate("document.querySelector('#clip-wrap').style.width=(innerWidth-2)+'px';__glass.sync()");
+        const clipped = await evaluate(`(()=>{const r=document.querySelector('#right'),w=document.querySelector('#clip-wrap');return {delta:r.getBoundingClientRect().right-w.getBoundingClientRect().right,rt:r.getAttribute('data-we-surface-runtime'),plate:!!document.querySelector('[data-we-surface-plate="right-sidebar"]')};})()`);
+        check(tag + ' DPR ' + scale + ' 负对照：真裁掉 2px 仍回退原生',
+          Math.abs(clipped.delta - 2) < 0.001 && clipped.rt !== 'right-sidebar' && !clipped.plate,
+          clipped);
+      }
+      await send('Emulation.setDeviceMetricsOverride', { width, height: 820, deviceScaleFactor: 1, mobile: false });
+      // 复原夹具：面板回到 #app 下，裁剪包装移除。
+      await evaluate(`(() => {
+        const wrap=document.querySelector('#clip-wrap'), app=document.querySelector('#app'), right=document.querySelector('#right');
+        app.append(right); wrap.remove(); __glass.sync(); return true;
+      })()`);
+      await until('document.querySelector("#right").getAttribute("data-we-surface-runtime")==="right-sidebar"');
       // ── 宿主开合侧栏时的**祖先动画**（用户报障："侧边栏弹出时会出现丢失左右两侧的
       //    玻璃效果…只出现在过程中"）──────────────────────────────────────────────
       // 真实来源：ui-layout 的 AppFrame 在 `.frame[data-animating]` 上做

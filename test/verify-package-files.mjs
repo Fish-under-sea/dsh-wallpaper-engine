@@ -373,7 +373,8 @@ async function main() {
     // 因为它没有前两批的 ⑩⑪⑫；照抄会把地板调低三步，删一步就不再变红。
     // 补齐表情广播、侧栏诊断与玻璃几何三条离线硬门禁。
     // 完整源码部署与发布清单回归新增一条硬门禁。
-    const CHAIN_FLOOR = { verify: 96, docs: 6, smoke: 6, all: 109 };
+    // 官方桥接取代内置与私有运动面：退役八步、新增正式排播一步，净减七步。
+    const CHAIN_FLOOR = { verify: 89, docs: 6, smoke: 6, all: 102 };
     /** 地板表与 GROUPS 的对齐体检：键名必须与**组名**逐一对齐（纯函数 ⇒ 负对照可直接喂）。 */
     const floorGaps = (groups, floors) => groups.map(([, g]) => g).filter((g) => !Number.isInteger(floors[g]));
     const problems = floorGaps(GROUPS, CHAIN_FLOOR).map((g) => '地板表缺组 ' + g

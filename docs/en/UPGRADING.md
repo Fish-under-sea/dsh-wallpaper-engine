@@ -5,9 +5,11 @@
 
 ### Current Test Branch Requirements
 
-The complete suite includes the built-in pet and requires **Node.js >=22.12.0 and DSH 0.2 (including 0.2.0-rc.1/rc.2)**. DSH 0.1 does not satisfy the complete suite. The older compatibility records below do not establish support for this branch.
+The suite requires **Node.js >=22.12.0 and DSH 0.2 (including 0.2.0-rc.1/rc.2)** and no longer contains a bundled pet or Electron. DSH 0.1 is outside the supported range. Older compatibility records do not establish support for this branch.
 
-Close the host, update the entire checkout, and rerun the [source installer](../../README.md#安装). Registry package-name commands cannot fetch unpublished changes. The npm channel only applies after all nine release packages have been published.
+Close the host, update the entire checkout, and rerun the [source installer](../../README.md#安装). Registry package-name commands cannot fetch unpublished changes. The npm channel only applies after all eight release packages have been published.
+
+Disable the old built-in pet bundle before upgrading. The installer does not delete old profile dependencies or data. Remove `dsh-we-pet-builtin` explicitly through the target host's package manager. Install an official pet build with `petApi7340` and the public control APIs separately; restore old file patches from backups or reinstall the official package. Wallpaper remains usable without a pet.
 
 ### Published v1.3.0 Prerequisites (Historical)
 

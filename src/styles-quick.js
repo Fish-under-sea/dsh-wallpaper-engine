@@ -165,6 +165,10 @@ body[data-we-glass-floaters] .we-repo-panel {
       opacity 480ms ease,
       visibility 0s linear 640ms;
   }
+  /* Native caption buttons overlay the top edge; inset the whole drawer content. */
+  html[data-windows-titlebar] body[data-we-glass-floaters] .we-repo-panel {
+    padding-top: calc(14px + var(--dsh-windows-titlebar-height, 40px));
+  }
   /* The glass (backdrop-filter + tint + shadow) lives ONLY on the open state:
      while closed the panel is off-screen and must not allocate a full-viewport
      backdrop-filter compositing layer (a fixed, always-present backdrop-filter

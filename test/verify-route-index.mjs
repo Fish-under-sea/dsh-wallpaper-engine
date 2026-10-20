@@ -256,7 +256,9 @@ console.log('\n⑤ 索引 == 运行时真实注册的路由（唯一能发现"�
     const before = registered.length;
     const entry = await import(pathToFileURL(join(ROOT, rel)).href);
     const applyFn = entry.apply || (entry.default && entry.default.apply);
-    subpackageDisposers.push(typeof applyFn === 'function' ? applyFn(mock) : undefined);
+    for (const config of entry.routeConfigs || [undefined]) {
+      subpackageDisposers.push(typeof applyFn === 'function' ? applyFn(mock, config) : undefined);
+    }
     const got = registered.length - before;
     const exp = cls.exp;
     if (exp.unknown.length) countIssues.push(short + ' 调用点解析不到路由模块：' + exp.unknown.join(' '));

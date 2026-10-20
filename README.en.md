@@ -1,404 +1,170 @@
-# dsh-plugin-wallpaper-engine
+# DSH Wallpaper Engine
 
-> **Unpublished test branch:** use the [source deployment instructions](README.md#安装), not the registry install commands below. Requires Node.js >=22.12.0 and DSH 0.2 (including 0.2.0-rc.1/rc.2). Close the target host, then run `node scripts/install-source.mjs --profile desktop --dsh-home "<target DSH data directory>" --app-closed` from this checkout. Use `web` for the web profile. The installer registers the main package and all eight subpackages persistently. The npm path only applies after the complete nine-package release set has been published; prepare that set with `npm run pack:release`.
+[中文](README.md) · **English** · [Beginner guide](README.beginner.md#english)
 
-![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg) ![node: >=22.12](https://img.shields.io/badge/node-%3E%3D22.12-5fa04e.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/readme/hero-dark.png">
+  <img src="assets/readme/hero-light.png" alt="DSH Wallpaper Engine: your wallpapers, your glass, your workspace" width="1440">
+</picture>
 
-[English](README.en.md) | [中文](README.md) | [Beginner guide](README.beginner.md#english)
+[![Node.js](https://img.shields.io/badge/Node.js-22.12%2B-8fd6a0?style=flat-square)](https://nodejs.org) [![License](https://img.shields.io/badge/License-MIT-8fd6a0?style=flat-square)](LICENSE) [![Upstream Stars](https://img.shields.io/github/stars/elysia395/dsh-wallpaper-engine?style=flat-square&label=Upstream%20Stars)](https://github.com/elysia395/dsh-wallpaper-engine/stargazers) [![Upstream Forks](https://img.shields.io/github/forks/elysia395/dsh-wallpaper-engine?style=flat-square&label=Upstream%20Forks)](https://github.com/elysia395/dsh-wallpaper-engine/forks) [![Upstream Contributors](https://img.shields.io/github/contributors/elysia395/dsh-wallpaper-engine?style=flat-square&label=Upstream%20Contributors)](https://github.com/elysia395/dsh-wallpaper-engine/graphs/contributors) [![Upstream Release](https://img.shields.io/github/v/release/elysia395/dsh-wallpaper-engine?style=flat-square&label=Upstream%20Release)](https://github.com/elysia395/dsh-wallpaper-engine/releases) [![npm](https://img.shields.io/npm/v/dsh-plugin-wallpaper-engine?style=flat-square)](https://www.npmjs.com/package/dsh-plugin-wallpaper-engine) [![npm Downloads](https://img.shields.io/npm/dm/dsh-plugin-wallpaper-engine?style=flat-square)](https://www.npmjs.com/package/dsh-plugin-wallpaper-engine) [![dsh-pet integration](https://img.shields.io/badge/dsh--pet-Public%20API-8fd6a0?style=flat-square)](https://github.com/PC2005-cloud/dsh-pet/issues/122)
 
-> 🆕 **Never used the command line? Start here: [beginner-friendly guide →](README.beginner.md)** (a simplified walkthrough in Chinese for users who have never touched a terminal).
+Bring local **Wallpaper Engine Scene, Web and Video wallpapers** into the DSH chat interface, with liquid glass, typography, configuration presets, mascot artwork and optional official dsh-pet integration. The plugin registers no agent tools or prompt text, so it adds no model token overhead.
 
-A DSH bundle that turns your **Wallpaper Engine** wallpapers into the **background of the DSH web GUI** (`dsh web`).
-
-![Main interface showcase](https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/main-interface.gif)
-
-> Wallpaper + scrim + iOS liquid glass rendered behind the DSH GUI.
-
-## Optional dsh-pet Integration
-
-This branch adds an optional integration with [dsh-pet](https://github.com/PC2005-cloud/dsh-pet): sidebar pulling, jumping to grab the mascot, native-physics knockback, and a hiss effect synchronized with the actual video. The complete [pet-link subpackage](packages/pet-link/README.md) contains its runtime, explicit installer, required assets, and regression tests.
-
-**No hard dependency on dsh-pet and no automatic installation.** Without an eligible pet, the wallpaper mascot keeps its original behavior. **`Ctrl+Shift+D`** opens the draggable maintenance panel with four independent parameter pages, fixed bubble tracks, resets, and JSON export. Inspection remains available without a pet; test playback is disabled.
-
-The first-time installer explicitly patches a strictly matched `dsh-pet@0.3.6` build after backup and validation. Review the [installation and hot-plug boundaries](packages/pet-link/README.md) before trying it. The default drawer remains unchanged; pet interaction uses the official-sidebar mode. This is a cross-project review implementation, not an official dsh-pet control API.
+> **This page describes the unpublished [Fish-under-sea source branch](https://github.com/Fish-under-sea/dsh-wallpaper-engine).** Stars, forks, contributors, releases, npm downloads and Star History refer to the official [elysia395/dsh-wallpaper-engine repository](https://github.com/elysia395/dsh-wallpaper-engine) or its npm package. Cached badges do not mean these branch changes have been merged or published. Identical package version numbers do not guarantee identical source trees.
 
 ## Contents
 
-- [What it does](#what-it-does) · [Prerequisites for updating](#prerequisites-for-updating) · [Which wallpaper types are supported?](#which-wallpaper-types-are-supported) · [How it works](#how-it-works)
-- [Install](#install) · [Usage](#usage) · [Configuration](#configuration) · [dsh-better-sidebar compatibility](#dsh-better-sidebar-compatibility) · [Limitations](#limitations) · [Development / rebuild](#development--rebuild) · [Contact](#contact) · [Acknowledgments](#acknowledgments)
-- Version numbers, issue numbers and benchmark figures live in [`docs/CHANGELOG.md`](docs/CHANGELOG.md); update prerequisites in [`docs/UPGRADING.md`](docs/UPGRADING.md).
-- 📦 The npm package **does not ship `docs/`** (what ships is the runtime: `lib/**`, `cordis.patch.yml` and the three READMEs) ⇒ those `docs/…` links do not resolve on npm / in the plugin market; read them in the **source repository** <https://github.com/elysia395/dsh-wallpaper-engine> at the same paths.
+[Features](#features) · [Install](#install) · [Usage](#usage) · [Official dsh-pet integration](#official-dsh-pet-integration) · [Configuration and privacy](#configuration-and-privacy) · [Limitations](#limitations) · [Development](#development) · [Credits](#credits) · [Star History](#star-history)
 
-## What it does
+## Features
 
-It discovers the Wallpaper Engine install on your machine, lists your wallpapers, and renders the *portable* types into a fixed layer **behind** the DSH chat interface, wrapped in an iOS-style **liquid glass** UI makeover.
+| Area | Current capabilities |
+|---|---|
+| Wallpapers | WebWallGL live Scene / Web rendering, video playback, local image / video uploads, wallpaper properties and playlist rotation |
+| Appearance | Liquid glass, accent and surface colors, transparency, blur, borders and independent sidebar controls |
+| Presets | Whole-configuration snapshots, optional font / mascot / avatar assets, JSON import and export |
+| Typography | System fonts, per-role and per-component controls, terminal fonts, font sets and caret color |
+| Mascots | Ten built-in artworks, a 3D ring selector, custom imports and a pull-cord library drawer |
+| Extensions | Optional conversation avatars, click / pointer-trail effects and parallax |
+| Playback | Speed, flip, framing, transitions, cached fps-cap transcodes and occlusion pause |
+| Media | System-output audio spectrum, Now Playing metadata / artwork and opt-in online lyrics |
+| Pet integration | Sidebar pull, mascot grab, native knockback and hiss routines using official dsh-pet APIs |
 
-> Version numbers, issue numbers and benchmark figures all live in [`docs/CHANGELOG.md`](docs/CHANGELOG.md).
+Scene and Web compatibility depends on the project, WebGL support and browser capabilities. Rendering failures degrade rather than guaranteeing parity with every Wallpaper Engine workshop item. **Application wallpapers are not supported**: this plugin does not launch third-party executables. Custom JPG / PNG / MP4 files stay on your machine.
 
-**Wallpaper rendering (core)**
-
-- **Three wallpaper types, three render paths**: **Video** plays directly; **Web / HTML** runs through the built-in WebWallGL web mount (host-injected WE API + strict sandbox isolation); **Scene** is rendered by the built-in **WebWallGL** real-time WebGL engine — particle systems, puppet skeletal models, SceneScript, mouse parallax and click interaction, packaged audio and audio reactivity.
-- **Live first, graceful degradation**: scene / web wallpapers are rendered **live** by the built-in engine; the renderer page is watched by a **heartbeat watchdog**, and when it genuinely cannot produce a frame the plugin walks a **degradation chain** down to a last resort — **no black screen before the first frame**, and the final step is allowed to stay **honestly empty**.
-  > The chain's **order, the watchdog criteria, how failures are remembered and where the placeholder frame comes from** are defined in exactly one place: [`docs/HOW-IT-WORKS.md`](docs/HOW-IT-WORKS.md). This page only promises "no black screen and no permanent wedge from one bad frame" and deliberately does not restate the steps (a second copy is a second thing to forget to update).
-- **High-fps sources can shed load**: the **fps cap** transcodes a source such as 4K120 once to the capped frame rate (4K preserved + AV1) — **GPU usage drops substantially**; the **occlusion-pause** trio drops the decoder entirely on minimize / focus loss / battery.
-- **What can move over, moves over**: upload local JPG / PNG / MP4 straight from the picker; user-defined rotation lists switch wallpapers on their own interval and order (only once the next one is ready — no black flash).
-
-**UI makeover (core)**
-
-- **Follows the DSH interface language**: the plugin's UI joins the host language setting (Settings → General → Language) — **the same catalog dsh web ships** (`中文` / `English`, plus any language pack you install). Switching applies instantly with no page reload: settings pages, the picker, the right sidebar / drawer, the mascot, font sets and the update notice all follow.
-- **Liquid glass across the whole settings window (always on)**: the entire native DSH settings window (dialog + left nav + every native section) runs the glass recipe — the old "settings-window glass" master switch is **retired** (that "off" never restored the native solid look). Accent color, glass base tint, transparency and blur stay adjustable, and per-surface fine-tuning lives in **Settings-window glass · independent configuration**.
-- **Text surfaces keep a floor**: every text-bearing surface composites a theme base layer underneath, worst-case body-text contrast **4.63:1** — no slider extreme can make text illegible.
-- **Typography and caret, refined**: fonts are tunable per **color role / typographic role / component** (size, weight and family each); the UI accent colours everything at once and can also be pointed at the send button / links / file icon / tabs / deep-diving status **individually**; the input caret takes an independent color. A whole look can be saved as a **font set** (a preset ships with the plugin; create / rename / delete / restore, and **export/import** it as `.json` to share).
-- **Presets = whole-configuration snapshots**: the **configuration presets** on the Appearance tab apply **your entire configuration** in one click — no longer just the glass: every look-and-behavior setting is always carried, while fonts / mascot artwork / session avatars are **checked on demand**; presets can be **exported / imported** as `.json` to move between users (importing does not apply them). Old presets that stored only the glass subset are **voided** — save a fresh copy after upgrading.
-- **Wallpaper-to-UI blending**: wallpaper blur, brightness / contrast / saturation, wallpaper opacity, scrim, border and glass blur — all applied instantly.
-
-**Signature features**
-
-- **Mascot**: a draggable **pull-cord** at the top of the chat that slides out the **wallpaper library** drawer (two artworks, resizable), with quick adjustments always within reach.
-- **Sidebar liquid glass**: a dedicated adaptation for `dsh-better-sidebar`'s panels (frost, highlight and layer hierarchy unified), plus its own set of sidebar glass controls.
-
-## Prerequisites for updating
-
-> ⚠️ This plugin requires a **DSH kernel ≥ 0.1.5** (0.1.5-rc.1+ — both the official desktop line and DSH Desktop ≥ 2.0.7 qualify; tested floor). **`dsh-better-sidebar` is no longer version-restricted** (if installed, updating it to the latest is still recommended). The version matrix and upgrade notes are in [`docs/UPGRADING.md`](docs/UPGRADING.md).
-
-## Which wallpaper types are supported?
-
-Wallpaper Engine itself splits wallpapers into four types; this plugin supports three of them:
-
-| Type | Rendered by | Portable to DSH? |
-|---|---|---|
-| **Scene** | Wallpaper Engine's own 3D engine | ✅ Live — the built-in WebWallGL WebGL engine (particles / scripts / parallax / packaged audio); degrades through the out-figure chain on failure |
-| **Web** | Wallpaper Engine's built-in HTML/JS runtime | ✅ Live — WebWallGL's web mount with the **injected WE API** (audio / property / media listeners) under a strict sandbox; falls back to a plain iframe on failure |
-| **Video** | Wallpaper Engine's built-in player | ✅ Direct playback — the same hardened pipeline as uploaded video (transcode, fps cap, occlusion pause, speed / flip) |
-| **Application** | Wallpaper Engine launches a third-party executable | ❌ **Not supported** — it needs the host to run an external program, which this plugin does not offer |
-
-> The render path, graceful degradation, out-figure chain and empty-frame gate for all four types — plus the
-> diagnostics rows used for troubleshooting — are in [`docs/HOW-IT-WORKS.md`](docs/HOW-IT-WORKS.md).
-
-## How it works
-
-In one line: the **host** (`lib/index.js` facade + the shared route families in `lib/routes/*.js` + each component's own subpackage `packages/<name>/lib/`) locates Wallpaper Engine and your library
-and feeds media to the browser; the **client** (`lib/client.js`) mounts the selected wallpaper as a fixed
-layer *behind* the app's three columns and registers a first-level "Wallpaper Engine" settings tab.
-
-> The out-figure chain (live render → embedded MP4 → live capture → custom frame → empty state), the
-> host/client split, the full HTTP route table and the design reason for "no CPU fallback image" all live in
-> [`docs/HOW-IT-WORKS.md`](docs/HOW-IT-WORKS.md). **Implementation details are the code comments.**
+The current suite has **one main package and seven subpackages, eight packages in total**. A local compressed release-set comparison decreased from approximately **84.88 MiB to 25.12 MiB, about 70.4%**, after removing the bundled pet. This excludes the separately installed official pet and is not a memory-use or Git-repository-size measurement.
 
 ## Install
 
-### For users (published version, recommended)
+### Current test branch: use the complete source installer
 
-If you simply want to use the plugin, install the published package from npm:
+Requirements: **Node.js >=22.12.0, a DSH 0.2 kernel (including 0.2.0-rc.1/rc.2), pnpm and the target host's DSH CLI**. The desktop application's external version number is not its kernel version. Optional pet integration needs a separate official pet installation.
+
+1. Download and extract the complete [review branch `official-pet-bridge-20261020`](https://github.com/Fish-under-sea/dsh-wallpaper-engine/tree/official-pet-bridge-20261020), or clone that branch, not the fork's default branch. Open a terminal in the folder containing `package.json`.
+2. Completely close the target DSH host. Confirm its actual data directory and profile.
+3. Inspect the plan, then run the installer:
+
+```sh
+node scripts/install-source.mjs --profile web --dsh-home "<target DSH data directory>" --dry-run
+node scripts/install-source.mjs --profile web --dsh-home "<target DSH data directory>" --app-closed
+```
+
+For a desktop profile, use `--profile desktop` **with the desktop carrier CLI**. A standalone npm DSH CLI refuses desktop-profile management; changing the profile name does not bypass that protection. If necessary, pass `--dsh-cli "<path to the target CLI lib/bin.js>"`. Do not guess that every host stores its data in `~/.dsh`.
+
+The installer installs source dependencies, builds clients, registers all eight persistent `link:` dependencies and keeps the main bundle as the owner of the plugin rows. Restart the target host afterward. **Keep the source directory in place.** To update, close DSH, update the complete checkout and run the same installer again. Installing only the main package, using a raw `github:` specifier or relying on temporary junctions is not the source deployment procedure.
+
+### npm: only after the complete release set is published
+
+The publisher must build the eight-package set with `npm run pack:release`, publish the seven subpackages first and publish the main package last. The release main manifest declares exact subpackage versions. It does not bundle pet or Electron. A plain root `npm pack` is not a substitute for this complete release set.
+
+Only for an already published complete version:
 
 ```sh
 dsh plugin --profile web add dsh-plugin-wallpaper-engine
 ```
 
-Then restart `dsh web` and open **Settings → Wallpaper Engine**.
+This command **does not install unpublished branch changes**. Desktop installations still require the desktop carrier CLI and a fully closed host. See the [deployment and publishing guide](https://github.com/Fish-under-sea/dsh-wallpaper-engine/blob/official-pet-bridge-20261020/CONTRIBUTING.md).
 
-> **macOS / Linux users**: this plugin runs **natively** on Windows / macOS / Linux
-> — the same package and the same command on all three (the media pipeline is native
-> per platform too: GSMTC / MediaRemote / MPRIS).
->
-> macOS has no Wallpaper Engine client, so there is no Steam wallpaper library to
-> scan: point the **custom-wallpaper storage location** at a folder holding WE project
-> directories (`project.json` + `scene.pkg` / `index.html` / `*.mp4`) and the scene /
-> web / video wallpapers inside are picked up, scenes rendering live as usual; you can
-> also simply upload your own images / videos.
+### Rows and platforms
 
-### For developers (running your own copy)
+The main, about, mascot / avatar, media bridge, pet integration, effects, parallax and fonts rows are independently managed. Row changes require reload or restart. Disabling the pet row does not disable wallpapers. Do not additionally enable every subpackage bundle: the main patch owns the row set. Media bridge does not yet have exactly the same whole-block UI-hiding semantics as the other components.
 
-Installing a local copy with `link:`, building and verifying, hot-mount rules and the encoding rules
-(including **what `lib/client.js` actually is**) are documented in [`CONTRIBUTING.md`](CONTRIBUTING.md).
-**Host-side changes need a DSH restart to take effect** (CLI installs use `--profile web`; the desktop app
-uses `--profile desktop` and must be **fully closed first**).
-
-### Troubleshooting install failures
-
-Step-by-step recovery (`ERR_PNPM_UNEXPECTED_VIRTUAL_STORE`, etc.) lives in
-[`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
-
-### The plugin bundle and its sub-plugins (per-row toggles)
-
-Once installed, this plugin shows up in the plugin manager as **several rows**: the main row (the wallpaper
-engine itself) plus one row per **sub-plugin**. Each row can be **disabled on its own**.
-
-- ⚠️ **A restart / reload is required for a row toggle to take effect.** Row state lives in the bundle's own
-  manifest, which is not on the hot-reload watch list — the UI will **not** change the moment you flip the switch.
-- After disabling a row: that sub-plugin's **host capabilities (its HTTP routes) disappear entirely**, and
-  the **browser-side blocks that belong to it stop rendering** (its UI and its settings go away together).
-- Conversely, **the browser half is loaded per package**: as long as the main row is enabled the whole settings
-  UI is there. Disabling the **main** row disables the entire plugin (wallpaper and UI both go away).
-- `media-bridge` is the **exception**: it is currently a transitional form of the wallpaper sub-plugin, so it does
-  **not** yet participate in this "UI follows the row" semantics (it will be folded into the wallpaper/UI core split later).
-
-| Sub-plugin row | Capabilities that disappear | UI that stops rendering |
-|---|---|---|
-| `about-notice` | `/star-count`, `/about-qr/*` | Star count, the two group-QR images and the update notice inside the About tab (intro and credits stay) |
-| `mascot-avatar` | `/mascot`, `/avatar/<side>` | The mascot form + artwork/avatar uploads on the System tab, the avatar card on the Extensions tab, the message avatar decoration (the tabs and their other sections stay) |
-| `media-bridge` | `/now-playing*`, `/media-status`, `/audio-spectrum`, `/media-control` | (not applicable yet, see above) |
+Windows, macOS and Linux use the same source suite. On platforms without the Wallpaper Engine client, use local image / video uploads or point custom-wallpaper storage at existing WE project directories. Imported project directories are read-only and are not deleted through upload management.
 
 ## Usage
 
-1. Open `dsh web` → the DSH GUI.
-2. Open **Settings** and pick **Wallpaper Engine** from the left navigation (a first-level settings page, its own nav entry); the **pull-cord mascot** at the top of the chat also slides out the wallpaper-library drawer — both share one set of tabs and controls.
-3. Click **选择壁纸** to open the library **in-panel** (**not** a modal, and there is no backdrop), then click a wallpaper in the thumbnail grid (**Application** wallpapers are not supported and stay out of the grid); leaving the library view returns you to the settings page.
-4. Use **暂停/播放** to control a video wallpaper and **关闭** to clear it. Every choice and adjustment applies instantly and persists (see [Configuration](#configuration)).
+Open **Settings → Wallpaper Engine**, or pull the mascot cord to open the library drawer. Select wallpapers in the **in-panel library**, not a separate modal. Changes apply immediately and persist on the host.
 
-![Settings UI overview](https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/settings-ui.gif)
+![Main interface, historical upstream demo](https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/main-interface.gif)
 
-> The settings page: the liquid-glass card with six tabs (Library / Appearance / Playback / System / Extensions / About).
+Historical upstream demonstrations may differ from this branch. The six settings tabs are Library, Appearance, Playback, System, Extensions and About.
 
-![Wallpaper library, opened in-panel](https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/wallpaper-library.gif)
+- **Library**: selection, rating / type filters, soft hiding and restoration, uploads and rotation lists. Hiding never deletes source files. Rotation needs at least two playable candidates and prepares the next item before switching.
+- **Appearance**: presets, theme, glass, sidebar corners, global UI colors and typography. Theme-following is **off by default**; a manual theme choice takes precedence for the current wallpaper.
+- **Playback**: filters, framing, speed, transitions and audio. Fps-cap transcoding starts with the original and swaps when the cache is ready; unavailable ffmpeg or failed encoding falls back gracefully.
+- **System**: mascot selection, adapter target, occlusion pause and cache locations. The default mascot is DeepSeek; Deepseek_Pro and 菲比啾比 are separate artworks, alongside Claude, DeepSeek, Gemini, GPT, GLM, Grok, Kimi and Qwen. The chibi maid is carried by the author preset rather than the built-in carousel.
+- **Extensions**: optional avatars, click / trail effects and parallax. Disabling an extension removes its own decorations without resetting the wallpaper.
 
-> The wallpaper library, opened **in-panel** (a drill-in view, not a modal): browse every wallpaper thumbnail, batch-hide, and restore from the hidden tab.
+Glass ownership uses per-surface `auto` / `native` fallback. Unknown plugin surfaces are not forcibly cleared. Extra frost selectors have strict limits and must meet positioning and decoration-safety checks. There is no universal guarantee of compatibility with every skin or plugin. See [coexistence](https://github.com/Fish-under-sea/dsh-wallpaper-engine/blob/official-pet-bridge-20261020/docs/COEXISTENCE.md).
 
-### The settings tabs
+System audio capture uses **output loopback, not the microphone**. Online lyrics are off by default and may send track title, artist and album to LRCLIB when enabled. Media runtime support is native per platform: GSMTC / MediaRemote / MPRIS.
 
-The settings page has **six tabs** — **Library** (selection / rotation / custom uploads) · **Appearance** (colors / glass / caret / **configuration presets** — whole-configuration snapshots, exportable and importable; **global typography and the glass fine-tuning rows exist in both places** (collapsed in the sidebar, open on the settings page)) · **Playback** (effects + audio) · **System** (mascot — you can **import your own artwork** to replace the built-in forms (a re-import overwrites the previous one; the two form cards are disabled while a custom picture is active and come back once it is cleared) + advanced) · **Extensions** (the **module container** for later features: today it holds **custom session avatars** (the **first** item, master switch **off by default**) — turn it on and the host chat reads like a chat between friends: your messages sit on the right with your avatar, the assistant's on the left with its own. Each side can **import its own picture** (stored on this machine only, under the host data directory's `avatars/`, downscaled to 512px on import); without one an inline default is drawn (a person for you, a four-point star for the assistant). Avatars are circles by default, with one slider each for **size** (24–72px) and **corner roundness** (0–100%, 100% = a full circle, 0% = sharp corners). Turn the switch off and the conversation goes back to exactly how it was — every injected node and marker is removed — and it never touches wallpaper, glass or font settings) and **click & trail effects** (its master switch is **off by default** — turn it on when you want it) — they are a neon effect that follows your pointer: **clicks** burst as Ripple (two rings spreading from the hit point), Sparks (a cluster of dots flying outward) or Both, while the **trail** records the path you traced as Comet (a light band that tapers and fades toward its tail) or Dust (dots left behind at a fixed step) and fades out on its own after the trail duration (it keeps fading even when the pointer stops); the whole layer is composited with `lighter`, its color follows the theme accent / Rainbow (a fresh hue per instance, drifting over time) / Custom, and both opacity and the **blend mode** (Screen only brightens the picture — the most neon look; Normal / Overlay / Multiply / Lighten can be picked by hand) are written on the **host element**; clicks landing on the plugin's own controls do not fire, the listeners are passive and never capture the pointer; the layer deliberately never reads wallpaper pixels (so it has no Auto mode) and always sits above the wallpaper, below the scrim; clicks and the trail have one sub-switch each and either one is enough, with the master switch off by default; the **third module, 3D depth**, shifts the wallpaper and the mascot gently in the direction mirrored about the screen center as the cursor moves — the travel is measured as a **percentage of the longest diagonal** (the cursor parked in a screen corner moves a layer by its own percentage of that diagonal): 1% for the wallpaper by default, the mascot riding along with the wallpaper and an adjustable easing smoothness (0 = instant); the wallpaper is scaled up by the same amount so no base color shows at the edges; **Interface follows** (a sub-switch, off by default) makes the composer / conversation text area / sidebar drift as **whole blocks** — the text moves together with the glass underneath it (the nearer a layer is, the further it travels: the interface moves the **same way as** the wallpaper, like a camera pan, and each region's distance is **independent** — one slider each for the conversation text area, the composer, the sidebar and the user bubbles, with no total factor), with the displacement **snapped to whole device pixels** (with hysteresis, so the easing tail no longer flips it back and forth around zero — which is exactly where "it shivers as the cursor crosses the middle" came from), its `translate` **removed entirely** once it settles (the property alone would establish a containing block) and any group holding a fixed-position descendant staying put; **the top-left column is the one exception** — the host's "collapse sidebar" button is a fixed-position descendant of that column, so it is displaced with **relative positioning** (`left` / `top`) and never with `translate`; the click & trail layer deliberately does not move — this layer builds no DOM node at all: each frame it writes the **final, fully multiplied displacement** straight onto **the layers that actually move** as the CSS independent property `translate` (never through an inherited custom property: writing one on the body would re-resolve styles for the whole document every frame; the body keeps a single "wallpaper bleed" multiplier written once per settings change), the stylesheet no longer computes the offsets, frames take zero measurements and follow the display's real refresh rate, and it promotes those layers to compositor layers only while it is really moving, dropping the hint the moment it settles ("arrived" is judged from the displacement still visible on screen, with every multiplier at 0 it schedules no frame at all, and nothing is scheduled while the page is hidden); later features only add one entry to the registry) · **About** (project intro / repo & live star count / community QR codes / contributor credits) — each keeping only the controls that belong to it instead of one long scrolling column. The pill indicator slides smoothly between tabs, and long explanations live in tooltips — each row keeps a one-line hint. **About** reads no panel state and writes no settings: copy plus two QR codes (bundled PNGs served by the plugin's own route — they render even offline); the only external inputs are the **star count** and those two images — fetched by the host from the GitHub API when you open the tab (cached; if GitHub is unreachable it shows the last known value). **One-click starring is not offered**: starring requires your GitHub credentials and the plugin stores no token — the button opens the repo page, and the raw URL is right below it for copying.
+## Official dsh-pet integration
 
-### Selection & filters
+Wallpaper now integrates with the separately installed official [dsh-pet](https://github.com/PC2005-cloud/dsh-pet) through public APIs. Thank you to [PC2005-cloud](https://github.com/PC2005-cloud) for the interfaces and [cross-plugin discussion #122](https://github.com/PC2005-cloud/dsh-pet/issues/122). This is API integration, **not a bundled fork, a third-party file patch or a joint upstream release claim**.
 
-- **Hide / restore**: the **隐藏** button in a card's top-right corner only removes the wallpaper from the list — it **never touches the source file**. The library view's **已隐藏** tab restores one or all of them, and **批量** enters multi-select mode. Hiding the wallpaper that is currently playing does not interrupt it, and automatic rotation skips hidden wallpapers.
-- **Content rating**: reads each wallpaper's `contentrating` field (WE wallpapers: `project.json`; uploads: `uploads/.meta.json`) — **全部 / Everyone (default) / PG13 / Mature / 未分级**; an upload without a rating counts as **Everyone**. The plugin scans the disk itself and does **not** follow the adult-content switch inside the Wallpaper Engine client.
-- **Type**: filters by the embeddable type — **全部 / 视频 / 网页 / 图片 (uploads) / 场景 (scenes)**.
-- Every option shows how many playable wallpapers currently match; filtered-out wallpapers are dropped from the grid, the rotation editor and the rotation candidates — they are never auto-selected or rotated.
+1. Install and enable an official pet build exposing same-page `petApi7340.pose/progress` and HTTP config, lock, anim, position and throw APIs. The `0.3.7` version number alone is insufficient to identify these capabilities.
+2. Set the pet to display on the web surface, and set the Wallpaper mascot to official-sidebar mode.
+3. Open **Ctrl+Shift+D**, refresh targets, select the intended petId and try the sidebar, mascot-grab, knockback and hiss routines.
 
-### Card style & playback controls
+| Boundary | Behavior |
+|---|---|
+| Missing pet / hidden target | Integration stops; wallpaper and the original sidebar action still work. No silent switch to another pet |
+| Multiple displays | The same pet's actions follow official shared state across pages / desktop; no instance isolation is promised |
+| Bubbles | Drawn by the bridge only in the initiating page; can outlive action ownership; official bubbles are neither occupied nor cleared |
+| Tuning | Target selection, four routine pages, timing, stop, reset and JSON export; runtime parameter overrides should be exported before refresh |
+| Motion | Uses official position / throw; no pet DOM takeover, private React fields or per-frame HTTP |
+| Verification | Protocol, HTTP, playback scheduling and bridge UI checks passed; complete official React-pet and desktop visual acceptance remains outstanding |
 
-- **紧凑布局 (compact layout)**, a toggle in **System → Advanced**: ON gives the **CD-rack** look — cards stack vertically, hovering scales a card up and brings it to the front, and the grid shows everything on ONE page; OFF is the regular grid (default).
-- **黑胶唱片 (vinyl record)**: a rotating vinyl next to the picker uses the selected wallpaper's cover as the record label — it spins while the wallpaper plays and stops when paused; it shows in both card styles.
-- **Playback speed**: selectable speed steps for video wallpapers, driven by the browser's native `playbackRate` — instant, no reload, no black flash.
-- **Horizontal flip**: mirrors video, web and uploaded images / videos via CSS `scaleX(-1)` — zero main-thread cost.
-- **Switch transitions**: the animation used when the wallpaper changes (shared by manual picks and automatic rotation) — **hard cut (default)** / cross-fade / push / wipe / iris / zoom / strips, each with its own baseline duration multiplied by fast / normal / slow, plus a direction for the directional ones; under `prefers-reduced-motion` every transition degrades to a hard cut.
+Native position interpolation uses wall-clock time and is not guaranteed to track buffered video frame by frame. Existing bundled-pet dependencies, bundle selections, data and earlier external patches are **not automatically removed**. Close the host, disable the old bundled row and follow the [migration and integration guide](packages/pet-link/README.md). The official pet's files, configuration and animation pools are not rewritten.
 
-### Adapter target (host surface)
+## Configuration and privacy
 
-The **适配 (adapter)** section of **System → Advanced** works out which of **a plain web browser / the unofficial desktop client / the official desktop client** the plugin is running in and shows 「检测到：… · capability header present / absent」; when the detection is wrong you can pick the target by hand — **a manual pick wins over detection**. Detection is OS-independent: the host observes **request headers and the user agent** (the `x-dsh-desktop-renderer` header ⇒ unofficial desktop client, `Electron/` in the UA ⇒ desktop shell, neither ⇒ plain browser) and remembers what it saw in a latch that only ever grows. It drives four things at once: whether a **web wallpaper's payload** goes through the dedicated media origin or the app origin (a plain browser has no fence, so no second loopback listener is opened), whether **desktop-shell material rules** apply (they are all gated on `[data-we-adapter^="desktop-"]`, so a browser session never inherits them), whether **「窗口失焦时暂停」 (pause on focus loss)** is offered (see below), and **which panel rows appear, with the reason** — a manual pick that contradicts detection gets an actionable warning (picking the browser while a capability header is observed ⇒ the web wallpaper would answer 403).
-
-### Power saving & load shedding
-
-The **遮挡暂停 (occlusion pause)** trio in **System → Advanced** (defaults: minimize / tab-switch **on**, focus loss **off**, on battery **off**): when a condition hits, video wallpapers **stop decoding outright** (an explicit `pause`, not browser throttling — the decoder drops to zero) and the scene live render pauses its render loop; playback resumes when you come back / plug in (a manual pause is never auto-resumed). **「窗口失焦时暂停」 is only offered when the adapter target is the plain browser** — when a desktop shell loses focus the wallpaper is usually still fully visible, and pausing would freeze a **visible** picture; the stored value is kept and takes effect again as soon as you switch back to the browser target.
-
-The **帧率上限 (fps cap)** control in **Playback → Effects** (selectable steps — see the control itself) targets high-fps sources: the host re-encodes the source ONCE with ffmpeg to the capped frame rate (the timeline stays at **normal speed**, fully decoupled from playback speed) as **4K-preserving AV1**, cached so each wallpaper pays the cost once. The original plays first and the app swaps when the transcode is ready; the settings page shows a **live progress bar**; a source already within the cap is skipped and a failed transcode falls back to the original.
-
-> ffmpeg is provisioned in three tiers: **explicit** (`DSH_WE_FFMPEG`, or an `ffmpeg/` folder inside the plugin) → **auto-download** (npmmirror vs GitHub dual-source race, cached after verification) → **system PATH**. The encoder prefers **NVENC** (`av1_nvenc` → `h264_nvenc`) and falls back to **libx264 software encoding** when there is no NVIDIA GPU (slower, but it still produces the file); only a total lack of ffmpeg auto-disables the feature, leaving the wallpaper on the original with nothing else affected.
-
-### Cache location (moving a few GB off the system drive)
-
-Extracted frames, transcodes, live frames and video thumbnails are **regenerable artefacts** and default to `~/.dsh-wallpaper-engine/cache` — your **system drive**. Over time that adds up to **several GB**. **System → Advanced → 缓存位置 (cache location)** moves it to a folder on any drive (absolute path, `~` supported): the **Change** button opens a **folder browser** (lists drives and subfolders to click through; the address bar also accepts pasted paths), and on save the existing cache is **migrated automatically** (file by file, so it also works across drives) while the old directory is left behind as empty shells — **never deleted**.
-
-The migration **only moves the plugin's own cache subdirectories**; anything it does not recognise stays where it is. So the target may be an existing folder of yours (say `D:\WallpaperEngineCache`) without the plugin touching anything else inside it. All of it is regenerable (hence the "safe to delete any time" hint in the settings page): the worst case is one extra transcode, never a lost wallpaper or setting.
-
-Precedence: `DSH_WE_CACHE_DIR` → the **cache location** setting → the `~/.dsh-wallpaper-engine/cache` default. The environment variable wins when present, and the settings page always shows the path that is **actually in effect** (a mismatch means it is being overridden).
-
-> Stored as the root field `cacheDir` in `config.json`. **Custom wallpapers** have their own storage location (default `~/.dsh-wallpaper-engine/uploads`), changed on the **Library** tab and migrated by the same logic (see above); to move the **entire data directory** (settings plus avatars / fonts / mascot), use the `DSH_WE_DATA_DIR` environment variable — see the environment table under **Configuration**.
-
-### Picture adjustments
-
-Nine sliders live under **Playback → Effects** (available while a wallpaper is active): **壁纸模糊** · **亮度 / 对比度 / 饱和度** (wallpaper media filter) · **水平 / 垂直 / 缩放** (wallpaper **layer framing** — offset and zoom, on the **same scale as WE's own sliders** of those names; the value box on the right is typeable and double-clicking the label resets it) · **壁纸透明度** (fades the whole layer toward the page base colour, complementing **暗化**) · **暗化** (scrim between wallpaper and text); two more live under the **外观** tab: **边框** (the **细节** group — border / divider contrast) and **雾化** (the **glass UI** section — glass-panel blur radius). All apply instantly and persist — **no page refresh needed**; every control shows its own range and default.
-
-> **The wallpaper decides light or dark** — after a switch the plugin moves the global theme to the side that matches it (colour order: the author's `schemecolor` → the picture's most-occupied colour (the author's preview and a **real rendered frame** each vote; a disagreement resolves to dark) → nothing changes when neither is available; only **clearly bright** colours get the light theme. An author value of exactly `0 0 0` counts as unfilled and falls through to the picture). You can still set the theme by hand in DSH at any time — once you do, **this wallpaper stops being automatic** and the next switch resumes it. If text or hairlines become hard to read on a bright or busy wallpaper, raise **暗化 / 边框** (plus a little **壁纸模糊**), and if the wallpaper is too loud, raise **壁纸透明度**. No slider extreme can push body text below legibility — text-bearing surfaces keep a **readability floor** (see above).
-
-### Live rendering & wallpaper properties
-
-Scene / web wallpapers render live through the bundled **WebWallGL** engine by default (`lib/webwallgl/`, MIT, from [webwallgl](https://github.com/oneincase/webwallgl)): particle systems, puppet models, SceneScript, mouse parallax / click interaction, packaged audio and audio reactivity. The renderer page runs in a **same-origin isolated iframe** under a **heartbeat watchdog**; failures are remembered per wallpaper and degrade automatically (re-toggling the switch retries). Web wallpapers additionally get the **injected WE API** (audio / property / media listeners) and a forced `sandbox="allow-scripts"` — third-party HTML never inherits the DSH origin.
-
-When the current wallpaper is a **scene** or **web** wallpaper, the current-wallpaper card shows a green **壁纸属性** button: it lists the adjustable properties the author defined in the WE editor (color / bool / slider / combo / text / file), applies a change **immediately** and **remembers it per wallpaper**, and **恢复默认** clears every edit for that wallpaper. The panel shows the values **actually in effect** (read back from the renderer).
-
-### Custom wallpapers & automatic rotation
-
-- **Custom wallpapers**: upload local **JPG / PNG / MP4** as wallpapers (validated twice — in the browser and on the host). The **storage location** defaults to `~/.dsh-wallpaper-engine/uploads` and can move to any drive (absolute path, `~` supported) with existing files migrated automatically; the **fit modes** are cover / contain / center / fill. Uploaded MP4s get an on-demand extracted thumbnail, and re-uploading an identical file is detected by content and reuses the existing entry.
-- **WE project directories**: any project folder containing `project.json` (with `scene.pkg` / `index.html` / `*.mp4`) inside the storage location is picked up as a wallpaper of the matching type — scene wallpapers render live too. These folders are **read-only**: they never appear in upload management and are never deleted.
-- **Automatic rotation**: rotation runs over **user-defined carousel lists** — create any number with **新建**, pick wallpapers into each from the inventory, give each list its own **switch interval** (in minutes — range and default come from the control) and **order** (sequential / random), then enable **自动轮转** on the list you want active. Each list needs at least two playable wallpapers; on first run the first playable WE playlist is imported as a list, and **从 WE 播放列表导入** imports any other playlist while editing.
-- **Switch when ready**: the next wallpaper is prepared in the background to **fully ready** (live first frame / video canplay / image decoded) before the commit — the current wallpaper keeps playing meanwhile, and the two layers cross-fade at the moment of readiness, so the new picture is alive on arrival with no black flash; a candidate that fails to prepare is skipped in a bounded chain.
-
-### Liquid-glass appearance (whole settings window + accent + transparency)
-
-The **外观** tab controls the look of the **entire native DSH settings window** (following the dsh-web-ui-all skin-center design):
-
-| Control | What it controls | Default |
-|---|---|---|
-| **设置窗口玻璃 (always on)** | The whole settings window (dialog + left nav + every native section) runs the glass recipe; the old master switch is retired | On |
-| **设置窗口玻璃·独立配置** | Override the global glass colour / transparency / blur for this surface only (off = follow the global values). **Settings page only** (the sidebar variant draws the simple configuration) | Off (follow global) |
-| **配色** | Theme color: buttons, switches, links, nav active, sliders and glass highlights inside the window all follow it (6 presets + custom picker) | classic blue `#4f8cff` |
-| **玻璃颜色** | The **base tint** of the settings-window glass (6 presets + custom picker) | white (light) / deep navy (dark) |
-| **玻璃透明度** | Opacity of the glass surfaces (settings window, composer, bubbles, sidebar panels); higher = more transparent | see the control |
-| **左侧栏液态玻璃** (Left sidebar liquid glass) | Makes the host's native **left sidebar** (the session / workspace column) follow Accent / Glass color / Glass opacity / Frost / Border too — off means that column keeps showing the **raw** wallpaper (no frost, no base tint) | off |
-| **雾化** | Glass blur radius — **the same adjustment** drives the conversation cards, the left-sidebar override, the settings window and the plugin popovers (the sidebar is the exception: it has its own 「侧栏模糊」) | see the control |
-| **额外补雾化的选择器** (Extra frost targets) | Give **third-party plugin panels** their own frost — they carry no `backdrop-filter` of their own, so the global Frost slider never reaches them and the readability floor is their only backing. List those panels' CSS selectors (commas or newlines, up to 8, each at most 120 chars; an over-long entry is dropped whole and entries beyond the 8th are dropped whole too (the surviving 8 all apply) — never truncated into a half selector; each target must be positioned itself — fixed / absolute); the carrier rides on its `::before`, so popovers inside a panel keep their anchor. Empty = off (issue [#200](https://github.com/elysia395/dsh-wallpaper-engine/issues/200)) | empty |
-| **Text-surface readability floor** | Every text-bearing surface composites a theme base layer under the glass tint (body text stays ≥4.5:1); **on by default, no switch** | on |
-| **Theme follows the wallpaper** | **A switch, off by default.** With it on, a switch of wallpaper picks the global light/dark theme from the wallpaper (author scheme colour → the picture's most-occupied colour (preview and real frame vote; disagreement ⇒ dark) → leave it alone; an author value of exactly `0 0 0` counts as unfilled; light theme only for clearly bright colours — the 外观 → 主题 row shows the last verdict's source and luminance); changing the theme by hand in DSH stops it for that wallpaper and the next switch resumes | off |
-
-Everything applies instantly and persists; browsers without `backdrop-filter` fall back to a high-opacity solid so text stays readable.
-
-> **Defaults and ranges come from the control itself.** The single source of truth for settings is [`lib/settings-schema.js`](lib/settings-schema.js) (`DEFAULTS` for values, `KINDS` for validation ranges, the enum tables) — both the host and the client derive from it, and the panel renders straight out of it. That is why this document and every other doc **quote none of those numbers**: a copy is one more thing that rots.
-
-### Configuration presets (whole-configuration snapshots)
-
-The **configuration presets** at the top of the Appearance tab are no longer a "glass subset" — they are a **snapshot of this plugin's entire configuration**: one click applies every look-and-behavior setting (rotation, playback, effects, parallax, avatar shapes, and the rest) **in full**; the three **physical assets** — fonts / mascot artwork / session avatars — are **checked on demand** when saving / exporting (an unchecked item falls back to whatever the receiving side currently has — the checks only decide whether images and fonts come along; numeric settings are always saved in full). Presets can be **exported as `.json` files** and **imported** elsewhere (importing only adds them to the list without applying — click them in the list to apply), so they can move between users. A set of presets ships with the plugin; **old presets saved before the upgrade hold only the glass subset and are voided** — the panel names the version as obsolete; just save a fresh copy.
-
-### Mascot (chat pull-cord)
-
-The **System → 吉祥物** controls the chat **pull-cord** — a draggable rope pinned to the top edge; pulling it down slides out the **wallpaper library** drawer (vinyl card, rotation and custom-wallpaper management within reach). The **form** picker renders as cards: each card draws the actual artwork scaled by the current **吉祥物大小** slider, so choosing a form and judging its size happen in one place:
-
-| Control | What it does | Default |
-|---|---|---|
-| **显示吉祥物** | Whether the pull-cord mascot and its wallpaper-library drawer render | on |
-| **吉祥物形态** | Pick the artwork on a **3D ring dial**: the 10 artworks sit at equal angles on a circle and the whole ring rotates (the ones facing away hide themselves), with **the centre being the one in use**; **drag** the ring, press ← / →, click a dot below, or **click any artwork** to bring it to the centre. Holds **10 built-ins + custom**: **Deepseek_Pro** (formerly 鲸御姐; whale-tailed maid, portrait 2:3 full-body — a **different artwork** from the model girl **DeepSeek** on the same line, so don't go by the name) / **菲比啾比** (portrait), plus eight **model girls** — **Claude · DeepSeek · Gemini · GPT · GLM · Grok · Kimi · Qwen** (each box height follows its own source ratio); the last item imports a **custom picture** (clicking another artwork while a custom one is active asks for confirmation first) | **DeepSeek** |
-| **吉祥物大小** | Scales the mascot (the rope box follows the ratio; drag / snap geometry adapts automatically) | see the control |
-
-![Mascot quick-adjustment drawer](https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/mascot-drawer.png)
-
-> Pull the top rope mascot to slide out the wallpaper-library drawer. All artworks are inlined as base64 (transparent background) at build time, so the single-file client bundle stays self-contained; **size** changes only the rope's own box, never the drawer below.
->
-> The factory artwork list does **not** include the near-square chibi maid (小女仆) — that artwork ships inside the 「作者自用」 preset as an easter egg, and the factory default form is **DeepSeek**.
-
-### Global UI colors · typography · caret
-
-Three groups, **reachable from both the settings page and the sidebar's Appearance pane**. The Appearance pane has six sections, in the **same order on both surfaces** (Theme / Details / Glass UI / Sidebar corners / Global UI colors / Global typography), and every one of them can be **collapsed** by clicking its section head; the only difference is the **default**: the **sidebar hides the last three** (Sidebar corners / Global UI colors / Global typography — the pane is narrow and all six would mean scrolling several screens), while the **settings page opens all five gates** (there is room, and it is meant to be read at a glance). Both **remember what you collapsed by hand** (the settings page is a modal dialog that covers the page behind it, so the sidebar copy is the one to use when you want to see the live result while tuning):
-
-- **Global UI colors** (Appearance pane, sitting **above** "Global typography") — one master color plus five spots you can point at individually:
-  - **Global accent**: one control for everything — the UI accent, buttons, selection states and the spots below all follow it;
-  - **Custom UI colors** (**off by default**): once on, the "Global accent" row is **disabled** and the five items below decide instead; leave an item on "Follow" to go back to the global accent. They cover the spots that used to **ignore** the accent entirely:
-
-    | Item | What it colours |
-    |---|---|
-    | Send button | the round arrow button at the right of the composer (⚠️ its arrow is **hard-coded white by the host**, so mid tones read best) |
-    | Link text | links and emphasised text in the conversation and panels |
-    | File icon | the `</>` file icon on deliverable cards (same source as links; overridden separately here) |
-    | Tabs / focus rings | the conversation's Chat / Trajectory tabs and their underline; focus rings and status dots share the same source and follow along |
-    | Deep-diving status | the "deep diving, elapsed …" line and its shimmer |
-
-  - **Caret color** — when the wallpaper shows through the liquid-glass composer and the caret blends into it ([#83](https://github.com/elysia395/dsh-wallpaper-engine/issues/83)): **Auto** (default, native dsh) / 6 presets / custom picker, applied via `caret-color` to every text input. It is **not** affected by the switch above and is always adjustable.
-  - ⚠️ All five only apply **while this plugin is running** (the anchor is the page-glass marker): with the plugin disabled the interface returns to DSH's native colors.
-- **Global typography** (Appearance pane · collapsed block) — the **master switch defaults to off** (the stock dsh look). Once enabled, everything is refined **per role / per component** and there is **one default font** (**there is no global weight** — a single global value would flatten DSH's weight hierarchy):
-  - **Default font (global)**: the default family for the whole interface, **including the fonts installed on your machine** (the host enumerates the system font list; pick from the dropdown and hit "Rescan" when needed). It is a **default, not a force** — any role / component with its own family still wins, and it **never changes any role's size**;
-  - **Terminal font**: changes only the **terminal block** in the conversation (the second entry point for the same setting as "Advanced font settings → Terminal");
-  - **Text color roles**: tint each of DSH's **color roles** separately (unset = keep the DSH default);
-  - **Typographic roles**: one row per role with **size / weight / family** — size is an **absolute px** value (the box shows DSH's official size; empty = leave it alone), weight is 100–900, family offers the built-in keys or **installed fonts** ("follow" = do not override), plus a "changed only" filter;
-  - **Advanced font settings** (sub-switch): refine **code blocks / terminal / markdown / tables** **per component** — effective only for components found by the startup self-probe (if DSH renames one, that entry degrades instead of misfiring).
-  - **Font-set presets**: save a whole typography look as a **font set** — one preset ships with the plugin; you can **create one from the current look / rename / delete**, and every edit lands **only in the current set** (with 「restore」 putting it back the way it was). Sets can be **exported / imported** as `.json` (export opens the system "Save as"). It belongs to custom typography: turning the master switch off collapses the whole block.
-  Error / danger / warning elements keep their system red; **恢复默认** clears every typography override (it does **not** touch view switches such as 「只看改过的」).
-
-### System-audio reaction and Now Playing
-
-Three controls under **Playback → 声音** (the first two on by default, the third off):
-
-- **系统音频反应** — feeds a spectrum of **whatever the system is playing** (any app, not just browser tabs) to the wallpaper's audio-reactive effects. It is the system-output **loopback**, not the microphone, and it is built in on all three platforms (WASAPI loopback on Windows — **no "Stereo Mix" or virtual sound card needed**); when no audio can be captured the wallpaper falls back to its built-in simulated spectrum.
-- **媒体信息** — hands the system **Now Playing** (title / artist / album / playback / position / duration / **cover art**) to the wallpaper through the official WE APIs `wallpaperRegisterMediaPropertiesListener` / `…ThumbnailListener` / `…PlaybackListener` (plus `…TimelineListener`), so workshop web wallpapers that recognise them show song info and artwork.
-- **在线歌词** — lyrics come from local sources first (a `.lrc` next to the audio file, or an already-cached copy); when enabled, a missing lyric triggers one query to [lrclib.net](https://lrclib.net) — that request sends title / artist / album, hence **off by default**.
-
-**Reverse control (follows 媒体信息)**: the **▶ / ⏸ / ⏮ / ⏭** buttons of a scene wallpaper's own Now Playing widget control the **real system player** (play / pause / previous / next) — only wallpapers carrying those widget buttons are affected (three in the corpus). The control plane shares its backend with the data path: with no middleware the buttons fall back to the renderer's simulated source, and the built-in (read-only) implementation offers no control.
-
-> This data comes from a bundled Rust middleware, [media-bridge](https://github.com/oneincase/media-bridge), run as a child process (downloaded on first use, sha256-verified, cached under `~/.dsh-wallpaper-engine/bin/`): MediaRemote on macOS, the system media session (GSMTC) on Windows, MPRIS over D-Bus on Linux. So `brew install media-control`, `playerctl`, VB-Cable and Xcode Command Line Tools are all no longer needed; when the middleware cannot be fetched or started, the plugin falls back to its built-in implementation and reports the reason in `GET /wallpaper-engine/media-status` (`fallback`).
-
-## Configuration
-
-This plugin exposes no model-visible tools or prompt text — **zero token cost** for the agent — and writes no DSH settings of its own. Only three things land on disk: the host-side config file `~/.dsh-wallpaper-engine/config.json` (every setting — selection, hidden list, rotation, accent, typography, … — plus your chosen upload directory and cache location), the **custom wallpaper files** themselves, and the **caches plus on-demand runtimes** under `~/.dsh-wallpaper-engine/` (transcode / live-frame / video-thumbnail caches, the ffmpeg and media-middleware binaries). The two disk-heavy parts — the **cache root** and the **upload directory** — can both be moved to another drive in the settings page (see **Cache location** above), and the whole data directory moves with `DSH_WE_DATA_DIR`.
-
-**Environment variables**:
+Wallpaper settings live in `~/.dsh-wallpaper-engine/config.json`, independent of the browser port. Caches and uploads default to subdirectories under the same data root and can be moved from the UI. Migration moves recognized plugin files, not unrelated files in the target directory. Pet target selection and exported runtime tuning have their separate bridge lifecycle; they are not all part of the host configuration file.
 
 | Variable | Purpose |
 |---|---|
-| `DSH_WE_FFMPEG` | explicit ffmpeg executable path (highest priority in the resolution chain) |
-| `DSH_WE_FFMPEG_URL` | replaces the auto-download source (self-hosted mirror / proxy) |
-| `DSH_WE_CACHE_DIR` | overrides the **cache root** (transcode / live-frame / video-thumbnail caches; wins over the **cache location** setting, see above) |
-| `DSH_WE_STEAM_ROOT` | explicit Steam root(s) (comma/semicolon separated, Windows or /mnt paths). Probed **before** the registry and the built-in auto-detection — use it to pin one location; a root with no install falls through to the next candidate |
-| `DSH_WE_MEDIA_BRIDGE` | explicit media-middleware executable (dev/self-built artifact; highest priority) |
-| `DSH_WE_MEDIA_BRIDGE_URL` | replaces the middleware download source (`{tag}` / `{asset}` placeholders supported) |
-| `DSH_WE_MEDIA_BRIDGE_TAG` / `DSH_WE_MEDIA_BRIDGE_SHA256` | use another middleware version (an unpinned tag is refused unless you supply its sha256) |
-| `DSH_WE_MEDIA_LEGACY` | `=1` forces the built-in implementation (for A/B debugging) |
-| `DSH_WE_MEDIA_NO_AUDIO` | `=1` metadata only — never touches system audio capture (no permission prompt) |
-| `DSH_WE_MEDIA_PROVIDER` | `=mock` runs the middleware's built-in fake player (no real player needed) |
-| `DSH_WE_MEDIA_IDLE_MS` | idle ms before the middleware child is stopped (`0` = never; default 15 min) |
-| `DSH_WE_MEDIA_DEBUG` | `=1` logs the middleware's stderr and spawn arguments |
-| `DSH_WE_DATA_DIR` | overrides the plugin data directory (default `~/.dsh-wallpaper-engine`; self-check scripts use it so they never touch your real `config.json`) |
-| `DSH_WE_UPLOAD_DIR` | overrides the custom-wallpaper storage location (takes priority over the in-app 更改 setting and the default) |
-| `DSH_WE_ASSETS_DIR` | overrides the official-assets path (the WE `assets` tree; takes priority over the in-app setting) |
-| `DSH_WE_TRANSCODE_TIMEOUT_MS` | overrides the wall-clock budget for one transcode job (ms; default see implementation) |
+| `DSH_WE_DATA_DIR` | Override the whole plugin data root |
+| `DSH_WE_CACHE_DIR` / `DSH_WE_UPLOAD_DIR` | Override cache / upload roots |
+| `DSH_WE_STEAM_ROOT` / `DSH_WE_ASSETS_DIR` | Override Steam discovery / official WE resources |
+| `DSH_WE_FFMPEG` / `DSH_WE_FFMPEG_URL` | Explicit ffmpeg executable / download source |
+| `DSH_WE_TRANSCODE_TIMEOUT_MS` | Transcode time budget |
+| `DSH_WE_MEDIA_BRIDGE` / `DSH_WE_MEDIA_BRIDGE_URL` | Explicit media bridge / source |
+| `DSH_WE_MEDIA_BRIDGE_TAG` / `DSH_WE_MEDIA_BRIDGE_SHA256` | Version and required integrity information for custom versions |
+| `DSH_WE_MEDIA_LEGACY` / `DSH_WE_MEDIA_NO_AUDIO` | Built-in fallback / metadata-only mode |
+| `DSH_WE_MEDIA_PROVIDER` | `mock` for development |
+| `DSH_WE_MEDIA_IDLE_MS` / `DSH_WE_MEDIA_DEBUG` | Idle shutdown / diagnostic output |
 
-**Where settings live**: every setting lives in the host-side file `~/.dsh-wallpaper-engine/config.json`
-(independent of the browser's port, so a restart / port change / cleared browser data cannot lose it; legacy
-localStorage settings are migrated automatically). File location, multi-device sharing and write behaviour: see the
-"Settings persistence" section of [`docs/UPGRADING.md`](docs/UPGRADING.md).
-
-## dsh-better-sidebar compatibility
-
-The liquid-glass effect is specifically adapted for dsh-better-sidebar's panels
-(frost, specular highlight, and layer hierarchy are unified), so the sidebar and
-the conversation area share the same wallpaper + scrim background and read as one
-continuous surface.
-
-The **外观** tab also exposes a set of **sidebar glass** controls independent of
-both the conversation glass and the active wallpaper. Even with no Wallpaper
-Engine wallpaper selected, the sidebar can be tinted and frosted over the stock
-DSH surface or another background source. These controls target only the
-dsh-better-sidebar subtree; browsers without `backdrop-filter` fall back to a
-near-opaque fill:
-
-| Control | What it controls | Default |
-|---|---|---|
-| **侧栏液态玻璃** | Master switch: frost the sidebar panels | On |
-| **侧栏模糊** | Blur radius of the sidebar frost | see the control |
-| **侧栏透明度** | Sidebar glass density (**higher = clearer**) | see the control |
-| **侧栏玻璃颜色** | Sidebar glass **base tint** | see the control |
-| **侧栏全透明** | Give up the readability floor for full transparency: while a wallpaper is active the sidebar's readability base, tint and sheen are removed (blur stays on its own knobs) | Off |
-| **侧栏玻璃跟随全局** | On: the sidebar follows glass colour / transparency / blur; off: it uses its own values (**Sidebar glass · independent configuration**, settings page only) | On |
-
-> Sidebar glass is a separate set of knobs from the settings-window glass: the
-> conversation 「玻璃」slider only drives the composer / bubbles, while the sidebar
-> sliders drive the sidebar. Turning **侧栏液态玻璃** off restores the native
-> sidebar, including its editor / terminal content surfaces (the frost / blur this
-> plugin paints directly retreats as a family); **the page-level token recipe is
-> not governed by this switch** — surfaces that colour themselves by the host spec
-> via `--dsw-alias-*` (third-party plugins included) still receive the glass recipe,
-> and that layer waits for the glass master switch (current state, self-checks and
-> the four coexistence modes: [`docs/COEXISTENCE.md`](docs/COEXISTENCE.md)). The sidebar defaults
-> to a fairly clear glass (so it matches the background instead of glowing
-> white); editor / terminal content surfaces have their own near-opaque fill +
-> transparency controls to keep text readable in the narrow panels.
-
-![dsh-better-sidebar compatibility & custom typography](https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/better-sidebar-font.png)
-
-> The sidebar glass adaptation with the custom typography (行楷) applied at the same time.
+Wallpaper files stay local. Runtime downloads, GitHub repository statistics and opt-in lyrics access external services; this is not a claim of fully offline operation.
 
 ## Limitations
 
-- **Application wallpapers are not supported** — they need the host to run a third-party executable, which this plugin does not offer — so they stay out of the thumbnail picker and the rotation candidates. **Scene** wallpapers are rendered live by the bundled WebWallGL engine and need no Wallpaper Engine process running in the background.
-- The browser must be able to autoplay muted `<video>` (DSH runs on loopback; muted autoplay is allowed by modern browsers).
-- Media is served from your local Wallpaper Engine install paths; the host only serves files it has already enumerated (no arbitrary filesystem exposure). Custom uploads likewise stay on your machine — nothing is uploaded to any server.
-- **The fps cap depends on ffmpeg**: the encoder prefers NVENC (`av1_nvenc` → `h264_nvenc`) and falls back to **libx264 software encoding** without an NVIDIA GPU (slower, still works); only a missing ffmpeg (including an unavailable auto-download, e.g. musl/Alpine or other uncovered platforms) auto-disables the fps cap, leaving wallpapers on the original — nothing else is affected.
-- **Very short white frames on minimize / restore can still happen on the desktop client (shell side)**: while a wallpaper is active the plugin paints the root element with an opaque **wallpaper representative colour**, so "the wallpaper layer's pixels did not reach the screen" degrades to a tone-matched solid rather than a white flash; but at the instant the window has **no frame at all to submit**, what shows is the shell's window base plate (on Windows the `BrowserWindow` keeps Electron's default base colour = white; the shell sets a transparent plate for macOS only). That one needs the shell side — the plugin cannot change it.
-- **Occlusion pause applies to video wallpapers and the scene live render**: videos pause their decoder directly; the scene live render pauses its render loop through the control surface (GPU usage drops with it). Plain web (iframe) wallpapers cannot be paused from outside and are only throttled by the browser when hidden.
+- Application wallpapers are unsupported. Scene compatibility depends on assets, scripts, WebGL and drivers.
+- Three-platform installation does not imply an official Wallpaper Engine client exists on all three platforms.
+- Desktop minimize / restore can still expose a brief shell-side white frame; the plugin cannot fully control the host window base plate.
+- Video and scene occlusion pause differ from externally hosted iframe behavior. Focus-loss pause is exposed only for the appropriate browser adapter.
+- Optional `dsh-better-sidebar` integration has its own surface controls; browsers without backdrop filtering use solid fallback.
+- Pet action synchronization and bridge-only bubbles are intentional interface boundaries, not old private-controller parity.
 
-## Development / rebuild
+## Development
 
-Running your own copy (`link:` install, build & verify, hot-mount and encoding rules, and **what
-`lib/client.js` actually is**) is documented in [`CONTRIBUTING.md`](CONTRIBUTING.md).
+See the current [contribution guide](https://github.com/Fish-under-sea/dsh-wallpaper-engine/blob/official-pet-bridge-20261020/CONTRIBUTING.md), [changelog](https://github.com/Fish-under-sea/dsh-wallpaper-engine/blob/official-pet-bridge-20261020/docs/CHANGELOG.md), [upgrade notes](https://github.com/Fish-under-sea/dsh-wallpaper-engine/blob/official-pet-bridge-20261020/docs/UPGRADING.md), [rendering design](https://github.com/Fish-under-sea/dsh-wallpaper-engine/blob/official-pet-bridge-20261020/docs/HOW-IT-WORKS.md) and [troubleshooting](https://github.com/Fish-under-sea/dsh-wallpaper-engine/blob/official-pet-bridge-20261020/docs/TROUBLESHOOTING.md). Generated clients are built from source; do not edit generated bundles by hand. The npm package does not ship `docs/`, so these technical links use repository URLs.
 
-## Contact
+Report branch-specific installation or pet-integration problems to the [current fork](https://github.com/Fish-under-sea/dsh-wallpaper-engine/issues), with versions, platform, reproduction steps and sanitized logs. Shared upstream problems belong in the [official tracker](https://github.com/elysia395/dsh-wallpaper-engine/issues). Never include credentials. Community QR codes are available in the [Chinese README](README.md#联系方式).
 
-Questions, feedback, or want new versions the moment they land? Join one of our groups (these are the same two codes the plugin shows under **Settings → Wallpaper Engine → About**):
+## Credits
 
-| 🐧 QQ group | 🎵 Douyin group |
-|---|---|
-| <img src="lib/about/qq-group.png" alt="QQ group QR code" width="260"> | <img src="lib/about/douyin-group.png" alt="Douyin group QR code" width="260"> |
-| **DSHWE \| LLM discussion** | **dshwe community 2** (group ID 917001335502) |
+Contributions are grouped by work, not ranked. See the official [Contributors](https://github.com/elysia395/dsh-wallpaper-engine/graphs/contributors) and [merged PRs](https://github.com/elysia395/dsh-wallpaper-engine/pulls?q=is%3Apr+is%3Amerged) for the maintained history.
 
-> The images are the shipped assets `lib/about/*.png` (the plugin serves the very same bytes from its own route); for the source screenshots and how they were derived, see [`assets/about/README.md`](assets/about/README.md).
+- **[elysia395](https://github.com/elysia395)**: project creation, upstream maintenance, releases, presets and community.
+- **[生鱼 / Fish-under-sea](https://github.com/Fish-under-sea)**: current source-branch integration, whole-configuration presets and asset import / export, mascot carousel, source deployment and release closure, official pet bridge, bubble / routine / tuning work and regression documentation. Earlier work: [#173](https://github.com/elysia395/dsh-wallpaper-engine/pull/173), [#180](https://github.com/elysia395/dsh-wallpaper-engine/pull/180), [integration PR #251](https://github.com/elysia395/dsh-wallpaper-engine/pull/251). Some latest source work remains unpublished.
+- **[YV3507](https://github.com/YV3507)**: rendering and frame-pipeline fixes, liquid-glass tokens, architecture, documentation, regression guards and community integration.
+- **[oneincase](https://github.com/oneincase)**: [WebWallGL](https://github.com/oneincase/webwallgl), [media-bridge](https://github.com/oneincase/media-bridge), live rendering, cross-platform media and performance work.
+- **[yuxilao](https://github.com/yuxilao)** and **[Jerry / ruijiaang-lab](https://github.com/ruijiaang-lab)**: Linux scene-rendering exploration, performance / rotation work, and early macOS / WaifuX compatibility and contribution paths.
+- **Community contributors**: WTStarMark, levodoubt, Willhamster, 383891598, SiriLee, libiwolve, 0-007pro, jujubaoj646-star, xiahou001, wilianyichen, hecoococ, ShamSky88, Rekk0, Y1X1n, wwexplorer, jassdingk, w-sli and everyone helping through issues, documentation and device testing. See the [full contribution summary](README.md#致谢).
+- **[PC2005-cloud / dsh-pet](https://github.com/PC2005-cloud/dsh-pet)**: official pet APIs and cross-project integration support.
+- **Bilibili creator [ZipZipPipe](https://space.bilibili.com/4168597)**: thank you for the **AI-girl fan-character designs used as the basis for our new mascots**. These are fan creations, not official model-vendor characters or endorsements. Attribution does not relicense the artwork under MIT.
 
-## Acknowledgments
-
-This plugin is the work of many people — thank you all:
-
-- **[oneincase](https://github.com/oneincase)** — author of the bundled [WebWallGL](https://github.com/oneincase/webwallgl) real-time rendering engine and the [media-bridge](https://github.com/oneincase/media-bridge) media middleware ([#103](https://github.com/elysia395/dsh-wallpaper-engine/pull/103), [#104](https://github.com/elysia395/dsh-wallpaper-engine/pull/104)): the live rendering of Scene / Web wallpapers and the native Windows / macOS / Linux media pipeline are all built on top of them.
-- **[YV3507](https://github.com/YV3507)** — the largest contributor by commits: from the early scene renderer to the static-frame fix series, the liquid-glass token system, the live frame pipeline, and several rounds of large-scale refactors plus the docs / guard system.
-- **[yuxilao](https://github.com/yuxilao)** — the scene-gl Linux real-time rendering pipeline (WebGL2 official shader driver + several rounds of performance work) and rotation handoff / GPU frame backfill / official assets path ([#65](https://github.com/elysia395/dsh-wallpaper-engine/pull/65), [#108](https://github.com/elysia395/dsh-wallpaper-engine/pull/108)).
-- **[Jerry](https://github.com/ruijiaang-lab)** — before native three-platform support landed, he maintained the macOS side of things (WaifuX workshop directory scanning, vinyl thumbnail fallback, upstream porting, and the macOS contribution paths, [#44](https://github.com/elysia395/dsh-wallpaper-engine/pull/44), [#45](https://github.com/elysia395/dsh-wallpaper-engine/pull/45), [#52](https://github.com/elysia395/dsh-wallpaper-engine/pull/52), [#54](https://github.com/elysia395/dsh-wallpaper-engine/pull/54)).
-- Also [SiriLee](https://github.com/SiriLee) (brightness / contrast / saturation controls, the mascot pull-cord toggle, Steam root discovery from WSL), [libiwolve](https://github.com/libiwolve) (content rating & type filters), [0-007pro](https://github.com/0-007pro) (automatic wallpaper rotation), [jujubaoj646-star](https://github.com/jujubaoj646-star) (the typography & bubble styling panel), [xiahou001](https://github.com/xiahou001) (per-wallpaper audio volume), [wilianyichen](https://github.com/wilianyichen) (on-demand MP4 thumbnails & upload content ratings), [hecoococ](https://github.com/hecoococ) (decoupling sidebar glass from the active wallpaper), [ShamSky88](https://github.com/ShamSky88) (the glass blur positioning fix), [Rekk0](https://github.com/Rekk0) (token-driven glass transparency, registry-based Steam discovery), [Y1X1n](https://github.com/Y1X1n) (the beginner-friendly guide), [wwexplorer](https://github.com/wwexplorer) (wallpaper-layer framing: horizontal / vertical / scale, with typeable values) — and everyone who has helped through issues and PRs. Thank you!
+The README's retro window layout references [MaiBot](https://github.com/Mai-with-u/MaiBot); Jersey 20 uses SIL OFL 1.1. Source artwork and character rights remain with their respective owners. See [asset sources](assets/readme/SOURCES.md). The code's MIT license does not replace character, image or font permissions. Wallpaper Engine and workshop content belong to their respective owners; this is not an official Wallpaper Engine product.
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=elysia395/dsh-wallpaper-engine&type=Date)](https://star-history.com/#elysia395/dsh-wallpaper-engine&Date)
+Official upstream history, not fork statistics:
+
+<a href="https://star-history.com/#elysia395/dsh-wallpaper-engine&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=elysia395/dsh-wallpaper-engine&amp;type=Date&amp;theme=dark">
+    <img src="https://api.star-history.com/svg?repos=elysia395/dsh-wallpaper-engine&amp;type=Date" alt="Official upstream Star History" width="960">
+  </picture>
+</a>

@@ -39,7 +39,8 @@ import { spawn, spawnSync } from 'node:child_process';
 import { createWriteStream, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { sourcePlan, retainMainBundle } from '../scripts/install-source.mjs';
-import { packRelease } from '../scripts/pack-release.mjs';
+import { packRelease, releaseSetMatches } from '../scripts/pack-release.mjs';
+import { toolLaunch } from '../scripts/deploy-tools.mjs';
 import { request as httpRequest } from 'node:http';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -89,15 +90,9 @@ function check(name, ok, detail) {
 }
 const tail = (s, n = 30) => String(s).split('\n').slice(-n).join('\n');
 
-// win32：`dsh` 是 npm 的 .cmd 垫片，Node ≥18 在 shell:false 下拒绝启动它。
 const spawnTool = (cmd, args, opts = {}) => {
-  if (cmd === 'dsh' && DSH_CLI) return spawn(process.execPath, [resolve(DSH_CLI), ...args], opts);
-  if (process.platform === 'win32' && ['npm', 'dsh'].includes(cmd)) {
-    const env = { ...opts.env, DSH_WE_DEPLOY_ARGS: JSON.stringify(args) };
-    return spawn('pwsh', ['-NoProfile', '-NonInteractive', '-Command',
-      `$a = @($env:DSH_WE_DEPLOY_ARGS | ConvertFrom-Json); & ${cmd} @a; exit $LASTEXITCODE`], { ...opts, env });
-  }
-  return spawn(cmd, args, opts);
+  const launch = toolLaunch(cmd, args, { env: opts.env, cli: DSH_CLI });
+  return spawn(launch.command, launch.args, { ...opts, env: launch.env });
 };
 
 /** 跑一条工具命令并等它结束（超时 / 起不来都收敛成 {code, out}，不让异常穿透）。 */
@@ -213,8 +208,8 @@ async function main() {
     const release = releaseFile
       ? { ...JSON.parse(readFileSync(resolve(releaseFile), 'utf8')), dir: dirname(resolve(releaseFile)) }
       : packRelease({ output: join(CACHE, 'pack-tarball') });
+    if (!check('发布集与实际子包清单及主包顺序一致', releaseSetMatches(release.packages, plan))) return;
     const specs = release.packages.map((pkg) => join(release.dir, pkg.file));
-    if (!check('发布集包含主包和八个子包', specs.length === 9)) return;
     for (const spec of specs) if (!check('tarball 非空：' + spec, lstatSync(spec).size > 0)) return;
     // 灰测子包尚未发布：仅在隔离夹具中覆盖解析源，不改 tarball 的正式版本依赖。
     mkdirSync(plan.profileDir, { recursive: true });
@@ -241,7 +236,7 @@ async function main() {
     const metadata = JSON.parse(readFileSync(hostRequire.resolve(name + '/package.json'), 'utf8'));
     if (metadata.dsh?.client) hostRequire.resolve(name + '/client');
   }
-  check('宿主可解析全部九包及独立客户端入口', true);
+  check('宿主可解析主包、全部子包及独立客户端入口', true);
 
   // ── ⑥ 通道自证 + peer 解析（P4-17 的判据本体）──────────────────────────────
   const profileNm = join(ISO_HOME, '.dsh', 'profiles', 'web', 'node_modules', PLUGIN);
@@ -258,7 +253,7 @@ async function main() {
   const isSameAsWorkspace = sameFile(join(profileNm, 'package.json'), join(ROOT, 'package.json'));
   if (CHANNEL === 'tarball') {
     const manifest = JSON.parse(readFileSync(join(plan.profileDir, 'package.json'), 'utf8'));
-    check('只登记主包依赖，八个子包由运行依赖自动安装',
+    check('只登记主包依赖，全部子包由运行依赖自动安装',
       Boolean(manifest.dependencies?.[PLUGIN]) && plan.subs.every((pkg) => !manifest.dependencies?.[pkg.name]));
     // 装了 tarball 却还是工作区那一份 ⇒ 通道没生效（或装的是别的），那下面几条判据就是空转。
     check('通道自证：装进去的是**独立副本**（不是工作区那一份）⇒ 跑的是发布产物',

@@ -46,51 +46,6 @@ const NODE_GLOBALS = {
 };
 
 /**
- * 上游预构建字节里的一条**指向不存在规则**的行内指令 —— 只在 ESLint 分析期抹掉，不改字节。
- *
- * `packages/pet/lib/**` 是 `dsh-pet@0.3.7` 的**已核预构建出口**：字节由
- * `packages/pet/client.build.json`（两半 sha256 锚点）与 `test/tools/subpackage-shapes.mjs`
- * （来源登记）双向钉住，并由 `node test/verify-pet-builtin.mjs` 逐字节对账 —— **改一个字节就红**。
- *
- * 上游 bundle 自带 6 行 `// eslint-disable-next-line @typescript-eslint/no-explicit-any`，
- * 而本仓**不装** `@typescript-eslint/*`（也不该为一条注释去装依赖）⇒ 每条被报成
- * `Definition for rule '@typescript-eslint/no-explicit-any' was not found.`
- * （**6 条假错误，不是 6 个 `any`**）。
- *
- * 三条更粗的办法都被排除：改字节破坏 sha256 锚点；扩 `ignores` 把 `filesLinted` 从 354 压到
- * 348（缩扫描面，等于让这三份产物脱离门禁）；提基线等于把 6 条假错误固化成欠账。
- *
- * 所以用**窄作用域 processor**：仅这三份已核文件、仅这一条指令、仅在分析用的文本里把该行
- * 换成**等长空白**（保留缩进、长度与换行 ⇒ 行号不变，诊断位置不漂）。语义上等价于「这行注释
- * 在 ESLint 眼里不存在」，而**文件本身一个字节都不动**。副作用边界：
- * - 其它任何未知规则（如 `some-scope/unknown-rule`）仍照报「Definition for rule … was not found」；
- * - `no-unused-vars` 等真实诊断仍照报（掩掉的只是注释行，不是代码）；
- * - 作用域外的文件完全不受影响（`processor` 按 `files` 精确匹配）。
- * 这三条边界由 `test/verify-pet-eslint-compat.mjs` 逐条真实反证。
- */
-const UPSTREAM_PREBUILT_FILES = [
-  'packages/pet/lib/index.js',
-  'packages/pet/lib/standalone.js',
-  'packages/pet/lib/pet-link-backups/2026-10-17T17-57-50-362Z/index.js',
-];
-const UPSTREAM_UNSUPPORTED_DIRECTIVE = '// eslint-disable-next-line @typescript-eslint/no-explicit-any';
-
-const upstreamInlineDirectiveCompat = {
-  meta: { name: 'pet-upstream-inline-directive-compat', version: '1.0.0' },
-  // 只按**整行 trim 后逐字相等**判定：字符串/模板串里的同样文本带着引号反引号，不会命中。
-  preprocess(text) {
-    const lines = text.split('\n');
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].trim() === UPSTREAM_UNSUPPORTED_DIRECTIVE) lines[i] = ' '.repeat(lines[i].length);
-    }
-    return [lines.join('\n')];
-  },
-  postprocess(messageLists) {
-    return messageLists[0] ?? [];
-  },
-};
-
-/**
  * 浏览器全局名 —— 只给**躺在 `lib/` 里、运行期却在页面上**的那几个文件用。
  *
  * `lib/webwallgl/**` 是引擎的浏览器侧产物（经路由原样发给页面），`lib/we-focus-guard.js`
@@ -272,11 +227,10 @@ export default [
     files: ['src/panel-tabs.js'],
     rules: { 'no-empty-pattern': 'off' },
   },
-  {
-    // 见文件头 `UPSTREAM_PREBUILT_FILES` 那段理由：三份**已核上游预构建字节**里各含 2 行指向
-    // 不存在插件的行内指令。只在分析期把该注释行抹成等长空白（行号/长度/字节全不变），
-    // 不注册伪造规则、不 ignore 文件、不动基线。边界由 `test/verify-pet-eslint-compat.mjs` 反证。
-    files: UPSTREAM_PREBUILT_FILES,
-    processor: upstreamInlineDirectiveCompat,
-  },
+  // ── 上游预构建字节的 processor 挂载：**已随 provider 解耦移除**（2026-10-20）──
+  // 原来这里按 `UPSTREAM_PREBUILT_FILES`（三份 dsh-pet@0.3.7 派生字节）挂一个窄作用域
+  // processor，把上游自带的 `@typescript-eslint/no-explicit-any` 指令在**分析期**抹成等长空白。
+  // 那三份字节已不在本仓，且 ESLint flat config 不接受空 `files` 数组 ⇒ 挂载一并删除。
+  // provider 重新接入时按原口径恢复：改字节会破坏 sha256 锚点，扩 ignores 会缩扫描面，
+  // 提基线会把假错误固化成欠账 —— 唯一正解仍是分析期等长空白。
 ];

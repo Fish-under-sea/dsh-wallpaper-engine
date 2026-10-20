@@ -117,8 +117,17 @@ function weSurfaceGeometry(target, id, owned) {
       || el.closest('[role="dialog"], dialog, [aria-modal="true"]')) safeRoot = false;
     if (el !== target && (el.scrollTop || el.scrollLeft || /auto|scroll/.test(cs.overflow + cs.overflowX + cs.overflowY))) safeRoot = false;
     const clip = el.getBoundingClientRect();
+    // 亚像素容差：`getBoundingClientRect()` 返回的是分数值，布局取整会让"贴合同一
+    // 网格边缘"的两个盒子差出零点几像素。实测（DPR 1.25）宿主 AppFrame 右边缘 =
+    // 1281.5999755859375、右栏面板右边缘 = 1281.6000366210938，相差 0.000061px；
+    // 严格 `>` 于是把右栏判成"被祖先裁掉" ⇒ safeRoot 恒假 ⇒ 永不认领 ⇒ 右栏退回
+    // `--we-panel-color` 实色（非全屏下玻璃丢失，且是确定性的、不会自愈）。
+    // 视口边界那一条早就带了 +1 的同款容差；裁剪这一条此前漏了。取 0.5 CSS px：
+    // 真被裁掉半像素以上才判不安全，浮点/取整噪声一律放过。
+    const CLIP_EPSILON = 0.5;
     if (el !== target && /hidden|clip/.test(cs.overflow + cs.overflowX + cs.overflowY)
-      && (rect.left < clip.left || rect.top < clip.top || rect.right > clip.right || rect.bottom > clip.bottom)) safeRoot = false;
+      && (rect.left < clip.left - CLIP_EPSILON || rect.top < clip.top - CLIP_EPSILON
+        || rect.right > clip.right + CLIP_EPSILON || rect.bottom > clip.bottom + CLIP_EPSILON)) safeRoot = false;
   }
   const pseudo = ["extra", "settings-window", "declared"].includes(id) ? win.getComputedStyle(target, "::before") : null;
   return {

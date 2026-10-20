@@ -881,8 +881,10 @@ section('⑥ 组件行（P2-1/P2-2，逐行数据驱动）：patch 子行 ⇄ ex
     const before = registered.length;
     const subMod = await import(pathToFileURL(join(ROOT, rel)).href);
     const subApply = subMod.apply || (subMod.default && subMod.default.apply);
-    const dSub = typeof subApply === 'function' ? subApply(mock) : undefined;
-    if (typeof dSub === 'function') componentDisposers.push(dSub);
+    for (const config of subMod.routeConfigs || [undefined]) {
+      const dSub = typeof subApply === 'function' ? subApply(mock, config) : undefined;
+      if (typeof dSub === 'function') componentDisposers.push(dSub);
+    }
     const got = registered.length - before;
     const exp = rowFns;
     if (exp.unknown.length) subCountIssues.push(short + ' 的调用点解析不到路由模块：' + exp.unknown.join(' '));

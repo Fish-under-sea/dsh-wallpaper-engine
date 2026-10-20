@@ -976,8 +976,8 @@ function assembleBundle({ id: bundleId, prelude, bodySrc, hostPackage = null, bo
   outline.push('\t\t// ── 客户端正文（' + bodyLabel + '）' + '─'.repeat(Math.max(0, 62 - bodyLabel.length)));
   outline.push(indent(bodySrc));
   if (hostPackage) {
-    outline.push('\t\texports.apply = () => undefined;');
-    outline.push('\t\texports.inject = [];');
+    outline.push('\t\tif (typeof exports.apply !== "function") exports.apply = () => undefined;');
+    outline.push('\t\tif (!Array.isArray(exports.inject)) exports.inject = [];');
     outline.push('\t\treturn module.exports;');
   }
   outline.push('\t},');

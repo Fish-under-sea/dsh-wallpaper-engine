@@ -6,11 +6,11 @@
     "size": {
       "width": 1440,
       "height": 560,
-      "bytes": 286028
+      "bytes": 289781
     },
     "license": "独立实现的 HTML/CSS 排版；设计参考 MaiBot README；原图标与角色保留原有权利；Jersey 20 字体按 SIL OFL 1.1 授权。",
-    "createdAt": "2026-10-16T22:07:13.583Z",
-    "contentHash": "60c1eba82a20a32c41292ea8b607c88b8172a8b6543f04ab0d8bcc239942c7f9",
+    "createdAt": "2026-10-20T12:18:53.729Z",
+    "contentHash": "04ff9389030b4ecfbbc19825b83d2441ee12abda46832b4e9f0cc0ff3883e9cf",
     "source": "assets/readme/hero.html?theme=light",
     "sourceSelector": ".hero",
     "inputs": [
@@ -19,8 +19,8 @@
       "assets/readme/Jersey20-Regular.ttf"
     ],
     "reference": "https://github.com/Mai-with-u/MaiBot",
-    "renderer": "Microsoft Edge / Playwright：实际 HTML 元素截图，不是生成式图片。",
-    "notes": "不使用 MaiBot 角色、鱼形装饰、装机遥测或趋势排名；不修改运行时角色原图。"
+    "renderer": "Microsoft Edge / CDP: actual HTML element screenshot.",
+    "notes": "Original theme layout retained; Node.js requirement updated to 22.12+. Runtime artwork unchanged."
   },
   {
     "path": "assets/readme/stat-version-light.png",
@@ -650,11 +650,11 @@
     "size": {
       "width": 1440,
       "height": 560,
-      "bytes": 285684
+      "bytes": 289795
     },
     "license": "独立实现的 HTML/CSS 排版；设计参考 MaiBot README；原图标与角色保留原有权利；Jersey 20 字体按 SIL OFL 1.1 授权。",
-    "createdAt": "2026-10-16T22:07:15.718Z",
-    "contentHash": "9321fb59100e8456b710fa9b813020ff06a02c9bec2826aca7f6566e67f0ec98",
+    "createdAt": "2026-10-20T12:18:53.889Z",
+    "contentHash": "5b1c361e265ea0ce444cd972cfd6218a6999b70f5cfd163c02d7c7664d0e2a98",
     "source": "assets/readme/hero.html?theme=dark",
     "sourceSelector": ".hero",
     "inputs": [
@@ -663,8 +663,8 @@
       "assets/readme/Jersey20-Regular.ttf"
     ],
     "reference": "https://github.com/Mai-with-u/MaiBot",
-    "renderer": "Microsoft Edge / Playwright：实际 HTML 元素截图，不是生成式图片。",
-    "notes": "不使用 MaiBot 角色、鱼形装饰、装机遥测或趋势排名；不修改运行时角色原图。"
+    "renderer": "Microsoft Edge / CDP: actual HTML element screenshot.",
+    "notes": "Original theme layout retained; Node.js requirement updated to 22.12+. Runtime artwork unchanged."
   },
   {
     "path": "assets/readme/stat-version-dark.png",

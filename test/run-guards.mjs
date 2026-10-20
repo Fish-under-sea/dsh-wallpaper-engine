@@ -207,29 +207,16 @@ const VERIFY_STEPS = [
   //    真 cordis 往返仍未跑（`@deepseek-ai/cordis` 是 peer，本轮口径 `npm ci --omit=peer`）⇒
   //    fiber 回滚语义是**源码推读**，守卫只在文件头如实标注，不升级为"已验证"。
   step('test/verify-host-teardown.mjs'),
-  // 可选桌宠联动的离线回归；安装和浏览器集成另走显式环境入口。
+  // 官方协议的协调、真实 HTTP、自有气泡和四排播；不加载或修改第三方客户端。
   step('test/verify-pet-package.mjs'),
   step('test/verify-pet-hotplug-host.mjs'),
   step('test/verify-pet-hotplug-client.mjs'),
   step('test/verify-pet-rope-entry.mjs'),
   step('test/verify-pet-tuner.mjs'),
-  step('test/verify-pet-bubble-timing.mjs'),
-  step('test/verify-pet-meme-broadcast.mjs'),
-  step('test/verify-pet-mascot-motion.mjs'),
-  step('test/verify-pet-egg1-motion.mjs'),
-  step('test/verify-pet-egg1-rebound.mjs'),
+  step('test/verify-pet-official.mjs'),
   step('test/verify-pet-sidebar-rebound.mjs'),
   step('test/verify-pet-sidebar-diag.mjs'),
   step('test/verify-pet-sidebar-glass.mjs'),
-  step('test/verify-pet-egg2-motion.mjs'),
-  step('test/verify-pet-follow.mjs'),
-  // ⑫ P1 内置桌宠（upstream-fork `dsh-we-pet-builtin`，2026-10-19）：一条**装配/消费链**的验收判据
-  //    （派生身份与来源登记、root 接线、内置 provider 五类故障 reason、九动画五气泡可达与只追加 main、
-  //    浏览器换血、生命周期七项、负控七项）。归 hard：它是"内置包真的接上了 main"的唯一证据。
-  //    ⚠️ 它的静态兼容姊妹 `test/verify-pet-eslint-compat.mjs` **有意脱链**（它 `import { ESLint }
-  //    from 'eslint'`，而链的口径是零裸依赖 —— 见 `test/tools/guard-chain.mjs` 的 OFF_CHAIN_WHY；
-  //    与 `verify-static.mjs` 同理，devDependencies 只能由独立 CI 步骤消费）。
-  step('test/verify-pet-builtin.mjs'),
   // ⑥ 包发现层 `test/tools/packages.mjs` 的**自检**（P-B 基石）：上面这一批"包面"判据
   //    （client-sync 的产物集合 / bundle-rows 的行⇄包对账 / subpackage-manifests 的清单面 /
   //    host-route-index 一族的行·包解析）与 `scripts/build-client.mjs` 都读它 ⇒ 它自己坏了会

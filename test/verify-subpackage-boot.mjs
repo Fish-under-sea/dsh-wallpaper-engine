@@ -351,16 +351,13 @@ if (mod && typeof mod.subpackageIds === 'function' && typeof mod.subpackageKeys 
 check('每个已登记 id（含出户的组件行）都能通过服务面取到一份**非空**键集（组件半边零主包说明符的物理前提）',
   mod ? mod.subpackageIds().length >= 4 && componentKeyIssues.length === 0 : false,
   componentKeyIssues.join('；') || (mod ? mod.subpackageIds().map((id) => id + '(' + mod.subpackageKeyNames(id).length + ')').join(' ') : 'n/a'));
-// fork 那一格的负反方向：登记面必须**恰好为空**（非空 = 伪造消费面），且必须真的登记了。
-check('upstream-fork（不消费服务面的独立插件）在键表里有一格且声明面为空（伪造键 / 漏登记都判红）',
-  mod ? (forkConsumerIds.size > 0 && emptyFaceIssues.length === 0) : false,
-  emptyFaceIssues.join('；') || (mod ? '空面 id=[' + [...forkConsumerIds].join(' ') + ']' : 'n/a'));
-check('negative control: 给 fork 那一格塞一个假键 ⇒ 上一条判红（空面判据有牙）',
-  mod && [...forkConsumerIds].every((id) => {
-    const names = mod.subpackageKeyNames(id);
-    const faked = [...names, 'wallpaperEngineHost'];
-    return faked.length > 0 && faked[0] === 'wallpaperEngineHost';
-  }));
+// 不再捆绑 fork：服务登记必须与实际目录逐项一致，不允许残留 pet 幽灵项。
+const expectedIds = PACKAGE_DIRS_ON_DISK.map(dir => dir.slice(PACKAGES_PREFIX.length)).sort();
+const idsMatch = ids => JSON.stringify([...ids].sort()) === JSON.stringify(expectedIds);
+check('外置官方桌宠：无内置 fork，服务登记与磁盘七子包严格双射',
+  mod && forkConsumerIds.size === 0 && emptyFaceIssues.length === 0 && idsMatch(mod.subpackageIds()));
+check('negative control: 残留 pet 服务登记必须判红',
+  mod && !idsMatch([...mod.subpackageIds(), 'pet']));
 check('负对照：合成服务面缺 handOff 键 ⇒ 判红（键集不许少）',
   serviceViolations(synthHost({ createSubpackageHost: () => Object.freeze({ ids: () => [], keyNames: () => [], keys: () => ({}), schema: baseHostValue.schema, http: baseHostValue.http }) }), HOST_SERVICE_LITERAL).length > 0);
 check('负对照：合成服务面没冻结 ⇒ 判红',

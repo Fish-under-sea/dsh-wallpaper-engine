@@ -17,7 +17,7 @@
 
 | # | 路径 | 来源 | 形态 | 依赖（闭包状态 / `c` 字段） | 守卫提及 |
 |---|---|---|---|---|---|
-| 1 | `/inventory` | lib/routes/inventory.js:90 | async 箭头 | disposers base mediaOriginApi buildInventory componentsProbe | 24 |
+| 1 | `/inventory` | lib/routes/inventory.js:90 | async 箭头 | disposers base mediaOriginApi buildInventory componentsProbe | 25 |
 | 2 | `/media-info` | lib/routes/media-derived.js:60 | 箭头 | disposers base mediaMap log getMediaInfo faststartVariant …(+1) | 10 |
 | 3 | `/transcode-progress` | lib/routes/media-derived.js:103 | 箭头 | disposers base mediaMap transcodeJobs | 2 |
 | 4 | `/transcoded` | lib/routes/media-derived.js:156 | 箭头 | disposers base mediaMap serveFile transcodeToFps registerTranscodeWaiter | 1 |
@@ -60,10 +60,10 @@
 | 41 | `/now-playing` | packages/media-bridge/lib/routes/now-playing.js:116 | 箭头 | disposers base | 3 |
 | 42 | `/now-playing/artwork` | packages/media-bridge/lib/routes/now-playing.js:130 | 箭头 | disposers base serveFile | 2 |
 | 43 | `/media-control` | packages/media-bridge/lib/routes/now-playing.js:148 | 箭头 | disposers base CONTROL_JSON_MAX_BYTES http | 3 |
-| 44 | `(动态路径)` | packages/pet/lib/index.js:3450 | async 箭头 | result handlePetRoute | 2 |
-| 45 | `/pet-link/capability` | packages/pet-link/lib/routes/pet-link.js:14 | 箭头 | disposers base | 2 |
+| 44 | `/pet-link/official` | packages/pet-link/lib/routes/official-pet.js:49 | async 箭头 | disposers http | 5 |
+| 45 | `/pet-link/official/assets/` | packages/pet-link/lib/routes/official-pet.js:83 | 箭头 | disposers http | **0** |
 
-**零提及（拆分前必须先补守卫）**：（无）
+**零提及（拆分前必须先补守卫）**：`/pet-link/official/assets/`
 
 **被最多路由引用的闭包状态（context 字段优先级，仅 `lib/index.js` 内的路由）**：
 
@@ -95,5 +95,5 @@
 | `packages/mascot-avatar/lib/routes/avatar.js` | `registerAvatarRoutes(webServer, c)` | 1 | `disposers` `base` `serveFile` `http` `avatarDir` `avatarPath` `AVATAR_SIDES` `AVATAR_EXT` `AVATAR_MAX_BYTES` `atomicWriteFileP` `armBodyIdleTimeout` `lingerClose` | — |
 | `packages/mascot-avatar/lib/routes/mascot.js` | `registerMascotRoutes(webServer, c)` | 1 | `disposers` `base` `serveFile` `http` `mascotDir` `mascotPath` `MASCOT_EXT` `MASCOT_MAX_BYTES` `atomicWriteFileP` `armBodyIdleTimeout` `lingerClose` | — |
 | `packages/media-bridge/lib/routes/now-playing.js` | `registerNowPlayingRoutes(webServer, c)` | 5 | `disposers` `base` `appendDiagLine` `configPath` `cacheBaseDir` `readConfig` `serveFile` `CONTROL_JSON_MAX_BYTES` `log` `http` | — |
-| `packages/pet-link/lib/routes/pet-link.js` | `registerPetLinkRoutes(webServer, c)` | 1 | `disposers` `base` | — |
+| `packages/pet-link/lib/routes/official-pet.js` | `registerOfficialPetRoutes(webServer, c)` | 2 | `disposers` `base` `http` | — |
 

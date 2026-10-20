@@ -82,12 +82,9 @@
     # 消毒与持久化仍在主包 lib/settings-schema.js（FONTSET_KEYS）与 fontsets/<id>.json。
     - id: wallpaper-engine-fonts
       name: 'dsh-plugin-wallpaper-engine-fonts'
-    # ── P1 upstream-fork 行（独立形态，§7.1 的第四类）─────────────────────────────
-    # 行的 name 是**派生副本的真名** dsh-we-pet-builtin（解析 <profile>/node_modules/dsh-we-pet-builtin
-    # ⇒ 该包自带 cordis.patch.yml 里同一对 (id, name)）；id 仍走本 patch 的覆盖面锚点规则
-    # `wallpaper-engine-<目录名>`，与自带 patch 的 id 逐字相等（ADR-0014 S4.2）。
-    # 它是上游 dsh-pet@0.3.7 的受控派生副本（不是本仓自己写的子包）：不 inject wallpaperEngineHost、
-    # 不 require 主包任何说明符，服务面与 pet-link 之间只有 HTTP capability 一条通道。
-    # 可选桌宠本体；关掉这一行 = 桌宠不出现，pet-link 的 capability 如实回 unavailable。
-    - id: wallpaper-engine-pet
-      name: 'dsh-we-pet-builtin'
+    # ── 内置桌宠本体：已解耦（2026-10-20）────────────────────────────────────────
+    # `packages/pet`（`dsh-we-pet-builtin`）与它的 `wallpaper-engine-pet` 行**已从本包移除**：
+    # 它把 `electron`（optional）带进安装树，而 electron 42+ 在缺少 `dist/` 时会在
+    # `require('electron')` 里**同步**下载约 140MB 二进制 ⇒ 宿主启动被堵到 60 秒超时，
+    # 整个 profile 起不来。桌宠本体的正式接入等上游 dsh-pet 提供联动接口后，由 pet-link 对接
+    # **外部** provider；在那之前 pet-link 的就绪面如实返回 unavailable（不静默假装可用）。

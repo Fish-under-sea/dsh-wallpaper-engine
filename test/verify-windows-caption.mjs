@@ -8,6 +8,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { cssBodyOf } from './tools/src-scope.mjs';
+import { stripCssComments } from './tools/css-text.mjs';
 
 const bundle = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
 const start = bundle.indexOf('function setWallpaperActive(active) {');
@@ -87,4 +89,16 @@ const mutant = harness(true, mutantSource);
 mutant.setActive(true);
 assert.ok(!gateOn(mutant) && mutant.attributes.get(`${ATTR}-typo`) === 'on',
   'the gate predicate rejects an attribute-rename mutant');
-console.log('WINDOWS CAPTION SYNC CHECKS PASSED');
+const drawerInsetSelector = 'html[data-windows-titlebar] body[data-we-glass-floaters] .we-repo-panel';
+const css = stripCssComments(cssBodyOf(bundle));
+function drawerInsetContract(text) {
+  const rules = [...text.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+  const rule = rules.find((match) => match[1].trim() === drawerInsetSelector);
+  return !!rule && /padding-top:\s*calc\(14px \+ var\(--dsh-windows-titlebar-height, 40px\)\)/.test(rule[2]);
+}
+assert.ok(drawerInsetContract(css), 'Windows drawer content must clear the native titlebar using its height token');
+assert.equal(drawerInsetContract(css.replace('padding-top: calc(14px + var(--dsh-windows-titlebar-height, 40px));', 'padding-top: 14px;')), false,
+  'negative control: no titlebar inset is rejected');
+assert.equal(drawerInsetContract(css.replace(drawerInsetSelector, 'body[data-we-glass-floaters] .we-repo-panel')), false,
+  'negative control: ordinary browsers must not inherit the Windows-only inset');
+console.log('WINDOWS CAPTION SYNC AND DRAWER INSET CHECKS PASSED');

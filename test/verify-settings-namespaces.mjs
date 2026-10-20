@@ -18,7 +18,8 @@
  *      `lib/routes/settings.js` 里既有守卫钉住的四个字面量仍在。
  *   ⑦ **客户端差分发送**（P1-S2，`src/persistence.js`）：只发改动键、按组件簇分组、无改动不发请求、
  *      CLIENT_ONLY / `settingsVersion` / `kind:'const'` 的键都不发、首启迁移与宿主不可达仍走整段入口。
- *      这一节 import **真模块本体**并把工厂作用域的名字挂到 globalThis（内联契约见 build-client.mjs）。
+ *      这一节 import **真模块本体**并把工厂作用域的名字挂到 globalThis（内联契约见 build-client.mjs）；
+ *      挂起 PUT 时回退/连续更新/失败重试合并最新值，部分分区成功后回退仍最终一致。
  *   ⑧ **刻度盲区**（P1-FIX）：组件差分 body 不带 `settingsVersion`，不能因此把 body 当"旧档"再迁移一次
  *      —— v4 的 6 个换算键（`glassAlpha` / `sidebarAlpha` / `sidebarContentAlpha` /
  *      `settingsWindowTransparency` / `floatersTransparency` / `leftSidebarTransparency`）在 v6 存档下
@@ -511,9 +512,10 @@ console.log('\n⑦ 客户端差分：只发改动键、按 ns 分组、首启迁
   const clientSnap = (raw) => schema.sanitizeFromSchema(raw, 'client');
   let seq = 0;
   /** 每个用例一个全新模块实例（module 级的 `pushedSnapshot`/`persistDirty` 必须从零开始）。 */
-  async function loadPersist({ hostSettings, localRaw, failPuts, noHost } = {}) {
+  async function loadPersist({ hostSettings, localRaw, failPuts, noHost, putResponse, windowMock, source } = {}) {
     const calls = [];
     const store = new Map();
+    const saved = Object.assign({}, hostSettings);
     if (localRaw !== undefined && localRaw !== null) {
       store.set(CLIENT_KEY, typeof localRaw === 'string' ? localRaw : JSON.stringify(localRaw));
     }
@@ -530,6 +532,8 @@ console.log('\n⑦ 客户端差分：只发改动键、按 ns 分组、首启迁
     globalThis.applyEffects = () => {};
     globalThis.setAdapterFromHost = () => {};
     globalThis.document = { hidden: false };
+    if (windowMock) globalThis.window = windowMock;
+    else delete globalThis.window;
     globalThis.localStorage = {
       getItem: (k) => (store.has(k) ? store.get(k) : null),
       setItem: (k, v) => { store.set(k, String(v)); },
@@ -540,7 +544,9 @@ console.log('\n⑦ 客户端差分：只发改动键、按 ns 分组、首启迁
       try { rec.body = init && init.body ? JSON.parse(init.body) : null; } catch { rec.body = null; }
       calls.push(rec);
       const fail = typeof failPuts === 'function' ? failPuts(url, rec) : false;
-      return { ok: !fail, status: fail ? 500 : 200, data: null, error: null };
+      const ok = putResponse ? await putResponse(url, rec) : !fail;
+      if (ok) Object.assign(saved, rec.body);
+      return { ok, status: ok ? 200 : 500, data: null, error: null };
     };
     globalThis.apiJson = async (url) => {
       calls.push({ url, method: 'GET', body: null });
@@ -548,8 +554,10 @@ console.log('\n⑦ 客户端差分：只发改动键、按 ns 分组、首启迁
       return { ok: true, status: 200, error: null,
         data: { settings: hostSettings === undefined ? null : hostSettings, betterSidebar: false, adapter: null } };
     };
-    const mod = await import(PERSIST_URL + '?case=' + (++seq));
-    return { mod, calls, store, selection: globalThis.selection };
+    const moduleUrl = source === undefined ? PERSIST_URL
+      : 'data:text/javascript;base64,' + Buffer.from(source).toString('base64');
+    const mod = await import(moduleUrl + '#case=' + (++seq));
+    return { mod, calls, store, saved, selection: globalThis.selection };
   }
   // `flushPersist()` 里的 `pushPersisted()` 是即发即忘（不 await）⇒ 用一个宏任务排空在途微任务链再断言。
   // ⚠️ 执行器用**语句体**：`(r) => setImmediate(r)` 会把 `setImmediate` 的返回（Timeout）当执行器返回值
@@ -674,6 +682,142 @@ console.log('\n⑦ 客户端差分：只发改动键、按 ns 分组、首启迁
   const persistCode = stripComments(persistSrc);
   check('⑦ 客户端仍零裸 fetch（apiFetch 是唯一出入口；注释里的 "fetch (" 不算）',
     !/(^|[^.\w])fetch\s*\(/m.test(persistCode));
+  // ⑦ g 在途写：flush 仍即发即忘；只排空已解决的微任务，不 await 挂起的 PUT。
+  const deferredPuts = () => {
+    const pending = [];
+    return {
+      pending,
+      respond: () => new Promise((resolveFn) => { pending.push({ resolve: resolveFn }); }),
+      async settle(ok) {
+        const next = pending.shift();
+        if (next) { next.resolve(ok); await drain(); }
+        return !!next;
+      },
+    };
+  };
+  const timerHarness = () => {
+    const timers = new Map();
+    const delays = [];
+    let id = 0;
+    return {
+      delays,
+      window: {
+        setTimeout(fn, ms) { delays.push(ms); timers.set(++id, fn); return id; },
+        clearTimeout(key) { timers.delete(key); },
+      },
+      fire() {
+        const ready = [...timers.values()];
+        timers.clear();
+        for (const fn of ready) fn();
+      },
+    };
+  };
+  const inflightHost = schema.sanitizeFromSchema({ blur: 16, fxEnabled: false }, 'host');
+  async function pendingBlur(finalBlur, source) {
+    const queue = deferredPuts();
+    const clock = timerHarness();
+    const c = await loadPersist({ hostSettings: inflightHost, putResponse: queue.respond, windowMock: clock.window, source });
+    await c.mod.loadPersisted();
+    c.selection.blur = 26;
+    c.mod.persistSelection();
+    const debounced = putsOf(c.calls).length === 0;
+    clock.fire();
+    await drain();
+    c.selection.blur = finalBlur;
+    c.mod.persistSelection();
+    c.mod.onPageHideFlush();
+    const cached = JSON.parse(c.store.get(CLIENT_KEY)).blur === finalBlur;
+    const flushResult = c.mod.flushPersist();
+    await drain();
+    const serial = putsOf(c.calls).length === 1 && queue.pending.length === 1;
+    for (let n = 0; n < 8 && queue.pending.length; n++) await queue.settle(true);
+    const puts = putsOf(c.calls);
+    const final = c.saved.blur;
+    const before = puts.length;
+    clock.fire();
+    c.mod.flushPersist();
+    await drain();
+    const noRepeat = putsOf(c.calls).length === before;
+    for (let n = 0; n < 8 && queue.pending.length; n++) await queue.settle(true);
+    delete globalThis.window;
+    return {
+      serial, cached, final, noRepeat, puts,
+      contract: debounced && flushResult === undefined && clock.delays.length === 2
+        && clock.delays.every((ms) => ms === 200) && puts.every((p) => p.keepalive),
+    };
+  }
+  const reverted = await pendingBlur(16);
+  check('⑦ 在途 16→26→16：后一次 flush 不并发 PUT，完成后仍提交回退值 16',
+    reverted.serial && reverted.final === 16 && same(reverted.puts.map((p) => p.body), [{ blur: 26 }, { blur: 16 }]),
+    '宿主 blur=' + reverted.final + '，PUT=' + JSON.stringify(reverted.puts.map((p) => p.body)));
+  check('⑦ 在途回退保持 200ms debounce / pagehide / keepalive 与 void flush 契约、本地缓存为最终值',
+    reverted.contract && reverted.cached);
+  check('⑦ 在途回退完成后，无变化 flush 不重复写', reverted.noRepeat);
+  const advanced = await pendingBlur(36);
+  check('⑦ 在途 16→26→36：串行提交最新值 36，无变化不重复写',
+    advanced.serial && advanced.final === 36 && advanced.noRepeat
+    && same(advanced.puts.map((p) => p.body), [{ blur: 26 }, { blur: 36 }]));
+  // 对真源码禁用在途守卫，恢复原缺陷；同一行为判据必须抓到宿主停在 26。
+  const unsafePersistSrc = persistSrc.replace('if (persistInFlight) {', 'if (false) {');
+  const unsafeReverted = await pendingBlur(16, unsafePersistSrc);
+  check('⑦ 负对照：原缺陷（无在途守卫）会被同一回退判据判红', unsafeReverted.final !== 16,
+    '宿主 blur=' + unsafeReverted.final);
+
+  // ⑦ h 首次失败 + 挂起期间多次更新：只重试最新快照；失败后可见性重试仍有效。
+  const retryQueue = deferredPuts();
+  const retry = await loadPersist({ hostSettings: inflightHost, putResponse: retryQueue.respond });
+  await retry.mod.loadPersisted();
+  retry.selection.blur = 26;
+  retry.mod.flushPersist();
+  retry.selection.blur = 31;
+  retry.mod.flushPersist();
+  retry.selection.blur = 36;
+  retry.mod.flushPersist();
+  await drain();
+  const retrySerial = putsOf(retry.calls).length === 1;
+  await retryQueue.settle(false);
+  await retryQueue.settle(false);
+  const beforeRetry = putsOf(retry.calls).length;
+  await drain();
+  check('⑦ 在途失败：26 后的 31/36 合并为最新 36，不无限自动重试',
+    retrySerial && beforeRetry === 2 && putsOf(retry.calls).length === beforeRetry
+    && same(putsOf(retry.calls).map((p) => p.body), [{ blur: 26 }, { blur: 36 }]));
+  retry.selection.blur = 41;
+  retry.mod.onVisibilityResyncPersist();
+  await drain();
+  await retryQueue.settle(true);
+  const afterRetry = putsOf(retry.calls).length;
+  retry.mod.flushPersist();
+  await drain();
+  check('⑦ 失败后可见性重试：读取失败后的最新值 41，成功后无变化不重复写',
+    afterRetry === 3 && retry.saved.blur === 41 && putsOf(retry.calls).length === afterRetry
+    && same(putsOf(retry.calls)[2].body, { blur: 41 }));
+  for (let n = 0; n < 8 && retryQueue.pending.length; n++) await retryQueue.settle(true);
+
+  // ⑦ i 各簇部分成功：appearance 已落 26、fx 失败；回退 16 不能被旧的整批基线吞掉。
+  let failFx = true;
+  const partial = await loadPersist({ hostSettings: inflightHost,
+    failPuts: (url) => failFx && url === SETTINGS_URL + '/fx' });
+  await partial.mod.loadPersisted();
+  partial.selection.blur = 26;
+  partial.selection.fxEnabled = true;
+  partial.mod.flushPersist();
+  await drain();
+  check('⑦ 部分成功夹具：appearance 已保存 26，fx 仍为 false',
+    partial.saved.blur === 26 && partial.saved.fxEnabled === false);
+  partial.selection.blur = 16;
+  failFx = false;
+  partial.mod.onVisibilityResyncPersist();
+  await drain();
+  const partialCount = putsOf(partial.calls).length;
+  partial.mod.flushPersist();
+  await drain();
+  check('⑦ 不同 namespace 部分成功后回退/重试：宿主最终 blur=16、fx=true，不重复写',
+    partial.saved.blur === 16 && partial.saved.fxEnabled === true && partialCount === 4
+    && putsOf(partial.calls).length === partialCount
+    && same(putsOf(partial.calls).filter((p) => p.url.endsWith('/appearance')).map((p) => p.body),
+      [{ blur: 26 }, { blur: 16 }]),
+    '宿主 blur=' + partial.saved.blur + '，fx=' + partial.saved.fxEnabled);
 }
 
 // ═══ ⑧ 刻度：组件写路径的 patch 值按"当前刻度"落盘（P1-FIX）════════════════════

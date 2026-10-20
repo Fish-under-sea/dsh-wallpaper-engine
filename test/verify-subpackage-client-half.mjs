@@ -27,7 +27,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripComments } from './tools/js-text.mjs';
-import { isUpstreamFork, upstreamForkOf } from './tools/subpackage-shapes.mjs';
+import { UPSTREAM_FORKS, isUpstreamFork, upstreamForkOf } from './tools/subpackage-shapes.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SHORT_PREFIX = 'dsh-plugin-wallpaper-engine-';
@@ -309,52 +309,13 @@ check('负对照：未声明 dsh.client 的包不产生任何违反项（范围�
 check('负对照：清单外的包声明了 dsh.client 也不额外报"必须声明"',
   !clientHalfViolations(mkIn()).some((s) => /必须声明 dsh.client/.test(s)));
 
-// -- upstream-fork（P1：packages/pet）的独立判据面 ----------------------------------
-// fork 与一般子包的三处差异各有正/负两向，缺任一向都等于"这条分叉没被判过"。
-const FORK_DIR = 'packages/pet';
-check('形态登记表里确实登记了 ' + FORK_DIR + '（否则下面整组负对照恒真）', isUpstreamFork(FORK_DIR));
-const forkOf = upstreamForkOf(FORK_DIR);
-const mkFork = (over) => {
-  const pre = forkOf.prebuilt;
-  const o = {
-    name: forkOf.name, dir: FORK_DIR,
-    manifest: {
-      name: forkOf.name,
-      dsh: { client: { inject: ['@deepseek-ai/dsh-client-connection'], platform: 'web', immediately: true } },
-      exports: { './client': { types: './lib/types/client/index.d.ts', default: './' + pre.entry } },
-    },
-    rowNames: [rootName, forkOf.name],
-    rootName,
-    artifacts: {
-      [forkOf.clientArtifact]: 'window.__ModuleLoader__.load({ id: "' + forkOf.name + '", factory: () => {} });' + PAD,
-      'lib/client.js': 'window.__ModuleLoader__.load({ id: "' + rootName + '", factory: () => {} });',
-    },
-    rootClientRel: 'lib/client.js', rootDshClient,
-  };
-  if (over) over(o);
-  return o;
-};
-check('正对照：fork 正确形态（条件对象 exports + 无主包绑定 + 自有 inject）0 违反项',
-  clientHalfViolations(mkFork()).length === 0, JSON.stringify(clientHalfViolations(mkFork())));
-{
-  const v = clientHalfViolations(mkFork((o) => { o.artifacts[forkOf.clientArtifact] = 'window.__ModuleLoader__.load({ id: "' + forkOf.name + '", factory: (require) => { require("' + rootName + '"); } });' + PAD; }));
-  check('负对照：fork 产物里出现主包绑定 require("<主包名>") 判红（不许伪造 root 通道）',
-    v.some((s) => /upstream-fork 是独立插件/.test(s)), JSON.stringify(v));
-}
-{
-  const v = clientHalfViolations(mkFork((o) => { delete o.manifest.dsh.client.immediately; }));
-  check('负对照：fork 缺 immediately 判红（装载时机键与根同判据）', v.some((s) => /immediately/.test(s)), JSON.stringify(v));
-}
-{
-  const v = clientHalfViolations(mkFork((o) => { o.manifest.exports['./client'] = './lib/client.pet.js'; }));
-  check('负对照：fork 的 exports["./client"] 落点偏离登记表判红', v.some((s) => /形态登记表登记/.test(s)), JSON.stringify(v));
-}
-{
-  // 条件对象取值的正/负两向：字符串写法对 fork 同样可解析（不许因为"是对象"就漏判）。
-  const v = clientHalfViolations(mkFork((o) => { o.manifest.exports['./client'] = './' + forkOf.prebuilt.entry; }));
-  check('正对照：fork 用字符串写 exports["./client"] 也判过（条件对象取 default 的取值面有牙）',
-    v.length === 0, JSON.stringify(v));
-}
+// -- upstream-fork 的独立判据面（当前无登记）─────────────────────────────────
+// 内置桌宠副本（`packages/pet`）已解耦，`UPSTREAM_FORKS` 为空 ⇒ 本判据的 fork 分支暂时不可达。
+// 分支代码**保留**（`isUpstreamFork` 命中时启用）：等上游 dsh-pet 提供联动接口、重新登记 fork 后，
+// 这一组正/负对照（预构建落点、条件对象 exports、零主包绑定）按原口径自动生效，一行都不用放宽。
+// 这里只钉住"登记表为空"这一事实本身，防止有人悄悄删掉分支却以为是解耦。
+check('upstream-fork 分支随登记表解耦进入休眠（branch 保留、登记表为空）',
+  UPSTREAM_FORKS.length === 0, '登记表当前有 ' + UPSTREAM_FORKS.length + ' 条');
 
 if (failed) { console.log('SUBPACKAGE CLIENT-HALF CHECKS FAILED -- ' + failed + ' failed'); process.exit(1); }
 console.log('ALL SUBPACKAGE CLIENT-HALF CHECKS PASSED');

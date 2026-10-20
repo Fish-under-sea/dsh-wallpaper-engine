@@ -15,6 +15,21 @@
 
 ### v1.3.3 (unreleased)
 
+#### External official pet bridge (2026-10-20, unreleased)
+
+- Following the user's revised decision, remove the bundled pet fork, its base assets and Electron dependency closure. Deployment now contains eight packages, not nine. The bridge neither installs the official plugin nor edits its files, configuration or animation pool.
+- The default entry uses official locks, URL animations, position and throw APIs for sidebar pulling, rope interaction, kick/throw and standing hiss sequences. Per-target coordination protects new runs from stale requests and cleanup. Missing or incomplete official APIs disable only interaction, retaining native sidebar toggling.
+- Read same-page playback and pose through `petApi7340`. Bridge-owned bubbles can outlive action locks and expose independent show/hide timing controls without touching the official bubble slot. Browser checks cover narrow screens, both themes and tuning controls, but full performances against a real user-installed official pet remain unaccepted.
+- Native `position/throw` retain wall-clock motion. This is not equivalent to the former private per-frame motion or a verified 4px/80ms guarantee. The earlier isolated `line` experiment measured a 150 CSS px drift during video buffering; removal follows the user's revised requirements, not elimination of that difference.
+
+#### Upstream maintenance sync (2026-10-20, unreleased)
+
+- Port maintenance fixes from upstream `pr221-2-review` commits `52d598a` and `cf59d23`. Settings writes are serialized, pending changes are coalesced, and successful namespaces are acknowledged independently so rapid reversions and partial failures do not lose edits.
+- Preview URLs remain bound to source images. `/preview` selects or rebuilds thumbnails after eviction while retaining HEAD, ETag, 304 and original-media Range behavior.
+- Ancestor clipping allows a `0.5` CSS px tolerance for fractional-DPR sidebar edges without permitting genuine clipping. Geometry guards cover all edges and mutation controls; browser fixtures use a representable `0.125px` delta at DPR 1 / 1.25 / 1.5.
+- The Windows floating library clears native titlebar controls. Deployment launches npm / dsh JavaScript entry points without requiring PowerShell 7. Release checks validate actual package identities, versions, filenames and order.
+- The maintenance-sync phase deferred the inactive removal approach in `83a72f6`; the subsequent official bridge above removes the bundled pet following the user's revised instruction, replacing the nine-package layout.
+
 #### Maintenance-branch changes (2026-10-17, not released)
 
 - **Blank avatar crop dialog / needing a second import click / "Compression failed: w is not defined"**: root cause was `const w` / `const h` declared inside the `try` block but used after the `catch` in `openAvatarCrop` ⇒ `setTransient("avatarCropW", w)` threw `ReferenceError`. With an in-limits image the exception escaped `onAvatarFileChosen` so the trailing `emit()` never ran (picking a file did nothing until a second click); with auto-compress it was caught (panel error + a blank crop frame with zero geometry). Three related issues fixed too: drag/wheel ran in the live tier with no in-place update (new `syncAvatarCropLive`), drag passed the total offset from pointer-down (accelerating), and the wheel accumulated on a stale zoom value (ten notches zoomed one step).

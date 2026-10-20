@@ -96,8 +96,11 @@ let persistDirty = false;
 let persistWrites = 0;
 // 差分基线：宿主**已知持有**的那份快照（客户端形状，134 键）。`null` = 还不知道宿主
 // 有什么（loadPersisted 未跑 / 宿主不可达 / 首启迁移）⇒ pushPersisted() 走老整段入口。
-// 只在"写入成功 / 宿主值真的被采纳"时推进，所以失败会自动重发同一批键（宿主侧按键合并 ⇒ 重发幂等）。
+// 只在"写入成功 / 宿主值真的被采纳"时推进；按簇确认成功键，失败键下次重发（按键合并 ⇒ 幂等）。
 let pushedSnapshot = null;
+// 同时只跑一批 PUT；在途 flush 合并为一次后续写，等确认基线后再读取最新值。
+let persistInFlight = false;
+let persistQueued = false;
 function writeLocalCache() {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(serializeSelection())); } catch { /* ignore */ }
 }
@@ -132,34 +135,49 @@ async function putSettingsBody(url, body) {
   return !!(res && res.ok);
 }
 async function pushPersisted() {
-  let snapshot;
-  try {
-    snapshot = serializeSelection();
-  } catch {
-    // 只剩 serializeSelection() 自己抛这一条路径（apiFetch 不抛，见其契约）。
-    persistDirty = true;
+  if (persistInFlight) {
+    persistQueued = true;
     return;
   }
-  // 还不知道宿主有什么（首启迁移 / 宿主不可达）⇒ 老整段入口：整段快照一次发完。
-  if (!pushedSnapshot) {
-    /** @type {boolean} */
-    let ok;
-    try { ok = await putSettingsBody(SETTINGS_URL, snapshot); } catch { ok = false; }
+  persistInFlight = true;
+  persistQueued = false;
+  try {
+    let snapshot;
+    try {
+      snapshot = serializeSelection();
+    } catch {
+      // 只剩 serializeSelection() 自己抛这一条路径（apiFetch 不抛，见其契约）。
+      persistDirty = true;
+      return;
+    }
+    // 还不知道宿主有什么（首启迁移 / 宿主不可达）⇒ 老整段入口：整段快照一次发完。
+    if (!pushedSnapshot) {
+      /** @type {boolean} */
+      let ok;
+      try { ok = await putSettingsBody(SETTINGS_URL, snapshot); } catch { ok = false; }
+      persistDirty = !ok;
+      if (ok) pushedSnapshot = snapshot;
+      return;
+    }
+    const groups = changedGroupsOf(snapshot, pushedSnapshot);
+    const names = Object.keys(groups);
+    if (!names.length) { persistDirty = false; return; } // 无改动 ⇒ 一个请求都不发
+    let ok = true;
+    for (const ns of names) {
+      let nsOk;
+      try { nsOk = await putSettingsBody(SETTINGS_URL + "/" + ns, groups[ns]); }
+      catch { nsOk = false; }
+      // 按成功的簇确认基线：别的簇失败时，用户仍可能把已成功的键改回旧值。
+      if (nsOk) Object.assign(pushedSnapshot, groups[ns]);
+      else ok = false;
+    }
     persistDirty = !ok;
     if (ok) pushedSnapshot = snapshot;
-    return;
+  } finally {
+    persistInFlight = false;
+    // 仅处理在途时明确请求的 flush；失败本身不自旋，仍由后续改动/可见性重试。
+    if (persistQueued) pushPersisted();
   }
-  const groups = changedGroupsOf(snapshot, pushedSnapshot);
-  const names = Object.keys(groups);
-  if (!names.length) { persistDirty = false; return; } // 无改动 ⇒ 一个请求都不发
-  let ok = true;
-  for (const ns of names) {
-    try { ok = (await putSettingsBody(SETTINGS_URL + "/" + ns, groups[ns])) && ok; }
-    catch { ok = false; }
-  }
-  // 失败 ⇒ **不推进基线**：下次 flush 把同一批键重发（宿主侧按键合并 ⇒ 重发幂等）。
-  persistDirty = !ok;
-  if (ok) pushedSnapshot = snapshot;
 }
 function flushPersist() {
   persistTimer = null;

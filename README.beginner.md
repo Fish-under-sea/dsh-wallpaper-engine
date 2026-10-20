@@ -1,359 +1,165 @@
-# dsh-plugin-wallpaper-engine · 小白向使用指南 / Beginner guide
+# Wallpaper Engine 插件入门 / Beginner Guide
 
-> **当前仓库是未发布灰测版本。** 下文 npm 包名安装获取的是已发布版本，不包含本仓未发布改动。请先按 [源码部署步骤](README.md#安装) 安装完整的主包和 8 个子包。要求 Node.js >=22.12.0 和 DSH 0.2 内核（包括 0.2.0-rc.1/rc.2），先完全退出目标应用；不要只链接主包，也不要使用裸 `github:` 直装。
+[中文完整版](README.md) · [English README](README.en.md) · [English below](#english)
 
-[English README](README.en.md) | [中文 README（完整版）](README.md) | [English section ↓](#english) | **小白向指南（你正在看）**
-
-> 这是一份**给完全没用过命令行的人**看的简化说明。
-> 想看完整的功能细节和技术原理，请看上面的「中文 README（完整版）」。
->
-> 📦 **上手需要的东西全在本页**，不需要再跳出去。本插件的 npm 包**不带 `docs/`**（随包的是运行期文件与三份 README）—— 本页若提到 `docs/…`，请到**源码仓库** <https://github.com/elysia395/dsh-wallpaper-engine> 的同名路径阅读（那是上游仓库，本插件的源码与完整文档都在那里）。
-
----
+> **先分清版本**：本指南对应 [Fish-under-sea 灰测源码](https://github.com/Fish-under-sea/dsh-wallpaper-engine)，不是 npm 上已经发布的版本。当前安装单位是**主包 + 七个子包，共八包**，不再内置 pet。正式项目的数据、发布与贡献记录见 [elysia395 主仓](https://github.com/elysia395/dsh-wallpaper-engine)。
 
 ## 中文
 
-### 这是什么？
+### 它能做什么
 
-一句话：**把你 Steam 里的 Wallpaper Engine 壁纸，搬到 DeepSeek Harness（DSH）的网页聊天界面背景上。**
+把 Wallpaper Engine 的场景、网页和视频壁纸放到 DSH 聊天界面背后，再调整玻璃、字体、配色与吉祥物。没有 Wallpaper Engine 也能上传自己的 JPG / PNG / MP4。Application 类型需要运行第三方程序，本插件不支持。
 
-- 装好之后，打开 `dsh web`，你的聊天界面后面就会显示一张动态壁纸（视频 / 网页 / 场景都由插件实时渲染）。
-- 壁纸上面还会盖一层 **iOS 风格的「液态玻璃」**，让文字依然看得清。
-- 你可以随时换壁纸、调透明度、调颜色，甚至上传自己的图片/视频当壁纸。
-- **所有设置都保存在你电脑上的一个文件里**，重启、换浏览器、清缓存都不会丢。
+界面美化不向 AI 注册工具或注入提示词，**不额外消耗模型 token**。壁纸保存在本机；运行时下载、仓库统计和主动开启的在线歌词仍会联网。
 
-### 开始前，请确认你有
+### 安装前准备
 
-- ✅ 一台 **Windows / macOS / Linux** 电脑（三个平台都原生支持；macOS 上没有 Wallpaper Engine 客户端，请看本页最后的「Mac 用户」一节）。
-- ✅ 已经装好并打开过一次 **Wallpaper Engine**（Steam 上的那个壁纸软件），且里面至少有一张壁纸（**macOS** 装不了它，改看「Mac 用户」一节）。
-- ✅ 已经装好 **DSH**（DeepSeek Harness），并能跑起 `dsh web`。
-- ✅ 知道怎么打开「**命令提示符**」或「**PowerShell**」（在开始菜单里搜就行）。
+- Windows、macOS 或 Linux 上能正常运行的 DSH。
+- **DSH 0.2 内核**，包括 `0.2.0-rc.1/rc.2`；桌面应用版本号与内核版本号不是一回事。
+- **Node.js >=22.12.0、pnpm 和目标宿主的 DSH CLI**。
+- 目标 DSH 的**数据目录**和 **profile**。网页版通常是 `web`；桌面版为 `desktop`。数据目录从目标应用确认，不要照猜 `~/.dsh`。
+- 下载并解压 [本轮评审分支 `official-pet-bridge-20261020`](https://github.com/Fish-under-sea/dsh-wallpaper-engine/tree/official-pet-bridge-20261020) 的完整源码，不要用 Fork 默认分支代替，也不要只下载主包或某个子目录。
 
-> 没有 Wallpaper Engine？这个插件依赖它来扫描壁纸，没有它就用不了 WE 自带的壁纸。不过你**仍然可以**只用「自定义壁纸」功能上传自己的图片/视频当背景。
+Wallpaper Engine 只用于读取已有壁纸资源，不需要一直在后台运行。macOS 没有其官方客户端，可以用自定义上传或已有 WE 项目目录。
 
-> **当前分支要求 DSH 0.2 内核（包括 0.2.0-rc.1/rc.2）和 Node.js >=22.12.0。** 旧 DSH 0.1 内核不满足内置桌宠要求。灰测版本按 [源码部署步骤](README.md#安装) 安装；下面的 npm 命令只适用于整套包正式发布后。
+### 第一步：完整安装源码
 
-### 第一步：安装
-
-打开命令提示符 / PowerShell，**复制粘贴**下面这一行，回车：
+1. 完全退出目标 DSH 应用，包括托盘进程。
+2. 在解压后的插件目录打开终端，确认这里有 `package.json`。
+3. 把命令里的占位目录换成目标 DSH 的真实数据目录，先预览：
 
 ```sh
-dsh plugin --profile web add dsh-plugin-wallpaper-engine
+node scripts/install-source.mjs --profile web --dsh-home "<目标 DSH 数据目录>" --dry-run
 ```
 
-看到安装成功的提示后，**重启 `dsh web`**（关掉重新打开就行）。
+确认目标正确后安装：
 
-> 💡 看到一行命令就慌？别怕——这一行的意思是：「给 DSH 的网页模式装上 Wallpaper Engine 这个插件」。**复制 → 粘贴 → 回车**，三步搞定。
+```sh
+node scripts/install-source.mjs --profile web --dsh-home "<目标 DSH 数据目录>" --app-closed
+```
 
-### 第二步：打开壁纸设置页
+**桌面版不能只把 `web` 改成 `desktop` 就使用任意 CLI。** 它必须通过桌面宿主提供的 carrier CLI 管理；独立 npm 安装的 `dsh` 会拒绝桌面 profile。需要指定 CLI 时加 `--dsh-cli "<目标 CLI 的 lib/bin.js 路径>"`。不知道目标目录或 CLI 时，先查看 [完整安装说明](README.md#安装)，不要对猜测路径执行。
 
-1. 打开 `dsh web`，进入聊天界面。
-2. 点界面里的 **设置**（一般在左下角或左侧栏）。
-3. 在设置页的**左侧导航**里，找到一项叫 **「Wallpaper Engine」**，点它。
+脚本会安装依赖、构建客户端并登记全部八条持久链接。完成后重启 DSH。**安装后保留源码目录，不要移动或删除它**；链接仍指向这里。
 
-你会看到一个漂亮的**液态玻璃卡片**，里面就是所有壁纸相关的开关。
+当前灰测不要使用裸 `github:` 直装、临时子包链接工具，或只执行 npm 包名安装。未来整套八包发布后，npm 命令才可取得相应发行版；今天执行包名安装不会取得未发布改动。
 
-### 第三步：选一张壁纸
+### 第二步：选择壁纸
 
-1. 点卡片里的 **「选择壁纸」** 按钮，会在**页内**展开一个**缩略图网格**（**不是弹窗**，也没有遮罩）。
-2. 网格里列出了你 Wallpaper Engine 里的所有壁纸（带预览图）。**点一张你喜欢的**，它就会出现在聊天界面背景上。
-3. 从库视图退出（返回）就回到设置页。
+1. 打开 **设置 → Wallpaper Engine → 壁纸库**，或下拉顶部吉祥物拉绳打开抽屉。
+2. 点「选择壁纸」，在**页内库视图**点选缩略图，不是额外的模态弹窗。
+3. 通过返回退出库视图，按需调整外观与播放。设置即时生效，保存到宿主端。
 
-🎉 **搞定！** 现在你的聊天界面后面应该有壁纸了。
-
-> 选不到壁纸？看下面「常见问题」第 1 条。
-
-### 常用功能速查
-
-| 想做什么 | 在哪里点 | 备注 |
-|---|---|---|
-| **换壁纸** | 选择壁纸 → 库视图里点一张 | Video / Web / 上传的图视频都行 |
-| **关掉壁纸** | 当前壁纸卡片 → 「关闭」 | 壁纸消失，但设置还在 |
-| **关掉玻璃** | 各面各有开关：侧栏 / 思考块 / 左侧栏的「液态玻璃」（侧栏「外观」页签与设置页玻璃区） | 目前**没有**「关掉全部玻璃」的总开关 —— 现状与原因见 `docs/COEXISTENCE.md` |
-| **暂停视频** | 当前壁纸卡片 → ⏸ 按钮 | 只对视频壁纸有用 |
-| **调玻璃透明度** | 顶部「外观」→ 玻璃透明度滑条 | 越高越透，越低越实；文字面有可读性下限压底，调不糊 |
-| **换主题色** | 顶部「外观」→ 配色 | 6 种预设 + 自定义取色 |
-| **换玻璃底色** | 顶部「外观」→ 玻璃颜色 | 决定玻璃本身的色调 |
-| **视频调速** | 「播放」→「效果」→ 倍速 | 见控件本身 |
-| **镜像翻转** | 「播放」→「效果」→ 水平翻转 | 视频/网页/图片都行 |
-| **上传自己的壁纸** | 「自定义壁纸」→ 上传 | 支持 JPG / PNG / MP4 |
-| **隐藏不喜欢的壁纸** | 库视图里卡片右上角「隐藏」 | 软删除，不碰源文件，可恢复 |
-| **自动轮换壁纸** | 「轮播列表」→ 新建列表 | 可设切换间隔和顺序 |
-| **改上传文件存哪** | 「自定义壁纸」→ 存储「更改」 | 默认存 C 盘，可改到其他盘 |
-| **插件跑在哪个壳里**（一般不用动） | 「系统」→「高级」→ 适配 → 适配目标 | 默认「自动检测」并显示「检测到：…」；只有网页壁纸变黑 / 403 时才需要手选 |
-
-### 画面滑条怎么调？
-
-壁纸激活后，「**播放**」页签的「**效果**」段有几个画面滑条；另有 **边框**（「**外观**」→「细节」）与 **雾化**（「**外观**」→「玻璃 UI」）。**它们都是即时生效的，不用刷新页面**：
-
-| 滑条 | 干什么用 | 默认 |
-|---|---|---|
-| **壁纸模糊** | 把壁纸本身变模糊 | 见控件本身 |
-| **亮度 / 对比度 / 饱和度** | 壁纸画面的明暗与浓淡 | 见控件本身 |
-| **壁纸透明度** | 把壁纸整层调淡、融进页面底色 | 见控件本身 |
-| **暗化** | 加深壁纸和文字之间的遮罩 | 见控件本身 |
-| **边框**（「外观」→「细节」） | 让边框/分割线更醒目 | 见控件本身 |
-| **雾化**（「外观」→「玻璃 UI」） | 玻璃面板（对话栏卡片、左侧栏、设置窗口、插件浮层）的模糊半径（侧栏除外：它有独立的「侧栏模糊」） | 见控件本身 |
-
-> 各个滑条的确切范围与默认值**直接看控件本身**（拖动时控件上就有读数）。
-
-> 👀 **如果文字看不清**：先把「暗化」（「播放」→「效果」）与「边框」（「外观」→「细节」）两个滑条往右拉（调高），还不够就稍微加点「壁纸模糊」。也可以试试切换 DSH 的**浅色 / 深色**主题——不同壁纸适合的模式不一样。
-
-### 我的设置存在哪？
-
-**全部设置都保存在电脑上的一个文件里**（Windows：`C:\Users\<你的用户名>\.dsh-wallpaper-engine\config.json`；
-Mac / Linux：`~/.dsh-wallpaper-engine/config.json`）—— 重启、换端口、清浏览器数据都不丢，从老版本升级会**自动迁移**。
-
-> 为什么改、多设备共享同一份设置、读写与防抖行为见 [`docs/UPGRADING.md`](docs/UPGRADING.md) 的「设置持久化」。
-
-> 💾 **怕占系统盘（C 盘）？** 这个目录里真正占地方的是**缓存**（抽帧 / 转码 / 缩略图，用久了有几个 GB）。在 **「系统」→「高级」→「缓存位置」** 里填一个别的盘的目录（例如 `D:\WallpaperEngineCache`，绝对路径）并保存，插件会**把已有缓存自己搬过去**，旧目录只留空壳不删；缓存随时可以删（删了下次重跑一次就好）。同理，**自定义壁纸**的「存储位置」在「壁纸库」页签里改。
-
-### 常见问题（FAQ）
-
-> **装不上怎么办？** 本节的条目是**使用**层面的问题。安装失败（pnpm 报错，如 `ERR_PNPM_UNEXPECTED_VIRTUAL_STORE` / `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`）先试这一条：**用已发布版本安装**（`dsh plugin --profile web add dsh-plugin-wallpaper-engine`，就是本页第 1 步的写法）——发布包在打包时已构建好客户端产物；`github:` 直装不构建产物、不再受支持。逐步处置见 [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md)（**在 GitHub 源码仓库里**，npm 包不带 `docs/`）。
-
-**1. 打开选择壁纸，里面是空的 / 一张都没有？**
-- 确认 Wallpaper Engine 装好并至少下载过一张壁纸。
-- 确认 Steam 没装在特别奇怪的位置（一般默认位置没问题；非默认盘插件也会自动找）。
-- 确认装好了却还是空：看一眼 `installDir`（插件诊断文件里，或直接访问 `GET /wallpaper-engine/inventory`）—— 它是 `null` 就说明**安装目录没被认出来**。插件同时支持新旧两种安装布局（有的版本把 `wallpaper32.exe` 放进了 `distribution\` 子目录）。
-- 实在认不出来时：用环境变量 `DSH_WE_STEAM_ROOT` 指到**含 `steamapps\` 的那一层**（Steam 根目录，**不是** WE 的安装文件夹），再重启一次 `dsh web`。
-- 重启一次 `dsh web`。
-
-**2. 视频壁纸不播放 / 是黑的？**
-- 现代浏览器要求视频**静音**才能自动播放——本插件的视频壁纸本来就是静音的，正常应该能播。
-- 试试换一张壁纸，或者点一下「暂停」再「播放」。
-- 「当前壁纸」卡片现在会直接写明原因（[#84](https://github.com/elysia395/dsh-wallpaper-engine/issues/84)）：如果播放按钮显示的是「播放」而不是「暂停」，说明视频并没有真的在播，点它即可重试；若提示「无法解码这段视频」，说明这个文件的编码浏览器解不了，换成 **H.264 编码的 MP4** 即可（例如重新导出一次）。
-- 自己上传的壁纸如果「看不到 / 应用后一片空白」：检查库视图上方的**内容分级**下拉框——默认是 Everyone，未标注分级的自上传壁纸现在按 Everyone 处理，不会再被默认过滤藏起来。
-
-**3. 场景（Scene）壁纸为什么是静止的图片？**
-- 正常情况下**它应该是动的** —— 插件内置的实时渲染引擎会在浏览器里重放场景（粒子 / 脚本 / 视差 / 包内音频）。
-- 若看到的是静止画面，说明实时渲染**降级**了（首帧超时或运行中断）：此时显示的是**实时抓帧**；重开「场景实时渲染」开关可清空记忆重试。注意大壁纸（`scene.pkg` 上百 MB 的那种）的**首帧本来就要等整包传完**，插件按包大小放大预算、并且传输还在进字节时不算超时；只有**渲染页真不出画面**才按壁纸记失败，而"传输没传完"那种失败会自己重试（不用你手动重开开关）。
-- **第一次**打开一张场景壁纸时，实时渲染还在启动，屏幕上先垫的是**作者的预览图**（就是你在 Wallpaper Engine 里看到的那张缩略图）—— 出首帧之前不留黑屏。等你**下次再切回**这张壁纸，垫的就是上一轮抓下来的**实时帧**了。
-- 连作者预览图都没有时，插件才会**诚实地留空**并说明原因 —— 它**不**"替作者猜一张图"（那会是一张糊图），这是有意的。
-
-**4. 我想让壁纸自动换，怎么做？**
-- 在「轮播列表」里点「新建」，给列表起个名，勾选你想轮换的壁纸，设置**切换间隔**（按分钟），勾上「自动轮转」就行。每个列表至少要 2 张壁纸。
-
-**5. 上传的壁纸存在 C 盘，我想挪到 D 盘？**
-- 「自定义壁纸」区有个「更改」按钮，点它选一个新文件夹（比如 `D:\wallpapers`），已有的文件会**自动搬过去**，不用手动复制。
-
-**6. 设置改了没生效 / 重启后又变回去了？**
-- 设置存在宿主端文件里（见上面「我的设置存在哪？」），重启不会丢。若确实回退，先分清是哪一类设置 —— 见 [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) 的对应条目。
-
-**7. 这个插件会不会让 AI 变笨 / 多花 token？**
-- **不会。** 插件不向模型暴露任何工具或提示文本，对 agent 是零 token 开销。它纯粹是个界面美化。
-
-**8. 它会把我电脑里的文件传到网上吗？**
-- **不会。** 壁纸文件全是从你本机的 Wallpaper Engine 目录读取的，自定义上传的也只存在你电脑上，不往任何服务器发送。
-
-**9. 界面怎么自己从深色变浅色了？**
-- 这是**主题随壁纸**：换壁纸后插件会按壁纸的配色自动切全局深 / 浅（作者的配色 → 画面主色；作者没填、或填的是纯黑时用画面主色；都取不到就不动）。不想让它管这张壁纸，就在 DSH 设置里手动选一次深色 / 浅色 —— **这张壁纸它就不再插手**，等你换下一张壁纸才会恢复自动。想让某张壁纸固定在某一侧，也可以直接在「壁纸属性」里把它的**配色**调深或调浅。
-
-### Mac 用户
-
-**不用另装别的包** —— 本插件在 macOS 上原生可用，安装命令与 Windows 完全一样（就是上面「第一步：安装」那一行）。
-
-macOS 上没有 **Wallpaper Engine 客户端**，所以没有 Steam 壁纸库可以扫。想让壁纸出现在 DSH 里，用下面任意一条路：
-
-1. **自己上传**：在「自定义壁纸」里直接传本机的图片（JPG / PNG）或视频（MP4）。
-2. **指一个已有的壁纸文件夹**：如果你用别的工具攒了一堆 WE 壁纸工程目录，把「自定义壁纸」的**存储位置**改成那个文件夹 —— 里面带 `project.json` 的壁纸项目会被自动收录，场景 / 网页壁纸同样走实时渲染。
-
-系统媒体（歌曲名 / 封面 / 频谱）在 macOS 上也是内置的，不需要额外安装 `brew` 之类的东西。
-
-### 名词表
-
-| 词 | 意思 |
+| 想做什么 | 入口与说明 |
 |---|---|
-| **DSH** | DeepSeek Harness，就是跑 `dsh web` 的那个东西。 |
-| **`dsh web`** | DSH 的网页版界面，你在浏览器里聊天的那个。 |
-| **Wallpaper Engine** | Steam 上的壁纸软件，里面存着你买的/下载的壁纸。 |
-| **Video 壁纸** | 本质就是一个 `.mp4` 视频文件，可以直接在网页里播。 |
-| **Web 壁纸** | 用 HTML 网页做的壁纸；插件默认用内置渲染页**实时渲染**它，失败才退回 iframe 加载。 |
-| **Scene（场景）壁纸** | Wallpaper Engine 用 3D 引擎实时渲染的壁纸；插件用内置引擎在浏览器里实时重放它（不是截一张图）。 |
-| **液态玻璃** | iOS 那种半透明、带模糊和光泽的玻璃效果。 |
-| **轮播** | 让几张壁纸按时间间隔自动轮流切换。 |
-| **软删除（隐藏）** | 把壁纸从列表里藏起来，但**不删源文件**，随时能恢复。 |
-| **localStorage** | 浏览器自己存数据的地方——插件**不用它存设置**，设置存在电脑上的文件里。 |
-| **`config.json`** | 插件保存设置的文件，在你用户目录的 `.dsh-wallpaper-engine` 文件夹里。 |
+| 换壁纸 | 壁纸库 → 选择壁纸 |
+| 上传图片 / 视频 | 壁纸库 → 自定义壁纸；支持 JPG / PNG / MP4 |
+| 清除当前壁纸 | 当前壁纸的关闭 / 清除操作；不删除源文件 |
+| 隐藏不喜欢的项目 | 库视图 → 隐藏；可恢复，不删除工坊文件 |
+| 自动轮播 | 轮播列表 → 新建；至少选择两张可播放壁纸 |
+| 改配色、玻璃或字体 | 外观；侧栏有独立参数，不是所有表面共用一根滑条 |
+| 调亮度、取景、倍速或翻转 | 播放 → 效果 |
+| 换吉祥物 | 系统 → 吉祥物；内置十只，也可导入 |
+| 开会话头像、拖尾或视差 | 扩展；按需启用 |
+| 移动缓存 | 系统 → 高级 → 缓存位置 |
+| 移动自定义上传 | 壁纸库 → 自定义壁纸 → 存储位置 |
 
-### 还想看更详细的？
+控件直接显示当前范围与数值。文字不清楚时先调整暗化、边框与玻璃底色；不要为了透明而让所有表面都不可读。**主题随壁纸默认关闭**，只有主动打开后才会自动切深浅色；本张壁纸下的手动主题选择优先。
 
-👉 回到 [中文 README（完整版）](README.md)，里面有工作原理、四类壁纸各自的渲染路径与降级、开发者构建说明等等。
+### 可选：与官方 dsh-pet 联动
 
-用得开心！🎉
+不需要桌宠也能完整使用壁纸。联动另装 [官方 dsh-pet](https://github.com/PC2005-cloud/dsh-pet)，Wallpaper **不捆绑、不自动安装，也不改写它的文件**。
 
----
+1. 官方版本需提供同页位置 / 播放进度和公开控制接口，不能只看 `0.3.7` 版本号。
+2. 将目标宠物设置为网页显示，并把 Wallpaper 吉祥物设为官方侧栏模式。
+3. 按 **Ctrl+Shift+D** 打开调参面板，刷新并选择实际 petId，再试四条联动逻辑。
+
+同一宠物在网页 / 桌面的动作按官方共享状态同步；联动气泡只在发起网页自绘，不会出现在桌面透明窗口，也不会清除官方气泡。未找到目标时原生侧栏操作仍可使用。位置采用官方原生运动，不保证视频缓冲时逐帧同步。完整官方宠物及桌面演出的真机视觉验收仍待补齐，详见 [联动说明](packages/pet-link/README.md)。
+
+从旧内置版升级时，先退出宿主并停用旧内置行；旧依赖、数据与历史补丁不会自动清理。不要为了联动再次安装旧补丁工具。
+
+### 更新与数据
+
+更新时完全退出宿主，更新**整个源码目录**，重跑原安装命令，再启动 DSH。不要只替换某个生成文件。
+
+一般壁纸设置保存在 `~/.dsh-wallpaper-engine/config.json`；缓存和上传默认也在该数据目录。环境变量可覆盖路径。清理浏览器不会删除这份宿主配置，但**pet 目标选择和运行时调参不全在这个文件里**，需要保留的调参请先导出 JSON。
+
+更改缓存 / 上传目录会迁移已识别的插件文件，不搬走目标文件夹里无关的内容。不要把缓存当成上传原件：缓存可重建，自定义壁纸需要另行备份。
+
+### 常见问题
+
+**安装失败或说找不到子包？**
+核对是否在完整仓库根目录、Node / DSH 版本是否达标、目标 home / profile / CLI 是否一致。重跑完整安装器，不要先往活动 profile 手工塞临时链接。保留脱敏日志，参考 [故障排查](https://github.com/Fish-under-sea/dsh-wallpaper-engine/blob/official-pet-bridge-20261020/docs/TROUBLESHOOTING.md)。
+
+**壁纸库是空的？**
+先检查内容分级 / 类型筛选，再确认 WE 下载过壁纸。Steam 未被识别时，可用 `DSH_WE_STEAM_ROOT` 指向含 `steamapps` 的 Steam 根目录。没有 WE 客户端就用上传，或将自定义存储位置指向已有 WE 项目目录。
+
+**视频黑屏或不播放？**
+先看当前壁纸卡片的错误原因，尝试播放或换片。浏览器无法解码时，使用 H.264 MP4。自上传项目也会受内容分级筛选影响。
+
+**Scene 只有静态图？**
+先等首帧。大场景要传输资源包；渲染失败后会降级为可用的预览图或实时帧。并非每个工坊项目都与原版引擎完全兼容。没有可用画面时会说明原因，不会伪造成功。
+
+**文字不好读 / 想关玻璃？**
+先调暗化、底色与边框。玻璃按表面管理，可在对应设置回退原生；未知插件表面不保证自动兼容，见 [共存说明](https://github.com/Fish-under-sea/dsh-wallpaper-engine/blob/official-pet-bridge-20261020/docs/COEXISTENCE.md)。
+
+**插件会把壁纸上传到网上吗？**
+不会。壁纸在本机读取和保存。不过下载运行时、查询仓库数据，以及开启在线歌词后的曲目信息查询会联网。系统频谱采集的是输出回环，不是麦克风。
+
+### 项目与致谢
+
+- 正式项目、发布和贡献历史：[elysia395/dsh-wallpaper-engine](https://github.com/elysia395/dsh-wallpaper-engine)。
+- 当前灰测维护与集成：**[生鱼 / Fish-under-sea](https://github.com/Fish-under-sea/dsh-wallpaper-engine)**，包括部署闭包、官方 pet 桥接、气泡、排播与调参等本分支工作；尚未发布不等于已经合入主仓。
+- 感谢 **[PC2005-cloud / dsh-pet](https://github.com/PC2005-cloud/dsh-pet)** 的公开接口支持与联动讨论。
+- 感谢 B 站 UP 主 **[ZipZipPipe](https://space.bilibili.com/4168597)** 创作的 **AI 娘二创形象**，为我们的新吉祥物提供形象基础。不是模型厂商官方形象；署名不改变角色与素材的权利归属。
+
+其他贡献者、素材与授权见 [完整致谢](README.md#致谢) 和 [素材来源](assets/readme/SOURCES.md)。npm 包不带 `docs/`，技术文档使用当前源码仓库链接。
 
 ## English
 
-> A simplified walkthrough for people who have **never used a command line**.
-> For full feature details and how it works, see the [English README](README.en.md).
->
-> 📦 **Everything you need to get started is on this page** — no need to jump elsewhere. The npm package **does not ship `docs/`** (what ships is the runtime and the three READMEs), so if this page mentions `docs/…`, read it in the **source repository** <https://github.com/elysia395/dsh-wallpaper-engine> (the upstream repo — the plugin's source and full documentation live there).
+This guide covers the **unpublished [Fish-under-sea source branch](https://github.com/Fish-under-sea/dsh-wallpaper-engine)**. The official upstream's releases and npm package are separate. The current source suite is **one main package plus seven subpackages**, with no bundled pet.
 
-### What is this?
+### Prepare and install
 
-In one sentence: **it puts your Steam Wallpaper Engine wallpapers behind the DeepSeek Harness (DSH) web chat interface.**
+You need a working **DSH 0.2 kernel** (including `0.2.0-rc.1/rc.2`), **Node.js >=22.12.0**, pnpm, the target host's CLI, and its actual data-directory / profile identifiers. Wallpaper Engine is optional if you use custom images / videos. Application wallpapers are unsupported.
 
-- Once installed, open `dsh web` and a live wallpaper appears behind your chat (video / web / scene all render live through the plugin).
-- An **iOS-style "liquid glass"** layer sits on top of it, so your text stays readable.
-- You can switch wallpapers, tune transparency and colors, or even upload your own images/videos as wallpapers.
-- **Every setting is stored in one file on your computer** — restarting, switching browsers or clearing browser data does not lose it.
-
-### Before you start, make sure you have
-
-- ✅ A **Windows / macOS / Linux** PC (all three are supported natively; macOS has no Wallpaper Engine client — see the "macOS users" section at the end).
-- ✅ **Wallpaper Engine** installed and opened at least once (the Steam wallpaper app), with at least one wallpaper in it (not available on **macOS** — see the "macOS users" section instead).
-- ✅ **DSH** (DeepSeek Harness) installed, and `dsh web` working.
-- ✅ A way to open **Command Prompt** or **PowerShell** (just search for it in the Start menu).
-
-> No Wallpaper Engine? This plugin relies on it to scan wallpapers, so WE's own wallpapers won't work without it. You **can** still use the **custom wallpaper** feature to upload your own images/videos as a background.
-
-> ⚠️ **Before updating this plugin, bring the DSH kernel to ≥ 0.1.5** (tested floor): keeping the official desktop (DeepSeek Harness) up to date is enough, and the old **DSH Desktop 2.0.7+** line (kernel 0.1.5-rc.1+) can install the new version too. **dsh-better-sidebar is no longer version-restricted** (if you have it installed, updating it to the latest is still recommended). If anything breaks after an update, bringing the desktop and the sidebar plugin each up to their latest versions restores everything.
-
-### Step 1: install
-
-Open Command Prompt / PowerShell, **copy-paste** this line and press Enter:
+1. Download and extract the complete [review branch `official-pet-bridge-20261020`](https://github.com/Fish-under-sea/dsh-wallpaper-engine/tree/official-pet-bridge-20261020), not the fork's default branch.
+2. Fully close the target DSH host. Open a terminal in the folder containing `package.json`.
+3. Replace the placeholder with that host's actual data directory, inspect the plan, then install:
 
 ```sh
-dsh plugin --profile web add dsh-plugin-wallpaper-engine
+node scripts/install-source.mjs --profile web --dsh-home "<target DSH data directory>" --dry-run
+node scripts/install-source.mjs --profile web --dsh-home "<target DSH data directory>" --app-closed
 ```
 
-Once it reports success, **restart `dsh web`** (close it and open it again).
+Desktop profiles require `--profile desktop` **and the desktop carrier CLI**. A standalone npm `dsh` CLI refuses desktop management. Pass `--dsh-cli "<target CLI lib/bin.js>"` when needed; do not guess the data directory. See [installation details](README.en.md#install).
 
-> 💡 Scared of that command line? It just means: "install the Wallpaper Engine plugin into DSH's web profile." **Copy → paste → Enter** — three steps, done.
+The installer builds clients and registers all eight persistent links. Restart DSH afterward. **Keep the source directory in place.** For updates, close DSH, update the whole checkout and rerun the same command. A raw `github:` install, temporary links or installing only the main package does not deploy this branch. npm-name installation applies only after the complete release set is published.
 
-### Step 2: open the wallpaper settings page
+### Choose and adjust a wallpaper
 
-1. Open `dsh web` and go to the chat interface.
-2. Click **Settings** (usually bottom-left or in the left sidebar).
-3. In the settings page's **left navigation**, find the entry called **"Wallpaper Engine"** and click it.
+Open **Settings → Wallpaper Engine → Library**, or pull the mascot cord. Choose a thumbnail in the **in-panel library**, not a modal dialog. Use Appearance for glass / fonts / colors, Playback for filters / speed / framing, System for mascots / cache paths, and Extensions for avatars / effects / parallax.
 
-You will see a **liquid-glass card** holding every wallpaper-related control.
+Use JPG / PNG / MP4 uploads without Wallpaper Engine. macOS has no official WE client; existing project directories can also be used. Scene compatibility depends on assets and WebGL; a preview may be shown while preparing or after rendering failure. Rotation needs at least two playable candidates. Hiding a library item does not delete its source.
 
-### Step 3: pick a wallpaper
+**Theme-following is off by default.** Readability matters more than maximum transparency. Glass uses per-surface fallback rather than guaranteed compatibility with every third-party skin. System audio capture is output loopback, not the microphone. Online lyrics are opt-in and may send track information to LRCLIB.
 
-1. Click the **「选择壁纸」 (choose wallpaper)** button on that card — a **thumbnail grid** window opens.
-2. It lists every wallpaper in your Wallpaper Engine (with preview images). **Click one you like** and it appears behind the chat interface.
-3. Click outside, press `ESC`, or click 「关闭」 (close) to dismiss the window.
+### Optional official pet integration
 
-🎉 **Done!** There should now be a wallpaper behind your chat interface.
+Install official [dsh-pet](https://github.com/PC2005-cloud/dsh-pet) separately, with same-page pose / playback-progress services and public control APIs. Version `0.3.7` alone does not identify those capabilities. Set the target to web display and Wallpaper's mascot to official-sidebar mode; open **Ctrl+Shift+D** to choose the actual petId and try the four routines.
 
-> Can't pick anything? See FAQ 1 below.
+The bridge does not modify official files. Pet actions follow the official shared state across displays; bridge bubbles appear **only in the initiating page** and never clear official bubbles. Missing targets fall back to the ordinary sidebar action. Native motion is not guaranteed to follow buffered video frame by frame. Full official-renderer and desktop visual acceptance is still outstanding. See the [integration guide](packages/pet-link/README.md).
 
-### Cheat sheet
+Before upgrading a former bundled-pet setup, close DSH and disable its old bundled row. Old dependencies, data and patches are not automatically removed.
 
-| I want to… | Where to click | Notes |
-|---|---|---|
-| **Change the wallpaper** | 选择壁纸 → click one in the library view | Video / Web / your own uploaded image or video all work |
-| **Turn the wallpaper off** | current-wallpaper card → 「关闭」 | The wallpaper disappears, the setting is kept |
-| **Turn the glass off** | Per-surface 「liquid glass」 switches (sidebar / thinking block / left sidebar) in the 「外观」 tab or the settings glass section | There is **no** "turn all glass off" master switch yet — current state and why: `docs/COEXISTENCE.md` |
-| **Pause a video** | current-wallpaper card → ⏸ | Video wallpapers only |
-| **Tune glass transparency** | 「外观」 tab → the glass-transparency slider | Higher = clearer, lower = more solid; text surfaces carry a readability floor, so it never becomes unreadable |
-| **Change the accent color** | 「外观」 tab → 配色 | 6 presets + a custom color picker |
-| **Change the glass base tint** | 「外观」 tab → 玻璃颜色 | Sets the glass's own tint |
-| **Change playback speed** | 「效果」 tab → 倍速 | see the control |
-| **Mirror the picture** | 「效果」 tab → 水平翻转 | Video / web / images alike |
-| **Upload your own wallpaper** | 「自定义壁纸」 → upload | JPG / PNG / MP4 |
-| **Hide wallpapers you don't want** | 「隐藏」 in a card's top-right corner | A soft delete — source files are untouched and it is restorable |
-| **Rotate wallpapers automatically** | 「轮播列表」 → create a list | Per-list interval and order |
-| **Move where uploads are stored** | 「自定义壁纸」 → storage 「更改」 | Defaults to the C: drive; any drive works |
-| **Which shell the plugin runs in** (rarely needed) | 「高级」 tab → 适配 → 适配目标 | Defaults to 自动检测 and shows what it detected; only touch it when a web wallpaper goes black / answers 403 |
+### Settings and troubleshooting
 
-### How do I tune the picture sliders?
+General wallpaper settings persist in `~/.dsh-wallpaper-engine/config.json`. Environment variables may override paths. Pet selection and runtime tuning have a separate lifecycle: export tuning JSON before refresh. Cache files can be regenerated; uploaded originals need their own backups.
 
-With a wallpaper active, the **「效果」 (effects)** tab has the picture sliders; **边框 (border)** and **雾化 (conversation glass blur)** live in the **「外观」 (appearance)** tab's 「细节」 group. **All of them apply instantly — no page refresh**. The three framing sliders (水平 / 垂直 / 缩放) also accept a **typed value** in the box on their right, and **double-clicking their label** puts them back to the default:
+For installation errors, verify the complete checkout, supported versions, and exact home / profile / CLI. For an empty library, check filters and Steam detection; `DSH_WE_STEAM_ROOT` points at the Steam root containing `steamapps`. For decoding errors, try H.264 MP4. See [troubleshooting](https://github.com/Fish-under-sea/dsh-wallpaper-engine/blob/official-pet-bridge-20261020/docs/TROUBLESHOOTING.md) and the [English README](README.en.md).
 
-| Slider | What it does | Default |
-|---|---|---|
-| **壁纸模糊** (wallpaper blur) | Blurs the wallpaper itself | see the control |
-| **亮度 / 对比度 / 饱和度** (brightness / contrast / saturation) | The wallpaper picture's brightness and richness | see the control |
-| **水平 / 垂直** (horizontal / vertical) | Slides the whole wallpaper layer across the screen — `50` is dead centre, the same scale as Wallpaper Engine's own sliders of these names. **Double-click the label** to snap back to centre | see the control |
-| **缩放** (scale) | Zooms the wallpaper layer in or out — `100` is the original size, and below that a little of the page base color shows around the edges | see the control |
-| **壁纸透明度** (wallpaper opacity) | Fades the whole wallpaper layer toward the page base color | see the control |
-| **暗化** (scrim) | Darkens the overlay between wallpaper and text | see the control |
-| **边框** (border, Appearance → Details) | Makes borders / dividers stand out | see the control |
-| **雾化** (glass blur, Appearance → glass UI) | Blur radius of the glass panels — conversation cards, the **left-sidebar glass**, the settings window and the plugin popovers. **Only the dsh-better-sidebar panel has its own blur** (「侧栏模糊」) | see the control |
+Wallpapers stay local, but runtime downloads, repository statistics and opt-in lyric queries access external services. The plugin registers no model tools or prompt text, so it adds no model token overhead.
 
-> 👀 **If text is hard to read**: raise the 「暗化」 (Playback → Effects) and 「边框」 (Appearance → Details) sliders first; if that is not enough, add a little 「壁纸模糊」. You can also switch DSH between its **light / dark** themes — different wallpapers suit different modes.
+### Credits
 
-### Where are my settings stored?
-
-**Every setting lives in one file on your computer** (Windows: `C:\Users\<your-name>\.dsh-wallpaper-engine\config.json`;
-macOS / Linux: `~/.dsh-wallpaper-engine/config.json`) — restarts, port changes and cleared browser data do not lose it, and upgrading from an older version **migrates automatically**.
-
-> Why it changed, multi-device sharing, and the read/write (debounced) behaviour: see the 「设置持久化」 section of [`docs/UPGRADING.md`](docs/UPGRADING.md).
-
-### FAQ
-
-> **Can't install it?** The entries below are **usage** questions. For install failures (pnpm errors such as `ERR_PNPM_UNEXPECTED_VIRTUAL_STORE` / `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`), try this first: **install the published version** (`dsh plugin --profile web add dsh-plugin-wallpaper-engine`, exactly what step 1 above does) — the published tarball already ships a built client, while a raw `github:` install ships no client artifact and is no longer supported. Step-by-step recovery is in [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) (**in the GitHub source repo**; the npm package does not include `docs/`).
-
-**1. The wallpaper picker is empty — not a single wallpaper?**
-- Make sure Wallpaper Engine is installed and you have downloaded at least one wallpaper.
-- Make sure Steam is not installed somewhere truly unusual (the default location is fine; the plugin also auto-detects non-default drives).
-- Still empty once you know it is installed? Check `installDir` (in the plugin diagnostics, or `GET /wallpaper-engine/inventory`): `null` means the **install directory was not recognised**. Both install layouts are supported (some releases keep `wallpaper32.exe` inside a `distribution\` subfolder).
-- If it still cannot find it, point `DSH_WE_STEAM_ROOT` at the level **containing `steamapps\`** (the Steam root, **not** the WE install folder) and restart `dsh web`.
-- Restart `dsh web` once.
-
-**2. A video wallpaper does not play / is black?**
-- Modern browsers require a **muted** video for autoplay — this plugin's video wallpapers are muted anyway, so they should play.
-- Try another wallpaper, or click 「暂停」 (pause) and then 「播放」 (play) again.
-- The current-wallpaper card now states the reason directly ([#84](https://github.com/elysia395/dsh-wallpaper-engine/issues/84)): if the play button reads 「播放」 instead of 「暂停」, the video is not actually playing — click it to retry; if it says "cannot decode this video", the browser cannot handle that encoding — re-export it as an **H.264 MP4**.
-- If a wallpaper you uploaded is "invisible / comes up blank": check the **content-rating** dropdown above the grid — the default is Everyone, and an unrated upload now counts as Everyone instead of being filtered away.
-
-**3. Why is my Scene wallpaper a still image?**
-- **It should be moving** — the plugin's built-in live renderer replays the scene in the browser (particles / scripts / parallax / packaged audio).
-- A still picture means live rendering **degraded** (first-frame timeout or a stalled runtime): what you see is the **live-captured frame**. Re-toggling 「场景实时渲染」 clears that memory and retries. Note that a big wallpaper (a `scene.pkg` of hundreds of MB) **has to receive the whole package before its first frame can exist** — the plugin scales its budget by the package size and does not count a transfer that is still delivering bytes as a timeout; only a renderer that really produces no picture is remembered per wallpaper, while an **unfinished transfer retries by itself** (no need to re-toggle the switch).
-- The **first** time you open a scene wallpaper, live rendering is still starting up, so what stands in is the **author's preview image** (the very thumbnail you see in Wallpaper Engine) — no black screen before the first frame. **Switch back** to that wallpaper later and the stand-in is the **live frame** captured last time.
-- Only when not even the author's preview is available does the plugin leave the area **honestly empty** and say why — it **no longer** "guesses an image on the author's behalf" (which would be a blurry one). That is deliberate behaviour since 1.0.
-
-**4. How do I make wallpapers rotate automatically?**
-- In 「轮播列表」 click 「新建」 (new), name the list, tick the wallpapers you want, set a **switch interval** (say every 30 minutes) and enable 「自动轮转」. Each list needs at least 2 wallpapers.
-
-**5. My uploads are on the C: drive — how do I move them to D:?**
-- The 「自定义壁纸」 area has a 「更改」 (change) button: pick a new folder (e.g. `D:\wallpapers`) and existing files are **migrated automatically** — no manual copying.
-
-**6. My settings don't stick / revert after a restart?**
-- Settings live in a host-side file (see "Where are my settings stored?" above), so a restart does not lose them. If they do revert, first work out which family of settings it is — see the matching entry in [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
-
-**7. Will this plugin make the AI dumber / cost more tokens?**
-- **No.** It exposes no tools or prompt text to the model — zero token cost for the agent. It is purely cosmetic.
-
-**8. Will it upload files from my computer?**
-- **No.** Wallpapers are read from your local Wallpaper Engine directory, and your own uploads stay on your machine — nothing is sent to any server.
-
-**9. Why did the UI switch from dark to light on its own?**
-- That is **theme follows the wallpaper**: after a switch the plugin picks the global dark/light from the wallpaper's colours (author's scheme colour → the picture's main colour; an unfilled or pure-black author value falls through to the picture; if neither is available it leaves the theme alone). To stop it for one wallpaper, just pick dark or light by hand in DSH — **that wallpaper is left alone** until you switch to another one, at which point the automatic behaviour resumes. You can also pin a wallpaper to one side by adjusting its **配色 (scheme colour)** in the 壁纸属性 panel.
-
-### macOS users
-
-**No separate package to install** — this plugin runs natively on macOS, with exactly the same install command as Windows (the line in "Step 1: install" above).
-
-macOS has no **Wallpaper Engine client**, so there is no Steam wallpaper library to scan. To get wallpapers into DSH, use either path:
-
-1. **Upload your own**: in "自定义壁纸" (custom wallpapers), upload local images (JPG / PNG) or videos (MP4).
-2. **Point at an existing wallpaper folder**: if another tool has already collected WE project directories for you, set the custom-wallpaper **storage location** to that folder — every wallpaper project with a `project.json` inside is picked up automatically, and scenes / web wallpapers render live just the same.
-
-System media (track title / artwork / spectrum) is built in on macOS too — nothing extra to install, no `brew` packages.
-
-### Glossary
-
-| Term | Meaning |
-|---|---|
-| **DSH** | DeepSeek Harness — the thing that runs `dsh web`. |
-| **`dsh web`** | DSH's web interface — the one you chat with in a browser. |
-| **Wallpaper Engine** | The Steam wallpaper app that holds the wallpapers you bought/downloaded. |
-| **Video wallpaper** | Essentially an `.mp4` file that plays directly in the page. |
-| **Web wallpaper** | A wallpaper built from an HTML page; the plugin renders it live by default and falls back to a plain iframe only if live rendering fails. |
-| **Scene wallpaper** | A wallpaper Wallpaper Engine renders with its 3D engine; the plugin replays it live in the browser with a bundled engine (it does **not** just take a screenshot). |
-| **Liquid glass** | The translucent, blurred, glossy glass look iOS uses. |
-| **Rotation** | Letting several wallpapers switch automatically on a timer. |
-| **Soft delete (hide)** | Hiding a wallpaper from the list **without deleting the source file**; restorable at any time. |
-| **localStorage** | Where browsers keep their own data — the plugin **does not store settings there**; settings live in a file instead. |
-| **`config.json`** | The file the plugin saves its settings in, inside the `.dsh-wallpaper-engine` folder in your user directory. |
-
-### Want more detail?
-
-👉 Go back to the [English README](README.en.md) for how it works, the render path and degradation for each of the four wallpaper types, developer build instructions and more.
-
-Enjoy! 🎉
+Official project and history: [elysia395](https://github.com/elysia395/dsh-wallpaper-engine). Current test-branch integration: **[生鱼 / Fish-under-sea](https://github.com/Fish-under-sea)**. Thank you to **[PC2005-cloud / dsh-pet](https://github.com/PC2005-cloud/dsh-pet)** for the public integration APIs, and Bilibili creator **[ZipZipPipe](https://space.bilibili.com/4168597)** for the **AI-girl fan-character designs used as the basis for our new mascots**. These are not official model-vendor characters; attribution does not relicense artwork under MIT. See [all credits](README.md#致谢) and [asset sources](assets/readme/SOURCES.md).

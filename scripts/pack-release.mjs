@@ -16,6 +16,13 @@ export function releaseManifest(main, children) {
   return manifest;
 }
 
+export function releaseSetMatches(packages, plan) {
+  const expected = [...plan.subs.map((p) => JSON.parse(readFileSync(p.manifest, 'utf8'))), plan.main];
+  return Array.isArray(packages) && packages.length === expected.length
+    && packages.every((pkg, i) => pkg && pkg.name === expected[i].name && pkg.version === expected[i].version
+      && pkg.file === expected[i].name.replace(/^@/, '').replaceAll('/', '-') + '-' + expected[i].version + '.tgz');
+}
+
 export function packRelease(options = {}, run = runTool) {
   assertNodeVersion();
   const root = resolve(options.root || ROOT);

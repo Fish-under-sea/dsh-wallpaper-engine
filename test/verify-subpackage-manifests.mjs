@@ -399,6 +399,7 @@ const MANIFEST_TOP_KEY_TEMPLATE = [
 ];
 /** files 键值行的规范字面量（单行数组；见 ADR-0014 S3.8）。 */
 const MANIFEST_FILES_LINE = '  "files": ["lib/", "cordis.patch.yml", "locale/", "icon.png", "package.json"],';
+const MANIFEST_ASSET_FILES_LINE = '  "files": ["lib/", "cordis.patch.yml", "locale/", "icon.png", "package.json", "assets/"],';
 const MANIFEST_INSTALLER_FILES_LINE = '  "files": ["lib/", "cordis.patch.yml", "locale/", "icon.png", "package.json", "tools/", "assets/", "src/"],';
 
 /** 独立子包目录（数据驱动：不写死包名，目录名 = 真名里根包名 '-' 之后那一段）。 */
@@ -806,11 +807,11 @@ function braceEndLine(lines, startLine) {
   return -1;
 }
 
-/** 形态由浏览器半边和显式安装入口共同决定；S3.8 ③ 仅在同形态内逐字对账。 */
-function manifestHalfOf(m) {
+/** 素材形态取磁盘事实，不允许只改清单规避逐字对账。 */
+function manifestHalfOf(m, dir) {
   const dsh = (m.dsh && typeof m.dsh === 'object' && !Array.isArray(m.dsh)) ? m.dsh : {};
   const half = (dsh.client != null && dsh.client !== false) ? 'client-half' : 'host-only';
-  return m.exports?.['./install'] ? half + '-installer' : half;
+  return m.exports?.['./install'] ? half + '-installer' : half + (dirExists(dir + '/assets') ? '-assets' : '');
 }
 
 /**
@@ -959,7 +960,8 @@ function manifestTemplateViolations({ dirs, texts }) {
         }
       }
     }
-    const expectedFilesLine = m.exports?.['./install'] ? MANIFEST_INSTALLER_FILES_LINE : MANIFEST_FILES_LINE;
+    const expectedFilesLine = m.exports?.['./install'] ? MANIFEST_INSTALLER_FILES_LINE
+      : dirExists(dir + '/assets') ? MANIFEST_ASSET_FILES_LINE : MANIFEST_FILES_LINE;
     if (filesAt < 0) {
       if (!isUpstreamFork(dir)) add(dir, '顶层没有 files 键（模板要求；发布白名单）');
     } else if (!isUpstreamFork(dir) && lines[filesAt] !== expectedFilesLine) {
@@ -985,7 +987,7 @@ function manifestTemplateViolations({ dirs, texts }) {
   const byHalf = new Map();
   for (const [dir, m] of parsed) {
     if (isUpstreamFork(dir)) continue;
-    const half = manifestHalfOf(m);
+    const half = manifestHalfOf(m, dir);
     if (!byHalf.has(half)) byHalf.set(half, []);
     byHalf.get(half).push(dir);
   }
@@ -1090,6 +1092,16 @@ for (const dir of packageDirs.filter(dir => JSON.parse(packageTexts.get(dir)).ex
   }
   const disguised = raw.replace(/^ {4}"\.\/install":.*\n/m, '');
   check('negative control: 没有显式安装入口不能冒充安装器形态', disguised !== raw && violations(disguised).length > 0);
+}
+for (const dir of packageDirs.filter(dir => dirExists(dir + '/assets') && !JSON.parse(packageTexts.get(dir)).exports?.['./install'])) {
+  const raw = packageTexts.get(dir);
+  const violations = text => manifestTemplateViolations({ dirs: packageDirs, texts: new Map(packageTexts).set(dir, text) });
+  check('素材包发布形态正对照：' + dir, violations(raw).length === 0, violations(raw).join(' | '));
+  for (const [label, mutant] of [
+    ['删素材白名单', raw.replace(', "assets/"', '')],
+    ['冒带工具目录', raw.replace(', "assets/"', ', "assets/", "tools/"')],
+    ['冒带构建源码', raw.replace(', "assets/"', ', "assets/", "src/"')],
+  ]) check('negative control: 素材包' + label + '必须判红', mutant !== raw && violations(mutant).length > 0);
 }
 const templateProblems = manifestTemplateViolations({ dirs: packageDirs, texts: packageTexts });
 const packageProblems = [...packagesViolations(packagesInput), ...templateProblems];

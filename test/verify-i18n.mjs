@@ -66,8 +66,7 @@ const DATA_BLOCKS = [
 const VALUE_ALLOW = [
   ...[
     ...JSON.parse(readFileSync(join(ROOT, 'packages/pet-link/src/pet-link-actions.json'), 'utf8')).animations.events.DSHWE,
-    ...readdirSync(join(ROOT, 'packages/pet-link/assets/memes')).filter(name => name.endsWith('.png')).map(name => name.slice(0, -4)),
-  ].map(value => ({ value, why: '桌宠资源池的实际动画名或配图键；必须与文件名一致，不能翻译。' })),
+  ].map(value => ({ value, why: '桌宠资源池的实际动画名；必须与文件名一致，不能翻译。' })),
   {
     value: '设置',
     why: '**宿主的**标签候选（src/sidebar-right.js 的 settingsLabelCandidates）：' +

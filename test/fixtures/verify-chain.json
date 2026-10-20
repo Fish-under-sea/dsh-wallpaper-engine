@@ -641,39 +641,7 @@
         {
           "kind": "guard",
           "npm": null,
-          "file": "test/verify-pet-bubble-timing.mjs",
-          "args": [],
-          "tier": "hard",
-          "probe": false
-        },
-        {
-          "kind": "guard",
-          "npm": null,
-          "file": "test/verify-pet-meme-broadcast.mjs",
-          "args": [],
-          "tier": "hard",
-          "probe": false
-        },
-        {
-          "kind": "guard",
-          "npm": null,
-          "file": "test/verify-pet-mascot-motion.mjs",
-          "args": [],
-          "tier": "hard",
-          "probe": false
-        },
-        {
-          "kind": "guard",
-          "npm": null,
-          "file": "test/verify-pet-egg1-motion.mjs",
-          "args": [],
-          "tier": "hard",
-          "probe": false
-        },
-        {
-          "kind": "guard",
-          "npm": null,
-          "file": "test/verify-pet-egg1-rebound.mjs",
+          "file": "test/verify-pet-official.mjs",
           "args": [],
           "tier": "hard",
           "probe": false
@@ -698,30 +666,6 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-pet-sidebar-glass.mjs",
-          "args": [],
-          "tier": "hard",
-          "probe": false
-        },
-        {
-          "kind": "guard",
-          "npm": null,
-          "file": "test/verify-pet-egg2-motion.mjs",
-          "args": [],
-          "tier": "hard",
-          "probe": false
-        },
-        {
-          "kind": "guard",
-          "npm": null,
-          "file": "test/verify-pet-follow.mjs",
-          "args": [],
-          "tier": "hard",
-          "probe": false
-        },
-        {
-          "kind": "guard",
-          "npm": null,
-          "file": "test/verify-pet-builtin.mjs",
           "args": [],
           "tier": "hard",
           "probe": false
@@ -1534,39 +1478,7 @@
         {
           "kind": "guard",
           "npm": null,
-          "file": "test/verify-pet-bubble-timing.mjs",
-          "args": [],
-          "tier": "hard",
-          "probe": false
-        },
-        {
-          "kind": "guard",
-          "npm": null,
-          "file": "test/verify-pet-meme-broadcast.mjs",
-          "args": [],
-          "tier": "hard",
-          "probe": false
-        },
-        {
-          "kind": "guard",
-          "npm": null,
-          "file": "test/verify-pet-mascot-motion.mjs",
-          "args": [],
-          "tier": "hard",
-          "probe": false
-        },
-        {
-          "kind": "guard",
-          "npm": null,
-          "file": "test/verify-pet-egg1-motion.mjs",
-          "args": [],
-          "tier": "hard",
-          "probe": false
-        },
-        {
-          "kind": "guard",
-          "npm": null,
-          "file": "test/verify-pet-egg1-rebound.mjs",
+          "file": "test/verify-pet-official.mjs",
           "args": [],
           "tier": "hard",
           "probe": false
@@ -1591,30 +1503,6 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-pet-sidebar-glass.mjs",
-          "args": [],
-          "tier": "hard",
-          "probe": false
-        },
-        {
-          "kind": "guard",
-          "npm": null,
-          "file": "test/verify-pet-egg2-motion.mjs",
-          "args": [],
-          "tier": "hard",
-          "probe": false
-        },
-        {
-          "kind": "guard",
-          "npm": null,
-          "file": "test/verify-pet-follow.mjs",
-          "args": [],
-          "tier": "hard",
-          "probe": false
-        },
-        {
-          "kind": "guard",
-          "npm": null,
-          "file": "test/verify-pet-builtin.mjs",
           "args": [],
           "tier": "hard",
           "probe": false

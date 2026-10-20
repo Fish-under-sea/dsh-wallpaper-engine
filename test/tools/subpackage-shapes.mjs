@@ -52,72 +52,13 @@ export const UPSTREAM_SOURCES = Object.freeze({
  *   · `resources`      该包必须自带的资源面（名字前缀 → 期望数量），供资源就绪判据复算
  */
 export const UPSTREAM_FORKS = Object.freeze([
-  Object.freeze({
-    dir: 'packages/pet',
-    name: 'dsh-we-pet-builtin',
-    rowId: 'wallpaper-engine-pet',
-    source: 'dsh-pet@0.3.7',
-    manifestExtraKeys: Object.freeze([
-      '_derived',
-      '_upstream',
-      'bin',
-      'bugs',
-      'dependencies',
-      'devDependencies',
-      'engines',
-      'homepage',
-      'keywords',
-      'optionalDependencies',
-      'repository',
-      'scripts',
-    ]),
-    clientArtifact: 'packages/pet/lib/client.js',
-    prebuilt: Object.freeze({
-      // 产物与"派生基线"的逐字节锚点：预构建 = 不重编译，所以必须有一条可复算的字节证据。
-      entry: 'lib/client.js',
-      sha256: '78f4d86ee4bb21f038d0a6f352103b685a6433c2d58461bf88cf0fff5b77aea8',
-      moduleId: 'dsh-we-pet-builtin',
-      // 宿主半边与独立模式 CLI 的字节锚点（同一条派生链的另外两个产物）。
-      hostEntry: 'lib/index.js',
-      hostSha256: '00ccae2482b6850c07ae31df5d153a5413e9564594b3839f0ec87913c0ac7315',
-    }),
-    hostServiceConsumer: false,
-    /**
-     * 该 fork 的**运行时 peer 面**（上游 npm 清单真值）。
-     * 为什么必须登记而不是"照抄现成清单"：S3.5 对一般子包的要求是「peer ⊆ 根 peer + 范围逐字取根」，
-     * 而 fork 是**独立 npm 包**，它的宿主提供面来自上游自己的 peer 声明（dsh-llm / dsh-credentials /
-     * dsh-home-paths / dsh-client-ui-primitives 这些根 peer 里根本没有）。所以 fork 走另一条判据：
-     * peer 面必须与这张登记表**逐字相等**（多一个 = 偷偷扩依赖，少一个 = 运行时缺模块），
-     * 且每个名字都必须在 `purity` 的声明面里（declaredFace 读同一份清单）。
-     */
-    peerDependencies: Object.freeze({
-      '@deepseek-ai/cordis': '^4.0.4',
-      '@deepseek-ai/dsh-agent-default-model': '^0.2.0-rc.1',
-      '@deepseek-ai/dsh-client-connection': '^0.2.0-rc.1',
-      '@deepseek-ai/dsh-client-ui-primitives': '^0.2.0-rc.1',
-      '@deepseek-ai/dsh-client-ui-slots': '^0.2.0-rc.1',
-      '@deepseek-ai/dsh-commands': '^0.2.0-rc.1',
-      '@deepseek-ai/dsh-credentials': '^0.2.0-rc.1',
-      '@deepseek-ai/dsh-home-paths': '^0.2.0-rc.1',
-      '@deepseek-ai/dsh-host-webserver': '^0.2.0-rc.1',
-      '@deepseek-ai/dsh-llm': '^0.2.0-rc.1',
-      react: '^18.2.0',
-      'react-dom': '^18.2.0',
-    }),
-    /** 该 fork 的运行时普通依赖（上游 npm 清单真值）。 */
-    dependencies: Object.freeze({
-      '@electron-internal/extract-zip': '^1.0.5',
-      '@electron/get': '^5.1.0',
-    }),
-    /** 可选依赖：electron 只在桌面透明窗路径上惰性 require（try/catch），缺了要能退化。 */
-    optionalDependencies: Object.freeze({ electron: '>=28.0.0' }),
-    resources: Object.freeze({
-      'assets/webm': Object.freeze({ suffix: '.webm', count: 106 }),
-      'assets/memes': Object.freeze({ suffix: '.png', count: 27 }),
-      'assets/pic': Object.freeze({ suffix: null, count: 8 }),
-      'assets/fonts': Object.freeze({ suffix: null, count: 1 }),
-    }),
-  }),
+  // ── 当前为空：内置桌宠副本已解耦（2026-10-20）────────────────────────────────
+  // `packages/pet`（`dsh-we-pet-builtin`）与它的 `wallpaper-engine-pet` 行已从本包移除：
+  // 它把 `electron`（optional）带进安装树，而 electron 42+ 缺 `dist/` 时会在
+  // `require('electron')` 里**同步**下载约 140MB 二进制 ⇒ 宿主启动被堵到 60 秒超时，
+  // 整个 profile 起不来。桌宠本体的重新接入等上游 dsh-pet 提供联动接口后由 pet-link 对接
+  // **外部** provider；届时在这里重新登记形态，本文件其余判据（upstreamForkViolations /
+  // 键序 / peer 面 / 资源面）按原口径复用，一行都不用放宽。
 ]);
 
 const BY_DIR = new Map(UPSTREAM_FORKS.map((f) => [f.dir, f]));
