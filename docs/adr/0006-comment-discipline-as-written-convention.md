@@ -1,12 +1,16 @@
 # ADR-0006: 注释与文档纪律改为纯写作约定，撤除文档类机器守卫（Comment discipline as a written convention）
 
 - **Date**: 2026-09-30
-- **Status**: Accepted
+- **Status**: Superseded by [ADR-0017](./0017-code-is-truth-docs-reference-source.md)（2026-10-27：文档不再作为代码的第二份副本，取消文档审阅约定）
 - **Deciders**: YV3507
 - **Implementation**: 纪律条文与 ADR 已落地；**文档类守卫文件已物理下线**
   （`verify-comment-discipline` / `verify-ledger` 已从 `test/` 删除、并移出 `npm run verify:docs` 链；
   详见 [ADR-0007](./0007-machine-checks-target-code-not-prose.md) 的撤除清单）
 - **Amends**: [ADR-0004](./0004-two-tier-guard-verification.md)（软档内的**文档类**守卫被撤除；分档本身不变）
+
+> **2026-10-27 状态说明**：本文的"写作约定"仍可作为历史参考，但**不再是必须维护/评审的约束**。
+> 现行规则见 [ADR-0017](./0017-code-is-truth-docs-reference-source.md)：代码即真相，文档引用源码位置，
+> 不做文档类门禁，也不要求代码改动同步改文档。
 
 > 纪律条文本身住在 `docs/README.md` §写作纪律；本文记**为什么用约定而不是守卫**。
 

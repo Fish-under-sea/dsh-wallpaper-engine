@@ -21,12 +21,13 @@ export declare const inject: string[];
 export declare function apply(ctx: Context): void;
 
 /**
- * Frozen, sorted key table of the **cross-package host bridge** (`src/client.js`
- * `HOST_BRIDGE_BINDINGS`): the bindings a sub-package browser half receives as
- * `require("dsh-plugin-wallpaper-engine")`. Every sub-package bundle destructures
- * these names from the host module and throws at evaluation time when one is
- * missing (`packages/<pkg>/src/client.js` `*_HOST_REQUIRED`), so the list is a
- * contract, not documentation — see docs/wip/BUNDLE-SPLIT.md §5.1 ②.
+ * Frozen, sorted key table of the **cross-package host bridge**
+ * (`src/host-bridge.js` `HOST_BRIDGE_BINDINGS`): the bindings a sub-package browser
+ * half receives as `require("dsh-plugin-wallpaper-engine")`. Every sub-package
+ * bundle destructures these names from the host module and throws at evaluation
+ * time when one is missing (`packages/<pkg>/src/client.js` `*_HOST_REQUIRED`, whose
+ * key array the build derives from that destructuring), so the list is a contract,
+ * not documentation — see `docs/adr/0014-subpackage-contract.md` §S5.1 ②.
  */
 export declare const hostBridgeKeys: readonly string[];
 
@@ -94,6 +95,14 @@ declare global {
       gestureWindowMs: number;
       elLastBlockedAt: number;
       elLastBlockedStack: string;
+      /** #169 §3: `SVGElement.prototype` fence installed separately from the HTML one. */
+      svgInstalled: boolean;
+      /** #169 §3: self-dispatched gesture events rejected (they must not open the release window). */
+      gestureIgnored: number;
+      /** #169 §3: >0 while the shim's `__wePushPointer` is injecting, i.e. a trusted synthetic gesture. */
+      injectDepth: number;
     };
+    /** #169 §3: wrapped by the focus guard to mark shim-injected synthetic pointer events as trusted. */
+    __wePushPointer: ((...args: any[]) => any) & { __weFocusGuardWrapped?: boolean };
   }
 }

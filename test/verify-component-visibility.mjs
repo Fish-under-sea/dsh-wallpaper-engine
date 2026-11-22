@@ -37,8 +37,8 @@
  *      「带浏览器半边」：三格组件的浏览器半边住在**主 bundle**（各自没有产物）⇒ 那个口径今日是
  *      空集、判据会真空为真（假绿）。理由与分桶见 `registryCoverage()`。
  *
- * ── 为什么 `media-bridge` 显式排除（有意写成棘轮）────────────────────────────────
- *   本轮范围只有 `about-notice` 与 `mascot-avatar` 两行：用户口径是"`media-bridge` 是壁纸子插件
+ * ── 为什么 `media-bridge` 显式排除（有意写成棘轮；P-D 阶段1 起承载壁纸域，包名不变）──────────
+ *   本轮范围只有 `about-notice` 与 `mascot-avatar` 两行：用户口径是"`media-bridge`（P-D 阶段1 起承载壁纸域）是壁纸子插件
  *   的过渡形态，后续并入更大的语义变更" ⇒ 声明面的键集**恰为**这两组，多一行（或把某一行整个
  *   删掉）都必须显式回来改判据。这样"范围悄悄扩大 / 缩小"永远留下一次可见的改动。
  *
@@ -65,7 +65,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BARE = 'dsh-plugin-wallpaper-engine';
 /** 本轮范围（有意写成棘轮，见文件头）—— 声明面的键集必须恰为这两组。 */
 const SCOPE = ['about-notice', 'mascot-avatar'];
-const OUT_OF_SCOPE = ['media-bridge'];
+const OUT_OF_SCOPE = ['media-bridge'];// P-D 阶段1：壁纸域并入 media-bridge（包名不变）
 
 let failed = 0;
 const check = (name, ok, detail) => {
@@ -832,7 +832,7 @@ section('④ 判据 ④ 失效口径：真跑 gate 实现与 /inventory 真处�
   // 夹具形态照**被 disable 的行**：`builtin` 是本包写死的组件行面、`declared` 是本次 patch 的
   // 子行面（被 disable 的行不在里面）⇒ 状态表按 `builtin` 出行，那个行是 `missing` 而**键仍在**
   //（键消失会让消费方无法区分"行被关掉"与"状态面读不到"）。
-  const builtin = ['about-notice', 'mascot-avatar', 'media-bridge'];
+  const builtin = ['about-notice', 'mascot-avatar', 'media-bridge'];// 第三格 P-D 阶段1 起承载壁纸域
   const probe = () => ({
     declared: ['about-notice', 'mascot-avatar'],
     builtin,

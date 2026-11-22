@@ -881,10 +881,17 @@ section('⑦ 客户端通道（静态契约：字体值不再经 settings 出去
   // 7b. **启动链顺序**就是"迁移前不丢老值"的客户端那一半：先设置、再字体集、最后库存。
   //     反过来的话，第一次 settings 写入发生在字体集建立之前 —— 那时宿主靠护栏兜着，
   //     但客户端没必要把自己放到需要护栏的位置上。
-  check('启动链顺序 = loadPersisted → loadFontSet → loadInventory',
-    /loadPersisted\(\)\s*\.then\(loadFontSet\)\s*\.then\(loadInventory\)/.test(clientCode));
-  check('负对照：少了 loadFontSet 的启动链会被同一判据点名',
-    !/loadPersisted\(\)\s*\.then\(loadFontSet\)\s*\.then\(loadInventory\)/.test('loadPersisted().then(loadInventory);'));
+  //     #158 起库存那一腿排在 `afterFirstPaint` 门之后（大库冷扫不与宿主启动抢 I/O），
+  //     所以判据同时钉住"门在 loadFontSet 之后、loadInventory 在门之后"。
+  //     #349 起 `loadPersisted` 之后先落一次「启动时暂停」意图（`applyStartPaused`）——
+  //     它必须在库存恢复之前，否则壁纸会先自动播放再被暂停（闪一帧）。判据照旧钉**每一步的
+  //     名字与次序**（不是可选通配），这样新插一步会被点名、不会被静默吞掉。
+  const bootChainRe = /loadPersisted\(\)\s*\.then\(applyStartPaused\)\s*\.then\(loadFontSet\)\s*\.then\(afterFirstPaint\)[\s\S]{0,240}?loadInventory\(\)/;
+  check('启动链顺序 = loadPersisted → applyStartPaused → loadFontSet → afterFirstPaint → loadInventory', bootChainRe.test(clientCode));
+  check('负对照：少了 afterFirstPaint 的门会被同一判据点名',
+    !bootChainRe.test('loadPersisted().then(loadFontSet).then(loadInventory).then(loadGlassPresets);'));
+  check('负对照：少了 #349 的 applyStartPaused 步同样被点名（新步不是可选通配）',
+    !bootChainRe.test('loadPersisted().then(loadFontSet).then(afterFirstPaint).then(loadInventory);'));
   check('selection 初始化合并了本地缓存那份（首帧即用户字体，不出现默认值→用户值跳变）',
     /\.\.\.readCachedFontSetValues\(\),/.test(clientCode));
 
@@ -1067,9 +1074,11 @@ section('⑧ 面板渲染回归（配色区在总开关打开时必须渲染得�
     // 面板会调 `renderFontSetEditor(...)`（在 bundle 里是同作用域的内联模块；独立 import 时
     // 得把它映成全局，否则 ⑧ 会以 "is not defined" 的形式假红）。
     await import(pathToFileURL(join(root, 'packages', 'fonts', 'src', 'fontset-editor.js')).href),
-    // 同理（wip §10.13）：「玻璃 UI」节的渲染器已抽到 `src/glass-panel.js`，
+    // 同理：「玻璃 UI」节的渲染器住 packages/glass/src/glass-panel.js（ADR-0016 第二刀），
     // `panel-tabs.js` 里对它的调用只在**打包后**同作用域 ⇒ 这里也要映成全局。
-    await import(pathToFileURL(join(root, 'src', 'glass-panel.js')).href),
+    await import(pathToFileURL(join(root, 'packages', 'glass', 'src', 'glass-panel.js')).href),
+    // S3：预设块折出到 glass-presets-panel.js —— 同一条"按文件 import 映成全局"的理由。
+    await import(pathToFileURL(join(root, 'packages', 'glass', 'src', 'glass-presets-panel.js')).href),
     // 同理：节头构件抽到了 `src/section-head.js`（三节在侧边栏默认收敛那一刀）。
     // ⚠️ 必须给**真实现**，不能靠上面那个"自动补 noop"的循环 —— 它在 client.js 里已找不到
     // `sectionHead`（搬走了），而就算找到、补成 noop 也会让**每个节头变成 `null`**：
@@ -1097,6 +1106,30 @@ section('⑧ 面板渲染回归（配色区在总开关打开时必须渲染得�
     id: 'fonts',
     get title() { return globalThis.weT('全局字体'); },
     render: fontSectionMod.renderAppearanceFontSection,
+  });
+  // ADR-0016 第二刀：「主题预设」+「玻璃 UI」节随玻璃包搬走 ⇒ 同款按**真入口同形**登记。
+  // panel-tabs 的玻璃节是按 id 取渲染器的注册表占位桩，不登记 ⇒ 整节消失（假红）。
+  const glassPanelMod = await import(pathToFileURL(join(root, 'packages', 'glass', 'src', 'glass-panel.js')).href);
+  regMod.weRegisterPanelSection('appearance', 'glass', {
+    id: 'glass',
+    get title() { return globalThis.weT('玻璃 UI'); },
+    render: glassPanelMod.renderAppearanceGlassSection,
+  });
+  // P-D S3d：播放页（renderEffectsTab）的「倍速 / 适配」两节随壁纸包搬出页签族 ⇒ 同一条理由，
+  // 按真入口同形登记进共享注册表（否则 renderEffectsTab 里的 wePanelSectionsOf('playback') 为空）。
+  const playbackRateMod = await import(pathToFileURL(join(root, 'packages', 'media-bridge', 'src', 'playback-rate-section.js')).href);
+  const fitSectionMod = await import(pathToFileURL(join(root, 'packages', 'media-bridge', 'src', 'wallpaper-fit-section.js')).href);
+  regMod.weRegisterPanelSection('playback', 'wallpaper-playback-rate', {
+    id: 'wallpaper-playback-rate',
+    order: 60,
+    get title() { return globalThis.weT('倍速'); },
+    render: playbackRateMod.renderEffectsPlaybackSection,
+  });
+  regMod.weRegisterPanelSection('playback', 'wallpaper-fit', {
+    id: 'wallpaper-fit',
+    order: 70,
+    get title() { return globalThis.weT('适配'); },
+    render: fitSectionMod.renderEffectsFitSection,
   });
   check('前置：夹具不是空转的（角色表非空，且配色区确实按角色遍历）',
     colorRoles.THEME_COLOR_ROLES.length >= 5

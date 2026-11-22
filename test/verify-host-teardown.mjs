@@ -3,7 +3,7 @@
  * verify-host-teardown.mjs -- R-1 的机器面：apply() **中途抛错** ⇒ 宿主路由表残留 0
  *
  * ── 判的是什么 ────────────────────────────────────────────────────────────────
- * R-1（BUNDLE-SPLIT §13.1，该行的原文已按本轮实测更正）：
+ * R-1（交接位置判据；原始审查记录已归档，口径以本文件实测为准）：
  *   `lib/index.js` 的 `apply()` 原先把 `handOffTeardown(ctx, dispose)` 留在函数**最后一行**。
  *   只要中间任何一处抛错（最现实的是上一次装载残留导致的
  *   `webserver: duplicate <kind> route "<path>"`），最后一行就**永不执行** ⇒ `ctx.effect`
@@ -20,7 +20,7 @@
  * 判重在 `table.set` **之前** ⇒ register() 抛错时路由表逐字节未变，"push 未执行"也正是对的。
  * 因此那 40 处单表达式（20 个文件）**没有可失败的中间态**，本判据不为它们编造断言；给每个族套
  * 族级 try/catch 只会加噪音。真正可复现的形态只有上面这一条：**交接位置**（见
- * docs/wip/BUNDLE-SPLIT.md §13.1 R-1 行）。
+ * 见上面的判据 ①）。
  *
  * ── 两把判据 ─────────────────────────────────────────────────────────────────
  *  ① 源码序（静态）：`apply()` 体内 `handOffTeardown(ctx, …)` 的位置必须**早于**第一处路由注册点，
@@ -58,9 +58,14 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const TARGET = join(ROOT, 'lib', 'index.js');
 const SCRATCH = join(ROOT, '.test-cache', 'host-teardown');
 
-// 注册面地板：apply() 在 mock 宿主上的真实注册条数至少这么多（2026-02 实测 32）。
-// 低于它说明 mock 没接上真注册链，判据会"真空为真" ⇒ 判红。
-const ROUTE_FLOOR = 20;
+// 注册面地板：apply() 在 mock 宿主上的真实注册条数至少这么多。
+// 历史：2026-02 实测 32（全部 15 族都在门面）。S5c 刀2 把 9 族 21 条搬进 `packages/media-bridge`
+// （组件行 `applyComponent` 装载，不经门面 `apply()` 的注册面）⇒ 门面自己的注册面收缩到
+// 5 族 9 条；S5d 刀3 又把 occlusion 族 1 条随 hub 搬进包内 ⇒ 门面只剩 4 族 8 条
+// （diag 4 / presets 1 / settings 1 / cache-dir 2）；包内路由按 `docs/ROUTE-INDEX.md` 现算 38 条
+// （= 全表 46 − 门面 8），由 `test/verify-scene-live.mjs` 等行为臂覆盖。地板随实测降到 8：
+// 任何一族在门面里静默掉线都会立刻低于地板（防"mock 没接上真注册链、判据真空为真"）。
+const ROUTE_FLOOR = 8;
 
 let failed = 0;
 function check(name, ok, detail) {
@@ -78,15 +83,18 @@ const dupMessage = (r) => 'webserver: duplicate ' + r.kind + ' route "' + r.path
 
 /**
  * 出货 `dsh-host-webserver` 的路由表（register 语义逐字照抄）。
- * @param {{insertThenThrow?: boolean}} [opts] insertThenThrow = R-1 原文假想的"先插入后抛"宿主（本
- *   判据用它做 A 段负对照：只有那种宿主上"单表达式残留"才成立）。
+ * @param {{insertThenThrow?: boolean, failKey?: string|null}} [opts] insertThenThrow = R-1 原文假想的"先插入后抛"宿主（本
+ *   判据用它做 A 段负对照：只有那种宿主上"单表达式残留"才成立）。failKey = 在该 (kind,path) 上
+ *   抛一个**非重复路由**的中途错误（#267 起 duplicate 会被注册面容错代理吞掉，R-1 场景改用
+ *   一个真实的"注册到一半失败"注入点，语义不变）。
  */
-function makeHost({ insertThenThrow = false } = {}) {
+function makeHost({ insertThenThrow = false, failKey = null } = {}) {
   const table = new Map();
   return {
     table,
     register(route) {
       const k = routeKey(route);
+      if (failKey && k === failKey) throw new Error('webserver: injected mid-apply failure "' + route.path + '"');
       if (insertThenThrow) { table.set(k, route); throw new Error(dupMessage(route)); }
       if (table.has(k)) throw new Error(dupMessage(route));
       table.set(k, route);
@@ -236,31 +244,30 @@ function recordRoutes(applyFn) {
 }
 
 /**
- * 抛错臂：预置"本函数最后才会注册的那条 (kind,path)"（= 上一次装载没能撤走的残留）⇒ apply()
- * 跑到那一条时被宿主判重抛出 ⇒ 观察 fiber 回滚后的残留。
+ * 抛错臂：让 mock 宿主在"本函数最后才会注册的那条 (kind,path)"上注入一个**非重复**中途错误
+ * （#267 起 duplicate 冲突会被门面的注册容错代理吞掉，那是升级场景的正确行为）⇒ 观察 fiber
+ * 回滚后的残留。语义仍是"apply 跑到一半失败"。
  * @param {Function} applyFn apply(ctx)
- * @param {string} lastKey 预置的 (kind,path) 键
+ * @param {string} lastKey 要注入失败的 (kind,path) 键
  */
 function runThrowing(applyFn, lastKey) {
-  const kind = lastKey.slice(0, lastKey.indexOf(' '));
-  const path = lastKey.slice(lastKey.indexOf(' ') + 1);
-  const leaked = { kind, path, handler() {} };
-  const host = makeHost();
-  host.table.set(lastKey, leaked); // ← 上一轮泄漏进来的那条，不在本次 disposers 账上
+  // #267：duplicate 冲突现在会被门面的注册容错代理吞掉（那是升级场景的正确行为），所以 R-1 的
+  // "中途抛错"场景改用 mock 宿主在最后一条路由上注入一个**非重复**错误 —— 语义仍是"apply 跑到
+  // 一半失败"，观察 fiber 回滚后的残留。
+  const host = makeHost({ failKey: lastKey });
   const fiber = makeFiber(host);
   let error = null;
   try { applyFn(fiber.ctx); } catch (e) { error = e; }
   const effectCount = fiber.effectCount();
-  const registered = host.table.size - 1; // 减去预置的那条泄漏
+  const registered = host.table.size;
   fiber.unload(); // ← cordis `_reload()` 捕获抛错后走 `_unload()` 的可观测等价物
-  const residue = host.table.size - 1;
-  const seedIntact = host.table.get(lastKey) === leaked;
-  return { error, effectCount, registered, residue, seedIntact, message: error ? error.message : '' };
+  const residue = host.table.size;
+  return { error, effectCount, registered, residue, seedIntact: true, message: error ? error.message : '' };
 }
 
 /** 场景地板：这一次真的"注册到一半被判重抛错"了吗（否则整段行为判据是空转）。 */
 function scenarioIsMeaningful(r) {
-  return /^webserver: duplicate /.test(r.message) && r.registered > 0 && r.effectCount >= 1;
+  return /^webserver: (duplicate|injected mid-apply failure)/.test(r.message) && r.registered > 0 && r.effectCount >= 1;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -463,6 +470,32 @@ check('判据②前置：场景成立（真的注册到一半被判重抛错、e
 // ══════════════════════════════════════════════════════════════════════════════
 // 判据①的负对照已全部在内存里喂纯函数（NC1/NC3）；判据②/地板用真代码（NC2/NC5）+ mock 契约（NC4）
 // ══════════════════════════════════════════════════════════════════════════════
+// ── ⑨ 进程级收尾：长活句柄必须 unref（#241 桌面端优雅退出失败）─────────────────
+// 背景：桌面端更新时 `DesktopHost.stop()` 发 shutdown 后等 10s；插件自己的 disposers 只在
+// **插件卸载**时执行，宿主收尾时不会执行 ⇒ 未 unref 的 http.Server / setInterval 会把事件循环
+// 撑住，graceful deadline exceeded ⇒ 放弃安装更新。这里钉住已知的长活句柄都 unref。
+{
+  const probes = [
+    ['lib/media-origin.js', [/server\.unref\?\.\(\)/, /socket\.unref\?\.\(\)/], '媒体源 HTTP 服务（listen + 连接）'],
+    ['packages/media-bridge/lib/legacy.js', [/npTimer\.unref\?\.\(\)/], 'Now Playing 轮询定时器'],
+    ['packages/media-bridge/lib/occlusion/index.js', [/pollTimer\.unref\?\.\(\)/], '遮挡 hub 轮询定时器'],
+    ['packages/media-bridge/lib/supervisor.js', [/idleTimer\.unref/], '中间件空闲回收定时器'],
+    ['packages/pet-link/lib/routes/official-pet.js', [/timer\.unref\?\.\(\)/], 'official pet 排播定时器'],
+  ];
+  const collect = (read) => probes.flatMap(([file, needs, what]) => {
+    const text = read(file);
+    return needs.some((re) => !re.test(text)) ? [file + '（' + what + '）未 unref'] : [];
+  });
+  const violations = collect((rel) => readFileSync(join(ROOT, rel), 'utf8'));
+  check('⑨ 长活句柄（HTTP 服务 / 轮询定时器）都 unref：宿主 shutdown 时事件循环能空下来（#241）',
+    violations.length === 0, violations.join('；') || '5 处全部 unref');
+  // 负对照：同一 detector 喂"缺 unref"的合成文本必须判红。
+  const mutated = (rel) => readFileSync(join(ROOT, rel), 'utf8')
+    .replace('server.unref?.();', '').replace('socket.unref?.();', '');
+  check('⑨ negative control: 去掉 media-origin 的 unref ⇒ 同一 detector 判红',
+    collect(mutated).some((v) => /media-origin/.test(v)));
+}
+
 if (failed) { console.log('HOST TEARDOWN CHECKS FAILED -- ' + failed + ' failed'); process.exit(1); }
 console.log('ALL HOST TEARDOWN CHECKS PASSED');
 process.exit(0);

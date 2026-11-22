@@ -220,15 +220,23 @@ async function runHandler(route, url, headers) {
   }
   return res;
 }
-/** 一次新的 apply() = 一个干净的闩锁（闩锁住 apply 作用域，见 lib/index.js 的 3c-0）。 */
+/** 一次新的 apply() = 一个干净的闩锁（闩锁住 apply 作用域，见 lib/index.js 的 3c-0）。
+ *  S5c 刀2：`/inventory` 与 `/scene-live` 等族归 `wallpaper` 组件行 ⇒ 每次新闩锁都要把该组件
+ *  一起 boot，否则路由表里根本没有被钉的那几条（判据判什么没变，同 verify-scene-live 做法）。 */
 function freshApply() {
   const routes = [];
-  const dispose = apply({
+  const ctx = {
     webServer: {
       register(route) { routes.push(route); return () => {}; },
       tapIndex() { return () => {}; },
     },
-  });
+  };
+  const dispose = apply(ctx);
+  if (typeof hostMod.applyComponent === 'function') {
+    try { hostMod.applyComponent(ctx, {}, 'media-bridge'); } catch (err) {
+      console.log('  · 组件行 boot 失败（wallpaper）：' + String(err && err.message));
+    }
+  }
   return { routes, dispose, find: (p) => routes.find((r) => r.path === p) };
 }
 const FENCE = { 'x-dsh-desktop-renderer': '1', 'user-agent': 'Electron/33.2.0' };
@@ -335,14 +343,14 @@ clearAdapterSetting();
 console.log('\n⑤ 客户端落点：body 钩子 / 外壳选择器门控 / 面板行 / 上报');
 const effectsSrc = read('src/effects.js');
 // 刀3：样式族已按域拆成 8 个模块 + 组装点 ⇒ 取**整族源码文本**（构建序拼接）；判据文本不变。
-const stylesSrc = styleText();
+const stylesSrc = styleText() + readFileSync(new URL('../packages/glass/src/glass-css.js', import.meta.url), 'utf8');
 const tabsSrc = panelText();
 const clientSrc = read('src/client.js');
 const persistSrc = read('src/persistence.js');
 const adapterSrc = read('src/adapter.js');
 
 /** 判据只看真实规则行：注释由共享的 `stripComments`（字符串感知）剥掉。
- *  样式表住在 `src/styles.js` 的模板字面量里，而共享实现按设计**不剥模板内容** ⇒ 先把模板
+ *  样式表住在主包样式域模块与 `packages/glass/src/glass-css.js` 的模板字面量里，而共享实现按设计**不剥模板内容** ⇒ 先把模板
  *  分隔符换成空格，让同一份实现也按块注释（CSS 与 JS 同形）剥这份文本；读取的仍是源文件。 */
 function shellSelectorLines(s) {
   return stripComments(s.replace(/`/g, ' ')).split('\n').filter((l) => /data-dsh-desktop-mode=|data-we-mica=/.test(l));

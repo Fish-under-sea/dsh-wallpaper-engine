@@ -64,6 +64,10 @@
  *   · **失败记忆带管线身份**：`sceneLiveFailures` 只在**同一条管线**内有效 —— bundle 变了、
  *     或媒体源从无到有，`migrateStaleLiveFailures` 就作废它一次（面板那行失败文案的唯一
  *     来源就是它；旧断言会让修好的版本看起来"完全没作用"）。反向不清（见那里）。
+ *   · **层所有权 = 本文件独占（P-D S4）**：`LAYER_ID` / `SCRIM_ID` 两层是进程内单例，只有本文件
+ *     建/领养/退役（`obtainLayerNode` / `syncScrimElement` / `retireFadingLayer`），`src/client.js`
+ *     的 fiber cleanup 摘净。`packages/media-bridge` 浏览器半边**不得**建层/退层/持 `#layer` 引用；
+ *     判据 = `test/verify-layer-ownership.mjs`（P1–P4，负对照含"两包各建层 / 退役后残留 iframe"）。
  *   · 本文件必须保持浏览器安全（无 import / require / Node API），且**不得有顶层可执行语句**
  *     读 client.js 的 const（会被内联到 bundle 顶部，撞 TDZ）。
  */
@@ -85,7 +89,7 @@ function liveRenderEnabled(selLike) {
 const LIVE_FIRST_FRAME_MS = 15000;
 const LIVE_STALL_TICKS = 20;
 // 取值用 getter 现取（不在模块级冻结）：语言由 locale 服务在 bundle 求值之后确定，
-// 冻结的值会让 en 界面的失败行永远停在中文（见 src/i18n.js 的"模块级冻结"纪律）。
+// 冻结的值会让 en 界面的失败行永远停在中文（见 src/i18n/i18n.js 的"模块级冻结"纪律）。
 const LIVE_FAIL_LABELS = {
   get timeout() { return weT("首帧超时（{secs} 秒内无画面）", { secs: Math.round(LIVE_FIRST_FRAME_MS / 1000) }); },
   get stall() { return weT("运行中断（{secs} 秒无帧）", { secs: LIVE_STALL_TICKS }); },
@@ -176,6 +180,11 @@ function liveRenderUrl(selLike) {
     // 控制经渲染页的 postMessage 通道下发，shim 由宿主注入 HTML 响应。
     + (isWeb ? "&webSandbox=strict" : "")
     + "&fit=" + fit + "&sceneFps=" + fps + "&muted=" + muted
+    // 自动画质（webwallgl 的 autoQuality）：渲染页的关闭开关是 `autoq=0`。默认不传 = 引擎按
+    // 帧率自行降后处理/粒子/AA；**关掉本设置**（sceneAutoQuality=false）才显式关掉，保住发光 /
+    // 音频可视化 / 光晕 —— 弱 GPU 上帧率压不住上限时它会一路降到 postProcessing=off，
+    // 视觉上就是"动态效果全没了"，而用户往往要的是效果，不是那几帧。
+    + (selLike.sceneAutoQuality === false ? "&autoq=0" : "")
     // WE 官方素材（local-assets）：host 报告素材目录可用时才打开渲染页的
     // 本地素材通路（探测 /api/local-assets，按名取官方像素）；否则渲染页
     // 静默走程序化复刻，连探测请求都不发。
@@ -201,7 +210,9 @@ function applyLiveControls(frame) {
     liveApplied.fit = null;
   }
   try {
-    const playing = isEffectivelyPlaying();
+    // 软渲染兜底（#270）：探测到软后端且用户没关开关时，把播放意图钉在暂停，
+    // 只用最后一帧当静态画面。用户关掉开关后这里自然恢复 resume。
+    const playing = isEffectivelyPlaying() && !liveSoftRenderPauseOn();
     if (liveApplied.playing !== playing) {
       if (playing) wp.resume(); else wp.pause();
       liveApplied.playing = playing;
@@ -253,6 +264,11 @@ function layerWantKey(layerLive) {
         //（可能晚于本实例启动，见 client 的 loadInventory），这一格变化即触发
         // 一次重建 —— 否则旧渲染页会一直用着 URL 里那份陈旧的 mediaBase。
         ? "live\u0000" + (selection.sceneLiveSrc || selection.webLiveSrc) + "\u0000" + selection.sceneLiveFps
+          // **sceneAutoQuality 也进 key**：它决定渲染页 URL 里的 `autoq=0`，
+          // 与帧率档 / localAssets / sceneMediaBase 同一类（都改 iframe query）。
+          // 少了这一格 ⇒ 切换「自动画质」时 wantKey 不变 ⇒ syncLayers 判定「不重建」
+          // ⇒ 旧渲染页继续按默认（自动画质开）跑，开关看起来完全失效（#358）。
+          + "\u0000" + (selection.sceneAutoQuality === false ? "aq0" : "aq1")
           + "\u0000" + (selection.inventory && selection.inventory.weAssetsAvailable ? "la1" : "")
           + "\u0000" + ((selection.inventory && selection.inventory.sceneMediaBase) || "")
         : "nolive")
@@ -376,7 +392,8 @@ function syncLayers() {
     // live 是否生效只需算一次：它同时决定「media 种类看不看 sceneVideo」与 live 段本身。
     const layerLive = (selection.type === "scene" || selection.type === "web") && liveRenderEnabled(selection);
     // 本次切换用的过场（类型 + 方向 + 毫秒）也只算一次：startFade 判定与两处调用点共用。
-    const switchTr = switchTransitionOf(selection);
+    // #254：真正换层那一跳才抽随机过场（同一次 emit 里类型/方向/时长只算这一次）。
+    const switchTr = switchTransitionOf(selection, true);
     const wantKey = layerWantKey(layerLive);
     let gotKey = existing && existing.dataset.weKey;
     // 上一跳停在"等新层画面"上、而这一跳要换层：LAYER_ID 在**还没有画面**的那个层手里，

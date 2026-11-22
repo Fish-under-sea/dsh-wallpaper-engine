@@ -20,25 +20,25 @@
  *
  * ## task-13 判定结论：窄桶当前为空 ⇒ 守卫无当下牙口
  * 把 B1 全部 46 条逐条判完（清单见下），**没有一条**能落进"机械可判且当下非空"的窄桶：
- *   · ①×5 `test/warn-only.mjs:42-44`（`stdio`/`windowsHide`，`spawnSync` 的 opts，经 `[name, opts]`
- *     表 + 数组解构流到 spawn）· ②×1 `test/verify-client.mjs:2993`（`dispatchKey()` 的返回对象被
+ *   · ①×5 `test/warn-only.mjs`（`stdio`/`windowsHide`，`spawnSync` 的 opts，经 `[name, opts]`
+ *     表 + 数组解构流到 spawn）· ②×1 `test/verify-client.mjs`（`dispatchKey()` 的返回对象被
  *     `assert.deepEqual` 比）· ③×4 `_interval`（`setInterval` 句柄，交回 `clearInterval`）·
- *     ④×9 `createPortal`×7 + `verify-scene-live.mjs:3082 createRef` + `verify-client.mjs:5056 baseVal`
+ *     ④×9 `createPortal`×7 + `verify-scene-live.mjs createRef` + `verify-client.mjs baseVal`
  *     （框架/DOM 桩面；`lib/client.js` 里 `createPortal` 只出现在一句注释里 ⇒ 产品确实不调它）·
- *     ⑤×5 `test/run-guards.mjs:195 command` · `test/tools/guard-targets.mjs:209 fanIn`（`--list-json`/
- *     `--json` 是文档化的机器面）· `verify-scene-live.mjs:4511/:4532/:4539`（`legacyDepthOut`/
+ *     ⑤×5 `test/run-guards.mjs command` · `test/tools/guard-targets.mjs fanIn`（`--list-json`/
+ *     `--json` 是文档化的机器面）· `verify-scene-live.mjs/:4532/:4539`（`legacyDepthOut`/
  *     `overScanOut` 在 `:4572-4573` 被 `JSON.stringify` 打进判据 detail）·
  *     ⑥×22（`verify-fontset` 的 `buildAppearance()` 返回体经 `flatten()` 的 `Object.keys` 遍历、
  *     `boxDecl()` 返回体经 `Object.values/entries`、`verify-glass-surfaces` 的 `mode(on)` 经
- *     `Object.assign` 进沙箱与 `({…})[f]` 负对照、`verify-theme-layer.mjs:349 caption` 经 SUT 遍历角色键、
- *     `verify-i18n.mjs:598 locales` 快照形状、`verify-picker-props.mjs:312 hasProject` payload 契约、
- *     `verify-client.mjs:4008 str` 求值器变量域、`verify-scene-live.mjs:4485` 深度表）。
+ *     `Object.assign` 进沙箱与 `({…})[f]` 负对照、`verify-theme-layer.mjs caption` 经 SUT 遍历角色键、
+ *     `verify-i18n.mjs locales` 快照形状、`verify-picker-props.mjs hasProject` payload 契约、
+ *     `verify-client.mjs str` 求值器变量域、`verify-scene-live.mjs` 深度表）。
  * 残差两条**真**死状态（task-13 第二步的处置，已按 Lead 裁定办）：
- *   · `test/verify-scene-live.mjs:4813 onAvatarName` —— **已删**：真实调用点（`src/client.js:3988`）与岛
- *     （`src/ext-avatar.js:123` 的解构）都只取 5 个 `onAvatar*`，全仓再无 `onAvatarName`；
+ *   · `test/verify-scene-live.mjs onAvatarName` —— **已删**：真实调用点（`src/client.js`）与岛
+ *     （`src/ext-avatar.js` 的解构）都只取 5 个 `onAvatar*`，全仓再无 `onAvatarName`；
  *     删后 `verify-scene-live` 改前/改后 exit 0 + 末行 `ALL SCENE-LIVE CHECKS PASSED (642)` 逐字一致。
- *   · `test/verify-scene-live.mjs:4980 avatarUserName` —— **保留**：这是有意喂给 SUT 的**未知字段**
- *     （`src/avatar-layer.js:268/275/276` 只按名读 enabled/size/radius），同一条 check 里断言节点
+ *   · `test/verify-scene-live.mjs avatarUserName` —— **保留**：这是有意喂给 SUT 的**未知字段**
+ *     （`src/avatar-layer.js/275/276` 只按名读 enabled/size/radius），同一条 check 里断言节点
  *     仍只有一枚 `.we-avatar__glyph` 子节点 ⇒ "设置里多一个名字字段也不会长出名字节点"。
  *     行内有理由注释；补齐 7 条动态边界后它归入 `global-assign`（`globalThis.selection = {…}`）。
  * ⇒ 收盘时 **B1 的真死残差 = 0**（剩下的 8 条全是六类结构性假阳）；立守卫只能靠"同形于合法

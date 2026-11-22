@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * verify-scene-live-occlusion.mjs — 遮挡入口曝光 + 父页消息桥 + 宿主 HTML 注入的机检
- * （规格：docs/wip/LINUX-OCCLUSION.md §5/§8；沿 test/verify-scene-live.mjs 的
+ * （规格：docs/CODE-STRUCTURE.md §9.5.2（桥）/ §9.6（验收）；沿 test/verify-scene-live.mjs 的
  *  mock webServer + 真实 handler 请求模式）。
  *
  * Levels:
@@ -99,6 +99,15 @@ const hostMod = await import(pathToFileURL(resolve(root, 'lib', 'index.js')).hre
 const host = hostMod.default || hostMod;
 const apply = host.apply || (host.inject && host.apply);
 const dispose = apply(mockCtx);
+// S5c 刀2：`/scene-live` 归 `wallpaper` 组件行（scene-serve 族随包出户）⇒ 夹具连组件一起 boot。
+// 这不是放宽判据：判据仍要求 `/scene-live` 真挂在 mock webServer 上（同 verify-scene-live 做法）。
+if (typeof hostMod.applyComponent === 'function') {
+  for (const comp of ['media-bridge']) {
+    try { hostMod.applyComponent(mockCtx, {}, comp); } catch (err) {
+      console.log('  · 组件行 boot 失败（' + comp + '）：' + String(err && err.message));
+    }
+  }
+}
 
 function fakeReq(url, headers) {
   return { url, headers: headers || {}, method: 'GET' };

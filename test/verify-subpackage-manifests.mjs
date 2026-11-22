@@ -4,7 +4,7 @@
  *
  * 回答的问题：`lib/components/<sub>/package.json`（三个组件子包的清单）会不会**漂回极简**？
  *
- * 为什么需要：本提交把 about-notice / mascot-avatar / media-bridge 拆成独立子包（各自的清单 /
+ * 为什么需要：本提交把 about-notice / mascot-avatar / media-bridge（P-D 阶段1 后第三格改名 `wallpaper`）拆成独立子包（各自的清单 /
  * icon / locale；主包 `exports` 里也给了 `./<sub>`、`./<sub>/package.json`、`./<sub>/locale/*.json`
  * 三连），而三份子包清单当时只有 `name` / `description` / `icon` / `type`。
  * `test/verify-bundle-rows.mjs` ④ 只对账「patch 子行 ⇄ 根 exports 三连 / 入口在盘上 / locale 名 /
@@ -20,12 +20,12 @@
  * 判据（正判据与全部负对照调**同一个** `manifestViolations()`）：
  *   ① 目录与「三处一致」：`lib/components/<sub>/` 在盘上；清单 `name` = `<根包名>-<sub>`（且 ≠ 根包名
  *      ⇒ 不让 Node 的最近清单解析把根包劫持到子目录）；根 `exports` 三连都落在这个目录里；
- *   ② `version` 存在且 **=== 根清单 version**（"漂回极简"的主要抓手；依据 BUNDLE-SPLIT §12.1
+ *   ② `version` 存在且 **=== 根清单 version**（"漂回极简"的主要抓手；依据 ADR-0014 S3.8
  *      「主包与所有子包同号」）；
  *   ③ 入口（`main` / `exports['.']`）指向的文件真实存在，且与根 `exports['./<sub>']` 的落点一致；
  *   ④ 声明了 `dsh.client` ⇒ 必须有 `exports['./client']` 且入口在盘上（没有浏览器半边就不该声明）；
  *   ⑤ `peerDependencies` 每个包名都在根 peer 里；`@deepseek-ai/dsh-*` 的范围与根**逐字相等**
- *      （依据 BUNDLE-SPLIT §12.5 / I6：范围不一致 ⇒ 宿主整次安装被拒 + 回滚）；
+ *      （依据 ADR-0014 S3.5：范围不一致 ⇒ 宿主整次安装被拒 + 回滚）；
  *   ⑥ 清单是**可 `JSON.parse` 的 LF 文本、无 BOM**（本仓 `.gitattributes` = `* text=auto eol=lf`；
  *      而 `JSON.parse` 不剥 BOM ⇒ `.json` 带 BOM 是真缺陷）。
  *
@@ -160,7 +160,7 @@ function manifestViolations({ sub, text, rootPkg, fileExists, dirExists }) {
       + '（`<根包名>-<子路径>`；写成根包名会让最近清单解析劫持根包）');
   }
 
-  // ② version：与根清单同号（BUNDLE-SPLIT §12.1）。
+  // ② version：与根清单同号（ADR-0014 S3.8）。
   if (typeof m.version !== 'string' || !m.version) {
     out.push('缺 version（子包随根包同号发布，必须写出来）');
   } else if (m.version !== rootPkg.version) {
@@ -213,6 +213,15 @@ function manifestViolations({ sub, text, rootPkg, fileExists, dirExists }) {
     const clientTarget = subExports ? exportTarget(subExports['./client']) : null;
     if (!clientTarget) out.push('声明了 dsh.client 却没有 exports["./client"]（宿主按它加载浏览器半边）');
     else if (!fileExists(here + '/' + dropDot(clientTarget))) out.push('dsh.client 入口不存在：' + here + '/' + dropDot(clientTarget));
+    // #281：子包浏览器半边的工厂体在**求值期**就 `require('dsh-plugin-wallpaper-engine')` 取主包键集；
+    // 宿主 client-modules 按 `dsh.client.inject` 排装载序 ⇒ 缺主包这一条，冷启动时子包工厂可能先于
+    // 主包 materialize，报 `require(...) missed the module table`（1.4.0 真机：4 个入口全部不激活）。
+    // 只有主包自己（m.name === rootPkg.name）不需要这条自依赖。
+    const clientInject = Array.isArray(dsh.client.inject) ? dsh.client.inject : [];
+    if (m.name !== rootPkg.name && !clientInject.includes(rootPkg.name)) {
+      out.push('dsh.client.inject 没声明主包 ' + rootPkg.name + '（#281：宿主按 inject 排装载序，'
+        + '子包工厂求值期 require 主包，缺这条 = 冷启动竞态）');
+    }
   }
   if (dsh && dsh.bundle && dsh.bundle.patch) {
     if (!fileExists(here + '/' + dropDot(dsh.bundle.patch))) out.push('dsh.bundle.patch 不存在：' + here + '/' + dropDot(dsh.bundle.patch));
@@ -475,7 +484,7 @@ function keyTableOf(src) {
   // 顶层键缩进 2 空格（内层对象是 4 空格）。
   // ⚠️ **为什么同时用 masked 与 raw**：`maskStructure()` 把字符串**内容**也换成空格（引号留着），
   // 而 P-F 之后组件行的键必须写成带引号的形态 —— 目录名带连字符（`'about-notice'` /
-  // `'mascot-avatar'` / `'media-bridge'`），裸标识符写不出来。只读 masked 会**读不到**这些键
+  // `'mascot-avatar'` / `'media-bridge'`（P-D 阶段1 起承载壁纸域）），裸标识符写不出来。只读 masked 会**读不到**这些键
   // （假绿：S10.1 变成"表里没有它"）；只读 raw 会把注释里的 `foo:` 也收进来。于是：
   //   · masked 用来判「这一行的键位置确实有东西」（注释行已被换成空白；负对照把键删空后同样全空白）
   //   · raw 用来取键名（含引号内的内容）
@@ -600,8 +609,8 @@ function packagesViolations(input) {
   const nameRows = rows.filter((r) => r.name && r.name.startsWith(rootPkg.name + '-'));
 
   // 覆盖面地板：枚举面被削空（或两张声明面表读不出来）时，下面每一条都恒真 ⇒ 先钉住这条。
-  if (dirs.length < 3) {
-    add('覆盖面', 'packages/ 下只枚举到 ' + dirs.length + ' 个包目录（< 3 ⇒ 本判据可能恒真；确实要收缩包数时，'
+  if (dirs.length < 6) {
+    add('覆盖面', 'packages/ 下只枚举到 ' + dirs.length + ' 个包目录（< 6 ⇒ 本判据可能恒真；实测 8；确实要收缩包数时，'
       + '同一次提交改这条地板；见 docs/adr/0014-subpackage-contract.md 的复核触发线）');
   }
   if (nameRows.length < 3) {
@@ -700,6 +709,15 @@ function packagesViolations(input) {
     if (declaresClient && !clientTarget) add(dir, 'S3.4 声明了 dsh.client 却没有 exports["./client"]');
     if (!declaresClient && clientTarget) add(dir, 'S3.4 有 exports["./client"] 却没声明 dsh.client（声明面不完整）');
     if (clientTarget && !fileExists(dir + '/' + dropDot(clientTarget))) add(dir, 'S3.4 ./client 产物不在盘：' + dir + '/' + dropDot(clientTarget));
+    // #281：子包浏览器半边的工厂体在**求值期**就 require 主包取键集；宿主 client-modules 按
+    // `dsh.client.inject` 排装载序 ⇒ 缺主包这一条，冷启动可能出现
+    // `require(...) missed the module table`（1.4.0 真机：4 个入口全部不激活）。
+    if (declaresClient && m.name !== rootPkg.name) {
+      const clientInject = Array.isArray(dsh.client.inject) ? dsh.client.inject : [];
+      if (!clientInject.includes(rootPkg.name)) {
+        add(dir, 'S3.4 dsh.client.inject 没声明主包 ' + rootPkg.name + '（#281 冷启动装载序）');
+      }
+    }
     const patchTarget = dsh.bundle && dsh.bundle.patch;
     if (patchTarget !== './cordis.patch.yml') {
       add(dir, 'S3.6 dsh.bundle.patch=' + JSON.stringify(patchTarget) + ' ≠ "./cordis.patch.yml"（守卫与宿主加载自带 patch 的共同入口）');
@@ -1189,6 +1207,14 @@ check('独立子包：登记面 / 根清单无违反（含覆盖面地板）', u
   check('negative control: 声明 dsh.client 却没有 exports["./client"] ⇒ 判红（S3.4）',
     hit(fakeClient, /S3\.4/), fakeClient.join(' | ') || '（没报出来）');
 
+  // #281：子包浏览器半边在工厂求值期 require 主包 ⇒ `dsh.client.inject` 必须声明主包（装载序）。
+  const noHostInject = vOf(mutated((o) => {
+    o.dsh = { bundle: { patch: './cordis.patch.yml' }, client: { platform: 'web', inject: ['@deepseek-ai/dsh-client-runtime'] } };
+    if (o.exports) delete o.exports['./client'];
+  }));
+  check('negative control: 子包 dsh.client.inject 缺主包 ⇒ 判红（#281 冷启动装载序）',
+    noHostInject.some((x) => /inject/.test(x)), noHostInject.join(' | ') || '（没报出来）');
+
   const badPatch = vOf(mutated((o) => { o.dsh = Object.assign({}, o.dsh, { bundle: { patch: './nope.yml' } }); }));
   check('negative control: dsh.bundle.patch 指向别处 ⇒ 判红（S3.6）',
     hit(badPatch, /S3\.6/), badPatch.join(' | ') || '（没报出来）');
@@ -1378,7 +1404,8 @@ check('独立子包：登记面 / 根清单无违反（含覆盖面地板）', u
   // 并且把"产物在盘"这一条喂成真 —— 这样才能把"配方/落点"四条从"文件还没编出来"里分离出来。
   const ofFonts = (fn) => { const o = JSON.parse(fReal); fn(o); return JSON.stringify(o, null, 2) + '\n'; };
   const declaredBase = ofFonts((o) => {
-    o.dsh = Object.assign({}, o.dsh, { client: { platform: 'web' } });
+    // #281：客户端半边必须把主包写进 inject（宿主按它排装载序），基线也要带上这条。
+    o.dsh = Object.assign({}, o.dsh, { client: { platform: 'web', inject: ['@deepseek-ai/dsh-client-runtime', rootPkg.name] } });
     o.exports = Object.assign({}, o.exports, { './client': fArtifact });
   });
   const fInput = (text, patch) => packagesViolations({

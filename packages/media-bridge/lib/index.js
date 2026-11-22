@@ -1,5 +1,6 @@
 /**
- * `media-bridge` 子包宿主入口（P-F 第三格：`lib/components/media-bridge/` → `packages/media-bridge/`）。
+ * `media-bridge` 子包宿主入口（P-D 阶段1：保留 media-bridge 包名，把壁纸域宿主路由族与浏览器半边并入本包；
+ * P-F 第三格：`lib/components/media-bridge/` → `packages/media-bridge/`）。
  *
  * 为什么这一格独立成行：这五条路由（`/media-status`、`/audio-spectrum`、`/now-playing`、
  * `/now-playing/artwork`、`/media-control`）与它们的后端实现（media-bridge 子进程 + 内置回落）
@@ -45,6 +46,25 @@
  * 键集见 `lib/kernel/component-session.js` 的 `COMPONENT_VIEW_KEYS['media-bridge']` 注释。
  */
 import { registerNowPlayingRoutes } from './routes/now-playing.js';
+import { registerWeAssetsRoutes } from './routes/we-assets.js';
+// S5c 刀2：9 族宿主路由（21 条）从主包搬进本包 —— 实现在本包 `lib/routes/`，注册点只在
+// `applyImpl` 里；c 面 = 键表（`...keys`：`kernel:` / `apply:` / `schema:` / `log:` 四种源型）
+// ＋ 本组件会话自己的 `disposers` ＋ `http` 面（`sendJson`/`bodyReader`）。
+import { registerInventoryRoutes } from './routes/inventory.js';
+import { registerSlidesRoutes } from './routes/slides.js';
+import { registerUploadRoutes } from './routes/upload.js';
+import { registerUrlImportRoutes } from './routes/url-import.js';
+import { registerPropsRoutes } from './routes/props.js';
+import { registerMediaBytesRoutes } from './routes/media-bytes.js';
+import { registerMediaDerivedRoutes } from './routes/media-derived.js';
+import { registerSceneFrameRoutes } from './routes/scene-frame.js';
+import { registerSceneServeRoutes } from './routes/scene-serve.js';
+import { registerSceneMediaRoutes } from './routes/scene-media.js';
+import { registerLiveFrameRoutes } from './routes/live-frame.js';
+// S5d 刀3：遮挡/省电判据源整族入包 —— 生产端（x11 探针 + 心跳/降级）在本包
+// `lib/occlusion/`，只读端点在本包 `lib/routes/occlusion.js`；hub 由本入口在行装载时现建。
+import { createOcclusionHub } from './occlusion/index.js';
+import { registerOcclusionRoutes } from './routes/occlusion.js';
 
 /** patch 行 slug（`cordis.patch.yml` 里该行 `name` 的完整值，两处逐字相等）。 */
 export const name = 'dsh-plugin-wallpaper-engine-media-bridge';
@@ -65,7 +85,7 @@ export function apply(ctx, config) {
   const host = ctx.wallpaperEngineHost;
   // 拿不到服务名就大声失败：静默 `undefined` 会让下面每一步都在 undefined 上取属性（半死态）。
   if (!host) {
-    throw new Error('[wallpaper-engine] media-bridge 没拿到 wallpaperEngineHost 服务'
+    throw new Error('[wallpaper-engine] wallpaper 没拿到 wallpaperEngineHost 服务'
       + '（inject 声明与宿主装载顺序不匹配）');
   }
   // 键视图 = `lib/subpackage-boot.js` 的 SUBPACKAGE_KEY_TABLE 里本包那一行（值全部来自主包模块级绑定）。
@@ -89,7 +109,7 @@ export function applyImpl(root, _rawConfig, c) {
   // 两条装载路径都能这么读：① 子包行自己声明了 `inject = ['webServer', 'wallpaperEngineHost']`；
   // ② 门面路径的 `root` 就是门面的 ctx，而门面同样声明了 `inject = ['webServer']`（主行
   // `lib/index.js` 的 `inject` 声明）。
-  const webServer = root && root.webServer;
+  const webServer = keys.tolerantWebServer(root && root.webServer);
   // 与门面 `apply()` 同款早退：服务在、但 register 面还没挂上（或换成了别的 webServer 实现）。
   if (!webServer || typeof webServer.register !== 'function') return () => {};
 
@@ -103,19 +123,119 @@ export function applyImpl(root, _rawConfig, c) {
   // 本组件自己要的两个键：后端启动决策每次现读设置（`readConfig`），缓存根传**访问器**。
   const { readConfig, cacheBaseDir } = view;
 
-  // ⚠️ **注册期必须包 try**（P2-4）：这一族一次性注册**五条**路由，中途抛错时已经推进
-  // `disposers` 的那几条会留下（`mediaBackend.stop()` 也在同一个 disposer 列表里，一并丢）
+  // S5d 刀3. 遮挡/省电判据源随本组件行装载：hub 在**本入口**现建（x11 探针 + 心跳 + 降级），
+  // dispose 推进**本组件会话**的 `disposers` —— 保 S7.1 行级开关（关包行 ⇒ hub 与 `/occlusion`
+  // 一起撤，不碰主包其它族）。日志/诊断走键表同源绑定：`log:` 源型与 `kernel:appendDiagLine`。
+  // 行为变化（有意）：hub 生命周期从「主包 apply」变为「wallpaper 行装载」—— 这正是
+  // 「省电判据源 + 策略同包」的定义；浏览器侧仍只经 HTTP（`/occlusion`）消费，零跨包调用。
+  // 平台适配器 / 会话判定留在主包（`lib/occlusion/x11.js`），经键表 `schema:` 面注入 ——
+  // 缺键会让 `createOcclusionHub` 大声抛（不静默退化成"永远降级"）。
+  const occlusionHub = createOcclusionHub({
+    log: keys.log.tag('occlusion'),
+    diag: (obj) => keys.appendDiagLine('occlusion', obj),
+    isX11CandidateEnv: keys.isX11CandidateEnv,
+    createX11Adapter: keys.createX11Adapter,
+  });
+  disposers.push(() => occlusionHub.dispose());
+  occlusionHub.start().catch(() => { /* hub.start 不外抛；兜底防 unhandled（主包原实现同款） */ });
+
+  // ⚠️ **注册期必须包 try**（P2-4）：本组件一次性注册**三十一条**路由（媒体状态 / WE 素材源 /
+  // 清单 / 上传与 URL 导入 / 场景 / 遮挡等族），
+  // 中途抛错时已经推进 `disposers` 的那几条会留下（`mediaBackend.stop()` 也在同一个 disposer 列表里，一并丢）
   // ⇒ 下一次启用撞 `webserver: duplicate … route`，且桥的子进程无人收。`teardown()` 自己吞异常，
   // 原错照抛（装载失败必须仍然是红的）。
   try {
     // 3c-5. 媒体状态族路由（媒体后端懒启动 + /media-status、/audio-spectrum、/now-playing、
-    //       /now-playing/artwork、/media-control）→ 本包 `lib/routes/now-playing.js`。
+    //       /now-playing/artwork、/media-control）→ 本包 `./routes/now-playing.js`。
     //       后端实例、启动决策与五条注册都在那个文件里；这里只声明它的依赖（与门面调用点逐键相同）。
     registerNowPlayingRoutes(webServer, {
       ...keys, disposers, base, appendDiagLine, configPath, cacheBaseDir, readConfig, serveFile,
       CONTROL_JSON_MAX_BYTES, http: keys.http,
       // 媒体子系统的行统一带 `[media]` 标签（与终端既有形状逐字一致）；级别由调用点标注。
       log: log.tag('media'),
+    });
+    // 3c-3d/3c-3e. WE 官方素材源族（`/api/local-assets` + `/we-assets-dir`）→ 本包
+    //       `lib/routes/we-assets.js`（S5b 刀1 出户）。两条注册、配置-消费共用可变真源
+    //       `WE_ASSETS_DIR` 都在那个文件里；这里只声明它的依赖（与门面调用点逐键相同）。
+    registerWeAssetsRoutes(webServer, {
+      ...keys, disposers, base, serveFile, CONTROL_JSON_MAX_BYTES, http: keys.http,
+    });
+
+    // ── S5c 刀2：9 族宿主路由（21 条；注册顺序与主包门面逐字一致）──────────────────
+    // `...keys` 提供键表里本包的**全部**键（kernel:/apply:/schema:/log: 四种源型同源）；
+    // `disposers` **只用本组件会话的**（S7.1 行级开关：组件被关时只回滚它自己登记的这 21 条，
+    // 不碰主包其它族）；`http` 面按需显式带上（S5b 同款，`verify-json-response` 来路 c）。
+    // ⚠️ 这里**不能**再显式覆盖 `serveFile` / `mediaMap` / `tokenFor`：它们来自 `...keys` 的
+    // `apply:` 面（= 主包本次 apply 会话的同一份实例，R1 token 域单主权）；覆盖成本组件会话
+    // 那份会让 token 查不到（组件会话自建第二张 mediaMap）。
+
+    // 1. 壁纸清单 JSON（`/inventory`）→ 本包 `lib/routes/inventory.js`。
+    registerInventoryRoutes(webServer, {
+      ...keys, disposers,
+    });
+
+    // 1b. 图片 / 幻灯片壁纸的图集清单（`/slides/<token>`）→ 本包 `./routes/slides.js`。
+    //     `listImages` 走键表 `kernel:listImages`（内核扫描族），`mediaMap` / `tokenFor`
+    //     仍是 `...keys` 的 `apply:` 面（与 `/media` 同一张 token 表）。
+    registerSlidesRoutes(webServer, {
+      ...keys, disposers, http: keys.http,
+    });
+
+    // 2/3a. 派生媒体族（源元信息 / 抽帧转码 + 进度 / 视频缩略图）→ 本包 `./routes/media-derived.js`。
+    registerMediaDerivedRoutes(webServer, {
+      ...keys, disposers,
+    });
+
+    // 2/3. 媒体 + 预览原始字节（`/media`、`/preview`）→ 本包 `./routes/media-bytes.js`。
+    registerMediaBytesRoutes(webServer, {
+      ...keys, disposers,
+    });
+
+    // 3c-3b/3c-5. 场景帧服务族（实时抓帧缓存 / 自定义画面）→ 本包 `./routes/scene-frame.js`。
+    registerSceneFrameRoutes(webServer, {
+      ...keys, disposers, http: keys.http,
+    });
+
+    // 3c-2/3c-3. 场景载荷服务族（live 渲染页 / 场景文件 / 媒体源诊断）→ 本包 `./routes/scene-serve.js`。
+    registerSceneServeRoutes(webServer, {
+      ...keys, disposers,
+    });
+
+    // 3c-3c. 壁纸属性（WE 用户属性）→ 本包 `./routes/props.js`。
+    registerPropsRoutes(webServer, {
+      ...keys, disposers, http: keys.http,
+    });
+
+    // 3c-4. 网页壁纸首帧缓存（`__wp.capture` 回填的 JPEG）→ 本包 `./routes/live-frame.js`。
+    registerLiveFrameRoutes(webServer, {
+      ...keys, disposers, http: keys.http,
+    });
+
+    // 3e. 场景内嵌媒资（动画 MP4 + 独立音频）→ 本包 `./routes/scene-media.js`。
+    registerSceneMediaRoutes(webServer, {
+      ...keys, disposers,
+    });
+
+    // 4/5/6. 上传资产族（导入 / 删除 / 切换上传目录）→ 本包 `./routes/upload.js`。
+    registerUploadRoutes(webServer, {
+      ...keys, disposers, http: keys.http,
+    });
+
+    // 6b. 图片 URL 导入 / 刷新（Bing 每日一图内置源）→ 本包 `./routes/url-import.js`。
+    //     下载后仍是普通自定义壁纸；只有用户主动添加的源才会联网。
+    registerUrlImportRoutes(webServer, {
+      ...keys, disposers, http: keys.http,
+    });
+
+    // S5d 刀3. 遮挡快照族（`/occlusion`）→ 本包 `lib/routes/occlusion.js`（一族一条）。
+    // ⚠️ 调用点形态被判据钉住（test/verify-occlusion-hub.mjs 的 D3）：`hub` 与 log/diag 必须
+    // 在这个字面量里逐键给到，引入中间变量/少给 `hub` 都判红。`diag` 用内核 `appendDiagLine`
+    // 的同源绑定（与主包原调用点同一份实现）。
+    registerOcclusionRoutes(webServer, {
+      ...keys, disposers, base, hub: occlusionHub,
+      log: keys.log.tag('occlusion'),
+      diag: (obj) => keys.appendDiagLine('occlusion', obj),
+      http: keys.http,
     });
   } catch (error) {
     teardown();

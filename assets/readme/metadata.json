@@ -23,98 +23,6 @@
     "notes": "Original theme layout retained; Node.js requirement updated to 22.12+. Runtime artwork unchanged."
   },
   {
-    "path": "assets/readme/stat-version-light.png",
-    "kind": "image",
-    "channel": "code",
-    "size": {
-      "width": 349,
-      "height": 181,
-      "bytes": 4259
-    },
-    "license": "独立实现的 HTML/CSS 排版；设计参考 MaiBot README；原图标与角色保留原有权利；Jersey 20 字体按 SIL OFL 1.1 授权。",
-    "createdAt": "2026-10-16T22:07:13.655Z",
-    "contentHash": "d68814805b1fc43c0e2dc5fe96af01cb3427cd891ae53df53d9b200a37cd1fba",
-    "source": "assets/readme/hero.html?theme=light",
-    "sourceSelector": ".metric[data-id=\"version\"]",
-    "inputs": [
-      "icon.png",
-      "assets/rope/phoebe.png",
-      "assets/readme/Jersey20-Regular.ttf"
-    ],
-    "reference": "https://github.com/Mai-with-u/MaiBot",
-    "renderer": "Microsoft Edge / Playwright：实际 HTML 元素截图，不是生成式图片。",
-    "notes": "不使用 MaiBot 角色、鱼形装饰、装机遥测或趋势排名；不修改运行时角色原图。"
-  },
-  {
-    "path": "assets/readme/stat-formats-light.png",
-    "kind": "image",
-    "channel": "code",
-    "size": {
-      "width": 349,
-      "height": 181,
-      "bytes": 4986
-    },
-    "license": "独立实现的 HTML/CSS 排版；设计参考 MaiBot README；原图标与角色保留原有权利；Jersey 20 字体按 SIL OFL 1.1 授权。",
-    "createdAt": "2026-10-16T22:07:13.732Z",
-    "contentHash": "6dc2ae9c52bc04cae8381842016ca48715d2c133472bc450340bbfc2d502703a",
-    "source": "assets/readme/hero.html?theme=light",
-    "sourceSelector": ".metric[data-id=\"formats\"]",
-    "inputs": [
-      "icon.png",
-      "assets/rope/phoebe.png",
-      "assets/readme/Jersey20-Regular.ttf"
-    ],
-    "reference": "https://github.com/Mai-with-u/MaiBot",
-    "renderer": "Microsoft Edge / Playwright：实际 HTML 元素截图，不是生成式图片。",
-    "notes": "不使用 MaiBot 角色、鱼形装饰、装机遥测或趋势排名；不修改运行时角色原图。"
-  },
-  {
-    "path": "assets/readme/stat-mascots-light.png",
-    "kind": "image",
-    "channel": "code",
-    "size": {
-      "width": 349,
-      "height": 181,
-      "bytes": 3989
-    },
-    "license": "独立实现的 HTML/CSS 排版；设计参考 MaiBot README；原图标与角色保留原有权利；Jersey 20 字体按 SIL OFL 1.1 授权。",
-    "createdAt": "2026-10-16T22:07:13.800Z",
-    "contentHash": "8668375aa71d8cc910f0031fd11b24e845f5496a67035bbc373b810dec76ebbe",
-    "source": "assets/readme/hero.html?theme=light",
-    "sourceSelector": ".metric[data-id=\"mascots\"]",
-    "inputs": [
-      "icon.png",
-      "assets/rope/phoebe.png",
-      "assets/readme/Jersey20-Regular.ttf"
-    ],
-    "reference": "https://github.com/Mai-with-u/MaiBot",
-    "renderer": "Microsoft Edge / Playwright：实际 HTML 元素截图，不是生成式图片。",
-    "notes": "不使用 MaiBot 角色、鱼形装饰、装机遥测或趋势排名；不修改运行时角色原图。"
-  },
-  {
-    "path": "assets/readme/stat-modules-light.png",
-    "kind": "image",
-    "channel": "code",
-    "size": {
-      "width": 349,
-      "height": 181,
-      "bytes": 3512
-    },
-    "license": "独立实现的 HTML/CSS 排版；设计参考 MaiBot README；原图标与角色保留原有权利；Jersey 20 字体按 SIL OFL 1.1 授权。",
-    "createdAt": "2026-10-16T22:07:13.866Z",
-    "contentHash": "dd21f40d75b340c47394d48cad86475661aaf5bae0142008499c41b7f5ab4dd7",
-    "source": "assets/readme/hero.html?theme=light",
-    "sourceSelector": ".metric[data-id=\"modules\"]",
-    "inputs": [
-      "icon.png",
-      "assets/rope/phoebe.png",
-      "assets/readme/Jersey20-Regular.ttf"
-    ],
-    "reference": "https://github.com/Mai-with-u/MaiBot",
-    "renderer": "Microsoft Edge / Playwright：实际 HTML 元素截图，不是生成式图片。",
-    "notes": "不使用 MaiBot 角色、鱼形装饰、装机遥测或趋势排名；不修改运行时角色原图。"
-  },
-  {
     "path": "assets/readme/key-lang-zh-light.png",
     "kind": "image",
     "channel": "code",
@@ -299,29 +207,6 @@
     "notes": "不使用 MaiBot 角色、鱼形装饰、装机遥测或趋势排名；不修改运行时角色原图。"
   },
   {
-    "path": "assets/readme/section-preview-light.png",
-    "kind": "image",
-    "channel": "code",
-    "size": {
-      "width": 1432,
-      "height": 83,
-      "bytes": 4089
-    },
-    "license": "独立实现的 HTML/CSS 排版；设计参考 MaiBot README；原图标与角色保留原有权利；Jersey 20 字体按 SIL OFL 1.1 授权。",
-    "createdAt": "2026-10-16T22:07:14.485Z",
-    "contentHash": "abcc1ebefc0298daf5102cabd182580a50094d83ae6b2b8f88b08ec0b49eb8cb",
-    "source": "assets/readme/hero.html?theme=light",
-    "sourceSelector": ".section[data-id=\"preview\"]",
-    "inputs": [
-      "icon.png",
-      "assets/rope/phoebe.png",
-      "assets/readme/Jersey20-Regular.ttf"
-    ],
-    "reference": "https://github.com/Mai-with-u/MaiBot",
-    "renderer": "Microsoft Edge / Playwright：实际 HTML 元素截图，不是生成式图片。",
-    "notes": "不使用 MaiBot 角色、鱼形装饰、装机遥测或趋势排名；不修改运行时角色原图。"
-  },
-  {
     "path": "assets/readme/section-start-light.png",
     "kind": "image",
     "channel": "code",
@@ -414,29 +299,6 @@
     "notes": "不使用 MaiBot 角色、鱼形装饰、装机遥测或趋势排名；不修改运行时角色原图。"
   },
   {
-    "path": "assets/readme/section-install-light.png",
-    "kind": "image",
-    "channel": "code",
-    "size": {
-      "width": 1432,
-      "height": 83,
-      "bytes": 3248
-    },
-    "license": "独立实现的 HTML/CSS 排版；设计参考 MaiBot README；原图标与角色保留原有权利；Jersey 20 字体按 SIL OFL 1.1 授权。",
-    "createdAt": "2026-10-16T22:07:14.818Z",
-    "contentHash": "1412ee9935f0a254b059536d6bed453545e081f5ad46ab2dc690f2f4f65a6abe",
-    "source": "assets/readme/hero.html?theme=light",
-    "sourceSelector": ".section[data-id=\"install\"]",
-    "inputs": [
-      "icon.png",
-      "assets/rope/phoebe.png",
-      "assets/readme/Jersey20-Regular.ttf"
-    ],
-    "reference": "https://github.com/Mai-with-u/MaiBot",
-    "renderer": "Microsoft Edge / Playwright：实际 HTML 元素截图，不是生成式图片。",
-    "notes": "不使用 MaiBot 角色、鱼形装饰、装机遥测或趋势排名；不修改运行时角色原图。"
-  },
-  {
     "path": "assets/readme/section-usage-light.png",
     "kind": "image",
     "channel": "code",
@@ -450,52 +312,6 @@
     "contentHash": "acda3bc0533b6607810737c3bee5daaf36c010d1d91532d9779e3bb9160e3aba",
     "source": "assets/readme/hero.html?theme=light",
     "sourceSelector": ".section[data-id=\"usage\"]",
-    "inputs": [
-      "icon.png",
-      "assets/rope/phoebe.png",
-      "assets/readme/Jersey20-Regular.ttf"
-    ],
-    "reference": "https://github.com/Mai-with-u/MaiBot",
-    "renderer": "Microsoft Edge / Playwright：实际 HTML 元素截图，不是生成式图片。",
-    "notes": "不使用 MaiBot 角色、鱼形装饰、装机遥测或趋势排名；不修改运行时角色原图。"
-  },
-  {
-    "path": "assets/readme/section-pet-light.png",
-    "kind": "image",
-    "channel": "code",
-    "size": {
-      "width": 1432,
-      "height": 83,
-      "bytes": 5477
-    },
-    "license": "独立实现的 HTML/CSS 排版；设计参考 MaiBot README；原图标与角色保留原有权利；Jersey 20 字体按 SIL OFL 1.1 授权。",
-    "createdAt": "2026-10-16T22:07:14.950Z",
-    "contentHash": "1af1fb698628d16aa066cb717a391ff67afda54cb73c1c51c2324dfca80da540",
-    "source": "assets/readme/hero.html?theme=light",
-    "sourceSelector": ".section[data-id=\"pet\"]",
-    "inputs": [
-      "icon.png",
-      "assets/rope/phoebe.png",
-      "assets/readme/Jersey20-Regular.ttf"
-    ],
-    "reference": "https://github.com/Mai-with-u/MaiBot",
-    "renderer": "Microsoft Edge / Playwright：实际 HTML 元素截图，不是生成式图片。",
-    "notes": "不使用 MaiBot 角色、鱼形装饰、装机遥测或趋势排名；不修改运行时角色原图。"
-  },
-  {
-    "path": "assets/readme/section-config-light.png",
-    "kind": "image",
-    "channel": "code",
-    "size": {
-      "width": 1432,
-      "height": 83,
-      "bytes": 4861
-    },
-    "license": "独立实现的 HTML/CSS 排版；设计参考 MaiBot README；原图标与角色保留原有权利；Jersey 20 字体按 SIL OFL 1.1 授权。",
-    "createdAt": "2026-10-16T22:07:15.017Z",
-    "contentHash": "3ce392708f118640e68de4703a73b6997accf53bfc2a3b92dbe6675c4b8a8d4c",
-    "source": "assets/readme/hero.html?theme=light",
-    "sourceSelector": ".section[data-id=\"config\"]",
     "inputs": [
       "icon.png",
       "assets/rope/phoebe.png",
@@ -598,29 +414,6 @@
     "notes": "不使用 MaiBot 角色、鱼形装饰、装机遥测或趋势排名；不修改运行时角色原图。"
   },
   {
-    "path": "assets/readme/section-support-light.png",
-    "kind": "image",
-    "channel": "code",
-    "size": {
-      "width": 1432,
-      "height": 83,
-      "bytes": 5104
-    },
-    "license": "独立实现的 HTML/CSS 排版；设计参考 MaiBot README；原图标与角色保留原有权利；Jersey 20 字体按 SIL OFL 1.1 授权。",
-    "createdAt": "2026-10-16T22:07:15.385Z",
-    "contentHash": "64b8299cfad906e2d770c980300741d611734f96c82ddac55fc55229b12aaf0e",
-    "source": "assets/readme/hero.html?theme=light",
-    "sourceSelector": ".section[data-id=\"support\"]",
-    "inputs": [
-      "icon.png",
-      "assets/rope/phoebe.png",
-      "assets/readme/Jersey20-Regular.ttf"
-    ],
-    "reference": "https://github.com/Mai-with-u/MaiBot",
-    "renderer": "Microsoft Edge / Playwright：实际 HTML 元素截图，不是生成式图片。",
-    "notes": "不使用 MaiBot 角色、鱼形装饰、装机遥测或趋势排名；不修改运行时角色原图。"
-  },
-  {
     "path": "assets/readme/section-stars-light.png",
     "kind": "image",
     "channel": "code",
@@ -665,98 +458,6 @@
     "reference": "https://github.com/Mai-with-u/MaiBot",
     "renderer": "Microsoft Edge / CDP: actual HTML element screenshot.",
     "notes": "Original theme layout retained; Node.js requirement updated to 22.12+. Runtime artwork unchanged."
-  },
-  {
-    "path": "assets/readme/stat-version-dark.png",
-    "kind": "image",
-    "channel": "code",
-    "size": {
-      "width": 349,
-      "height": 181,
-      "bytes": 4307
-    },
-    "license": "独立实现的 HTML/CSS 排版；设计参考 MaiBot README；原图标与角色保留原有权利；Jersey 20 字体按 SIL OFL 1.1 授权。",
-    "createdAt": "2026-10-16T22:07:15.783Z",
-    "contentHash": "58e5b44b87bcdafeee1354160cb6ab7949e594e9ba2593ee49deea9bf7faa9f3",
-    "source": "assets/readme/hero.html?theme=dark",
-    "sourceSelector": ".metric[data-id=\"version\"]",
-    "inputs": [
-      "icon.png",
-      "assets/rope/phoebe.png",
-      "assets/readme/Jersey20-Regular.ttf"
-    ],
-    "reference": "https://github.com/Mai-with-u/MaiBot",
-    "renderer": "Microsoft Edge / Playwright：实际 HTML 元素截图，不是生成式图片。",
-    "notes": "不使用 MaiBot 角色、鱼形装饰、装机遥测或趋势排名；不修改运行时角色原图。"
-  },
-  {
-    "path": "assets/readme/stat-formats-dark.png",
-    "kind": "image",
-    "channel": "code",
-    "size": {
-      "width": 349,
-      "height": 181,
-      "bytes": 5019
-    },
-    "license": "独立实现的 HTML/CSS 排版；设计参考 MaiBot README；原图标与角色保留原有权利；Jersey 20 字体按 SIL OFL 1.1 授权。",
-    "createdAt": "2026-10-16T22:07:15.849Z",
-    "contentHash": "3739a2a224de54a036780fe39c605cd780f59197e847cc5ad0ca8943ad54b434",
-    "source": "assets/readme/hero.html?theme=dark",
-    "sourceSelector": ".metric[data-id=\"formats\"]",
-    "inputs": [
-      "icon.png",
-      "assets/rope/phoebe.png",
-      "assets/readme/Jersey20-Regular.ttf"
-    ],
-    "reference": "https://github.com/Mai-with-u/MaiBot",
-    "renderer": "Microsoft Edge / Playwright：实际 HTML 元素截图，不是生成式图片。",
-    "notes": "不使用 MaiBot 角色、鱼形装饰、装机遥测或趋势排名；不修改运行时角色原图。"
-  },
-  {
-    "path": "assets/readme/stat-mascots-dark.png",
-    "kind": "image",
-    "channel": "code",
-    "size": {
-      "width": 349,
-      "height": 181,
-      "bytes": 3994
-    },
-    "license": "独立实现的 HTML/CSS 排版；设计参考 MaiBot README；原图标与角色保留原有权利；Jersey 20 字体按 SIL OFL 1.1 授权。",
-    "createdAt": "2026-10-16T22:07:15.932Z",
-    "contentHash": "84cdf9d0d8ef7a904ff10d8ca1e5dd2fa6c3364cae79f269c5cb123635240341",
-    "source": "assets/readme/hero.html?theme=dark",
-    "sourceSelector": ".metric[data-id=\"mascots\"]",
-    "inputs": [
-      "icon.png",
-      "assets/rope/phoebe.png",
-      "assets/readme/Jersey20-Regular.ttf"
-    ],
-    "reference": "https://github.com/Mai-with-u/MaiBot",
-    "renderer": "Microsoft Edge / Playwright：实际 HTML 元素截图，不是生成式图片。",
-    "notes": "不使用 MaiBot 角色、鱼形装饰、装机遥测或趋势排名；不修改运行时角色原图。"
-  },
-  {
-    "path": "assets/readme/stat-modules-dark.png",
-    "kind": "image",
-    "channel": "code",
-    "size": {
-      "width": 349,
-      "height": 181,
-      "bytes": 3527
-    },
-    "license": "独立实现的 HTML/CSS 排版；设计参考 MaiBot README；原图标与角色保留原有权利；Jersey 20 字体按 SIL OFL 1.1 授权。",
-    "createdAt": "2026-10-16T22:07:15.999Z",
-    "contentHash": "75ffe8b721cfbf286b0c431c50c9397f5f15685eecd8109147b70d0afab4d79e",
-    "source": "assets/readme/hero.html?theme=dark",
-    "sourceSelector": ".metric[data-id=\"modules\"]",
-    "inputs": [
-      "icon.png",
-      "assets/rope/phoebe.png",
-      "assets/readme/Jersey20-Regular.ttf"
-    ],
-    "reference": "https://github.com/Mai-with-u/MaiBot",
-    "renderer": "Microsoft Edge / Playwright：实际 HTML 元素截图，不是生成式图片。",
-    "notes": "不使用 MaiBot 角色、鱼形装饰、装机遥测或趋势排名；不修改运行时角色原图。"
   },
   {
     "path": "assets/readme/key-lang-zh-dark.png",
@@ -943,29 +644,6 @@
     "notes": "不使用 MaiBot 角色、鱼形装饰、装机遥测或趋势排名；不修改运行时角色原图。"
   },
   {
-    "path": "assets/readme/section-preview-dark.png",
-    "kind": "image",
-    "channel": "code",
-    "size": {
-      "width": 1432,
-      "height": 83,
-      "bytes": 4037
-    },
-    "license": "独立实现的 HTML/CSS 排版；设计参考 MaiBot README；原图标与角色保留原有权利；Jersey 20 字体按 SIL OFL 1.1 授权。",
-    "createdAt": "2026-10-16T22:07:16.601Z",
-    "contentHash": "17d14d6defd2e783a57591e9bad896c3518f9c9c762db0c629c650949fea962c",
-    "source": "assets/readme/hero.html?theme=dark",
-    "sourceSelector": ".section[data-id=\"preview\"]",
-    "inputs": [
-      "icon.png",
-      "assets/rope/phoebe.png",
-      "assets/readme/Jersey20-Regular.ttf"
-    ],
-    "reference": "https://github.com/Mai-with-u/MaiBot",
-    "renderer": "Microsoft Edge / Playwright：实际 HTML 元素截图，不是生成式图片。",
-    "notes": "不使用 MaiBot 角色、鱼形装饰、装机遥测或趋势排名；不修改运行时角色原图。"
-  },
-  {
     "path": "assets/readme/section-start-dark.png",
     "kind": "image",
     "channel": "code",
@@ -1058,29 +736,6 @@
     "notes": "不使用 MaiBot 角色、鱼形装饰、装机遥测或趋势排名；不修改运行时角色原图。"
   },
   {
-    "path": "assets/readme/section-install-dark.png",
-    "kind": "image",
-    "channel": "code",
-    "size": {
-      "width": 1432,
-      "height": 83,
-      "bytes": 3218
-    },
-    "license": "独立实现的 HTML/CSS 排版；设计参考 MaiBot README；原图标与角色保留原有权利；Jersey 20 字体按 SIL OFL 1.1 授权。",
-    "createdAt": "2026-10-16T22:07:16.949Z",
-    "contentHash": "c82962063d3d8a92a40f8be59cd0364d7524c4bdb167589a8ac6341ea79084a9",
-    "source": "assets/readme/hero.html?theme=dark",
-    "sourceSelector": ".section[data-id=\"install\"]",
-    "inputs": [
-      "icon.png",
-      "assets/rope/phoebe.png",
-      "assets/readme/Jersey20-Regular.ttf"
-    ],
-    "reference": "https://github.com/Mai-with-u/MaiBot",
-    "renderer": "Microsoft Edge / Playwright：实际 HTML 元素截图，不是生成式图片。",
-    "notes": "不使用 MaiBot 角色、鱼形装饰、装机遥测或趋势排名；不修改运行时角色原图。"
-  },
-  {
     "path": "assets/readme/section-usage-dark.png",
     "kind": "image",
     "channel": "code",
@@ -1094,52 +749,6 @@
     "contentHash": "75a04165bfb0d1e2d79ac433cad0a93ee2c339c33e794de47f28a0b42a3a4452",
     "source": "assets/readme/hero.html?theme=dark",
     "sourceSelector": ".section[data-id=\"usage\"]",
-    "inputs": [
-      "icon.png",
-      "assets/rope/phoebe.png",
-      "assets/readme/Jersey20-Regular.ttf"
-    ],
-    "reference": "https://github.com/Mai-with-u/MaiBot",
-    "renderer": "Microsoft Edge / Playwright：实际 HTML 元素截图，不是生成式图片。",
-    "notes": "不使用 MaiBot 角色、鱼形装饰、装机遥测或趋势排名；不修改运行时角色原图。"
-  },
-  {
-    "path": "assets/readme/section-pet-dark.png",
-    "kind": "image",
-    "channel": "code",
-    "size": {
-      "width": 1432,
-      "height": 83,
-      "bytes": 5449
-    },
-    "license": "独立实现的 HTML/CSS 排版；设计参考 MaiBot README；原图标与角色保留原有权利；Jersey 20 字体按 SIL OFL 1.1 授权。",
-    "createdAt": "2026-10-16T22:07:17.084Z",
-    "contentHash": "b1b186724a727cc80ad1fcd26b9f50464194db00b029d6d062c92eb8c3a28826",
-    "source": "assets/readme/hero.html?theme=dark",
-    "sourceSelector": ".section[data-id=\"pet\"]",
-    "inputs": [
-      "icon.png",
-      "assets/rope/phoebe.png",
-      "assets/readme/Jersey20-Regular.ttf"
-    ],
-    "reference": "https://github.com/Mai-with-u/MaiBot",
-    "renderer": "Microsoft Edge / Playwright：实际 HTML 元素截图，不是生成式图片。",
-    "notes": "不使用 MaiBot 角色、鱼形装饰、装机遥测或趋势排名；不修改运行时角色原图。"
-  },
-  {
-    "path": "assets/readme/section-config-dark.png",
-    "kind": "image",
-    "channel": "code",
-    "size": {
-      "width": 1432,
-      "height": 83,
-      "bytes": 4802
-    },
-    "license": "独立实现的 HTML/CSS 排版；设计参考 MaiBot README；原图标与角色保留原有权利；Jersey 20 字体按 SIL OFL 1.1 授权。",
-    "createdAt": "2026-10-16T22:07:17.152Z",
-    "contentHash": "6396dd6d18b11568cc15b593c39e85d7811aa9649c3fe5d0afefb739f679b12f",
-    "source": "assets/readme/hero.html?theme=dark",
-    "sourceSelector": ".section[data-id=\"config\"]",
     "inputs": [
       "icon.png",
       "assets/rope/phoebe.png",
@@ -1232,29 +841,6 @@
     "contentHash": "02522d3174f274e6cace456a9cd49c7cbd9937be6284c8538f33361dd0eb0968",
     "source": "assets/readme/hero.html?theme=dark",
     "sourceSelector": ".section[data-id=\"credits\"]",
-    "inputs": [
-      "icon.png",
-      "assets/rope/phoebe.png",
-      "assets/readme/Jersey20-Regular.ttf"
-    ],
-    "reference": "https://github.com/Mai-with-u/MaiBot",
-    "renderer": "Microsoft Edge / Playwright：实际 HTML 元素截图，不是生成式图片。",
-    "notes": "不使用 MaiBot 角色、鱼形装饰、装机遥测或趋势排名；不修改运行时角色原图。"
-  },
-  {
-    "path": "assets/readme/section-support-dark.png",
-    "kind": "image",
-    "channel": "code",
-    "size": {
-      "width": 1432,
-      "height": 83,
-      "bytes": 4995
-    },
-    "license": "独立实现的 HTML/CSS 排版；设计参考 MaiBot README；原图标与角色保留原有权利；Jersey 20 字体按 SIL OFL 1.1 授权。",
-    "createdAt": "2026-10-16T22:07:17.482Z",
-    "contentHash": "eafe6b4c215055ad86dce3244505bb0e3ff61928ee408eb2136ffe922b5c39f6",
-    "source": "assets/readme/hero.html?theme=dark",
-    "sourceSelector": ".section[data-id=\"support\"]",
     "inputs": [
       "icon.png",
       "assets/rope/phoebe.png",

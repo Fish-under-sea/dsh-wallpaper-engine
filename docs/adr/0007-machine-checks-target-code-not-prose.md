@@ -3,8 +3,8 @@
 - **Date**: 2026-10-01
 - **Status**: Accepted
 - **Deciders**: YV3507
-- **Depends on**: [ADR-0006](./0006-comment-discipline-as-written-convention.md)（本文把它的边界落成可执行的判定程序）
-- **Amends**: [ADR-0006](./0006-comment-discipline-as-written-convention.md) 的 `Implementation` 行（文档类守卫的物理下线**已执行**）
+- **Depends on**: [ADR-0017](./0017-code-is-truth-docs-reference-source.md)（代码即真相；本文把 ADR-0006 的边界落成可执行的判定程序）
+- **Amends**: [ADR-0006](./0006-comment-discipline-as-written-convention.md) 的 `Implementation` 行（文档类守卫的物理下线**已执行**；ADR-0006 已由 ADR-0017 取代，本文的四问继续有效）
 
 > 本文只回答一个问题：**一条机器判据该不该存在**。它给判定程序与两份清单，不给"哪些文件要守"的静态名册 ——
 > 名册会随代码演进腐化，程序不会。
@@ -78,6 +78,12 @@ ADR-0006 定了方向（"读代码的守卫照留，读散文的守卫不加"）
 | `verify-adapter` | `tabsSrc.includes('「窗口失焦时暂停」只在原生浏览器目标下提供')` | 第 1/4 问：门控本身由 `blurPause && switchRow(weT(...))` 那条钉住，提示文案无需入判据 |
 | `verify-adapter` | `tabsSrc.includes('适配目标')` | 第 1/4 问：保留代码半边（`ADAPTER_TARGET_VALUES.map(`） |
 | `verify-module-layout` ⑥ 后半 | `src/` 子目录被常青文档 **H1** 点名 | 第 1/3 问：守标题措辞，且空壳文档即可满足 |
+
+### 后续撤除（追加记录，不追溯改写上表）
+
+| 位置 | 原判据 | 撤除理由（对应第几问） |
+|---|---|---|
+| `verify-module-layout` ⑥ | `SRC_TOP_LEVEL_MAX`（`src/` 顶层 `.js` 数量上限，软档、只许缩小） | **第 2 问**：失败信号是"把上限改大并写一段理由"⇒ 守的是编辑动作。2026-11-22 撤除。替代：顶层计数仍**现算打印**（不是判据）；"新增模块先进族目录"回到 `docs/CODE-STRUCTURE.md` §4 的约定，与同节 ②（"有权威文档"）同形 |
 
 ## Consequences
 

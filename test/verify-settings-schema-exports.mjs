@@ -82,7 +82,7 @@
  * ⇒ 没有一条是"真死声明"，它们全是**只把名字写在非引用位置上的空导出面**。
  * 因此清理一律**只删 `export` 关键字或 `export { … }` 里的 specifier，声明本体与文件内
  * 自用一字不动**（逐条清单与批次属历史，见 [`CHANGELOG.md`](../docs/CHANGELOG.md)）。
- * 唯一例外是 `src/avatar-layer.js::avatarGlyphSvgString`：它被 `test/verify-scene-live.mjs:4766`
+ * 唯一例外是 `src/avatar-layer.js::avatarGlyphSvgString`：它被 `test/verify-scene-live.mjs`
  * 的精确集合 golden（5 名集 → 4 名集）钉着，必须与该 golden 同一笔提交落刀（Lead 执行）。
  * 这正是"字面量不是引用"必须写进口径的原因：只有把字面量掩掉，空导出面才会现形。
  *
@@ -106,7 +106,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 /**
  * 绝对路径 ⇒ 仓库相对路径，**统一 POSIX 分隔符**（本判据面的唯一口径）。
  * 为什么承重：扫描键必须与 `publicSet`（来自 `package.json`，POSIX）同风格，否则 `publicSet.has(mod)`
- * 恒 false ⇒ 公开入口被当成内部模块查死导出（2026-10-15 实测：Windows 上 `lib\subpackage-boot.js`
+ * 恒 false ⇒ 公开入口被当成内部模块查死导出（实测：Windows 上 `lib\subpackage-boot.js`
  * 的 `schemaView` / `subpackageKeys` 被这样误报，而 CI（POSIX）上豁免生效、不出现）。
  */
 const relOf = (abs) => abs.slice(ROOT.length + 1).split(sep).join('/');
@@ -124,7 +124,7 @@ const CODE_EXT = ['.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx'];
 const BUILD_PRODUCT = 'lib/client.js';
 
 /**
- * **子包的浏览器半边产物**（BUNDLE-SPLIT §7.1 / ADR-0013 D9「多包后每包一产物」）。
+ * **子包的浏览器半边产物**（ADR-0014 S10.2 / ADR-0013 D9「多包后每包一产物」）。
  * 与 `BUILD_PRODUCT` 同性质：`npm run build` 现场生成、被 `.gitignore` 排除（`packages/<pkg>/lib/client.<pkg>.js`）
  * ⇒ 干净检出里没有、构建后才有 ⇒ 走出来的面会比 `git ls-files` **多出**它们。
  * **真源 = 各包 `package.json` 的 `exports['./client']`**（构建脚本 `SUBPACKAGE_BUILDS[].artifact` 与它逐字相同），
@@ -266,7 +266,7 @@ function skipRegex(text, i) {
 function regexAllowedAt(out) {
   // ⚠️ 只回看**尾部一小段**（task-14 实测的性能坑）：原实现对整个 `out` 做
   // `out.replace(/\s+$/, '')`，而 `out` 是**累积输出** ⇒ 掩码整体退化成 O(n²)：
-  // 4MB 的构建产物 `lib/client.js` 有 41,045 个 `/`，每次回看 4MB（实测 308ms/次）
+  // 构建产物 `lib/client.js` 约 4 MB、含数万个 `/`，每次回看整份产物（实测亚秒级）
   // ⇒ 单这一个文件就要 ≈3.5 小时（本判据在守卫链 [58/58] 上因此"300 秒无输出"）。
   // 改法**语义等价**：都是"最后一个有意义字符，以及它所在的词"——
   // 只是把"对全长做 replace + 正则"换成了"定长回看"，不再随 out 增长而变慢。
@@ -406,7 +406,7 @@ const consumers = new Map(consumerFiles.map((f) => [f, readFileSync(join(ROOT, f
   check('自检：package.json exports 的公开入口在面内用同一个键（豁免才对得上）',
     // 地板随形态收缩：P-F 每出户一格组件行，根 `exports` 就少两条 `.js` 公开入口
     // （`./<组件>` 与 `./<组件>/package.json`；`./<组件>/locale/*.json` 不是 `.js`，本函数不收）。
-    // 2026-10-16 批 1/批 2 出户 `about-notice` / `mascot-avatar` 后 = 3（`lib/index.js` +
+    // 批 1/批 2 出户 `about-notice` / `mascot-avatar` 后 = 3（`lib/index.js` +
     // `lib/subpackage-boot.js` + 仍在盘上的 `./media-bridge`）；`media-bridge` 出户后 = 2。
     // 这条判据的**牙**在 `missing.length === 0`（分隔符一错，publicSet 与面键就对不上）。
     publicOnDisk.length >= 2 && missing.length === 0,

@@ -3,17 +3,17 @@
  * token-contract.mjs — `--dsw-*` 令牌契约的**生成与核对**（共存审计 S2 的核心）。
  *
  * 为什么需要它（COEXISTENCE-AUDIT §一 M1）：本插件把宿主的设计令牌层
- * （`--dsw-alias-*` 等 46 个 token）整层改写成玻璃配方，而 DSH 官方给插件作者的
+ * （`--dsw-alias-*` 等令牌）整层改写成玻璃配方，而 DSH 官方给插件作者的
  * 规范就是「用 `--dsw-alias-*` 上色」⇒ **任何按规范写的第三方 UI 插件都会自动
  * 继承我们的玻璃** —— 这是全仓最大的隐式耦合面，但今天没有任何一份文件列出
  * 「我们到底改写了哪些 token、在哪个门控下」。手写清单一定会烂，所以本工具从
- * **样式族**（`src/styles-base.js` … `src/styles-ext.js`，刀3 由单一
- * `src/styles.js` 按视觉域拆出）的 CSS 模板**现算**出契约，`test/verify-token-contract.mjs`
+ * **样式族**（`src/styles/base.js` … `src/styles/ext.js`，由主包 7 个样式域模块
+ * + 玻璃包 `packages/glass/src/glass-css.js` 的 CSS 模板**现算**出契约，`test/verify-token-contract.mjs`
  * 重算并逐字节比对 `docs/TOKEN-CONTRACT.md`。
  *
  * 解析口径（与审计复算脚本同形，两处必须守住）：
  *   ① **只计真实声明**：`--dsw-x: v;` 出现在属性位才算；值里的 `var(--dsw-…)`
- *      是**读**不是写，一律排除（否则 284 处引用会淹掉 135 条声明）。
+ *      是**读**不是写，一律排除（否则值里的 `var()` 引用会淹掉真实声明）。
  *   ② **花括号栈定门控**：每条声明按其选择器链归桶 ——
  *      链上有 `[data-we-glass-*]` ⇒ 玻璃；只有 `[data-we-wallpaper]` ⇒ 壁纸；
  *      两者都不挂 ⇒ **无门控**（M1 的全部暴露面，审计量化为 19 条，全部落在
@@ -25,7 +25,7 @@
  *   node test/tools/token-contract.mjs --write    # 写入 docs/TOKEN-CONTRACT.md
  *   node test/tools/token-contract.mjs --stats    # 只打印聚合数（对审计口径）
  */
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { scopeFiles } from './src-scope.mjs';
@@ -35,7 +35,17 @@ import { stripCssComments } from './css-text.mjs';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DOC = join(ROOT, 'docs', 'TOKEN-CONTRACT.md');
 /** 样式族：8 个域模块 + 组装点，顺序 = 构建期内联顺序（INLINE_MODULES 单一真源）。 */
-const STYLE_FAMILY = scopeFiles('src/styles');
+// ADR-0016 第四刀：玻璃 CSS（glass-css.js）随玻璃包走 —— 扫描面 = 主包 8 模板 ∪ 玻璃包
+// 配方里的 glass-css 条目（真源 = 该包自己的 client.build.json；第四刀落地前文件不存在 ⇒
+// 过滤为空，工具照常只扫主包）。
+const GLASS_STYLE_FILES = (() => {
+  try {
+    const recipe = JSON.parse(readFileSync(join(ROOT, 'packages', 'glass', 'client.build.json'), 'utf8'));
+    return recipe.inline.map((e) => 'packages/glass/' + e.file)
+      .filter((f) => f.includes('glass-css') && existsSync(join(ROOT, f)));
+  } catch { return []; }
+})();
+const STYLE_FAMILY = scopeFiles('src/styles').concat(GLASS_STYLE_FILES);
 
 /**
  * 抽出某个**样式域模板**的模板体（`const CSS` 或 `const CSS_<域> = \`…\``）。模板里没有
@@ -161,6 +171,9 @@ export function scanStyleFamily() {
 /** 归桶：glass（链上有 [data-we-glass-*]）> wallpaper（只有 [data-we-wallpaper]）> ungated。 */
 export function bucketOf(chain) {
   if (/\[data-we-glass-/.test(chain)) return 'glass';
+  // ADR-0016 第三刀勘误：全局 UI 配色从玻璃门（data-we-glass-page）迁到主包自有门 ——
+  // 它不是玻璃，停玻璃行不得连坐；单独成桶以便契约按归属审计。
+  if (/\[data-we-ui-color\]/.test(chain)) return 'ui-color';
   if (/\[data-we-wallpaper\]/.test(chain)) return 'wallpaper';
   return 'ungated';
 }
@@ -185,7 +198,7 @@ export function ungatedReason(chain) {
   return null; // 不在白名单 ⇒ 守卫红
 }
 
-/** 人工消费者注记：高危别名的宿主消费面（依据 styles.js 注释 + DSH-UI-INTERFACES §3.4）。 */
+/** 人工消费者注记：高危别名的宿主消费面（依据 styles.js 注释 + CODE-STRUCTURE §13 §3.4）。 */
 const NOTES = {
   '--dsw-alias-bg-layer-1': '面板层次 1（宿主对话框/侧栏底）；better-sidebar 亦按它上色',
   '--dsw-alias-bg-layer-2': '面板层次 2',
@@ -207,13 +220,13 @@ const NOTES = {
   '--dsw-alias-label-secondary': '次要文字灰阶',
 };
 
-const BUCKET_LABEL = { glass: '玻璃', wallpaper: '壁纸', ungated: '无门控' };
+const BUCKET_LABEL = { glass: '玻璃', 'ui-color': 'UI 配色', wallpaper: '壁纸', ungated: '无门控' };
 
 /** 生成契约全文（守卫逐字节比对的就是它）。 */
 export function buildContract() {
   const decls = scanStyleFamily();
 
-  const buckets = { glass: [], wallpaper: [], ungated: [] };
+  const buckets = { glass: [], 'ui-color': [], wallpaper: [], ungated: [] };
   for (const d of decls) { d.bucket = bucketOf(d.chain); buckets[d.bucket].push(d); }
 
   // 按 token 归并：{ token, decls, buckets:Set, lines[] }
@@ -235,14 +248,15 @@ export function buildContract() {
   L.push('> 生成：`node test/tools/token-contract.mjs --write`；核对：`node test/verify-token-contract.mjs`');
   L.push('> （守卫在契约与代码不一致时失败 —— 令牌集合因此不会烂掉）。');
   L.push('>');
-  L.push('> **口径**：只计样式族（`src/styles-base.js` … `src/styles-ext.js` 的 8 个域模板）里**属性位**的');
+  L.push('> **口径**：只计样式族（`src/styles/base.js` … `src/styles/ext.js` 的 8 个域模板）里**属性位**的');
   L.push('> `--dsw-*` 声明（值里的 `var(--dsw-…)` 是读不是写，不计）；门控归属按花括号栈上的**选择器链**判定。');
-  L.push('> **玻璃** = 链上有 `[data-we-glass-*]`；**壁纸** = 只有 `[data-we-wallpaper]`；');
+  L.push('> **玻璃** = 链上有 `[data-we-glass-*]`；**UI 配色** = 链上有 `[data-we-ui-color]`（主包自有门，ADR-0016）；');
+  L.push('> **壁纸** = 只有 `[data-we-wallpaper]`；');
   L.push('> **无门控** = 两者都不挂（共存审计 M1 的全部暴露面 —— 白名单见下表，新增一条守卫即红）。');
-  L.push('> JS 侧的令牌写入（`src/font/apply.js` 的 label 族等）不在本契约口径内，见 `docs/DSH-UI-INTERFACES.md`。');
+  L.push('> JS 侧的令牌写入（`src/font/apply.js` 的 label 族等）不在本契约口径内，见 `docs/CODE-STRUCTURE.md` §13。');
   L.push('');
   L.push(`共 **${decls.length}** 条声明 / **${tokens.length}** 个不同令牌。门控归属：`);
-  L.push(`玻璃 **${buckets.glass.length}** 条 · 壁纸 **${buckets.wallpaper.length}** 条 · 无门控 **${buckets.ungated.length}** 条。`);
+  L.push(`玻璃 **${buckets.glass.length}** 条 · UI 配色 **${buckets['ui-color'].length}** 条 · 壁纸 **${buckets.wallpaper.length}** 条 · 无门控 **${buckets.ungated.length}** 条。`);
   L.push('');
   L.push('## 无门控声明（白名单 —— M1 的全部暴露面）');
   L.push('');
@@ -250,7 +264,7 @@ export function buildContract() {
   L.push('（白名单 = `body[data-we-thinking-native]` 思考块自带开关 + 插件自有 bare roots 封闭集');
   L.push('`{.we-layer, .we-picker, .we-picker__modal, .we-qp}` —— 整条选择器链必须是纯逗号列表、');
   L.push('每段 trim 后精确命中集合成员，不认 `.we-*` 前缀/子串，拒未知根/混组；');
-  L.push('按宿主规范消费 token 的第三方插件无法区分「玻璃开/关」，只能拿到配方本身 —— 见 `docs/COEXISTENCE.md`）。');
+  L.push('按宿主规范消费 token 的第三方插件无法区分「玻璃开/关」，只能拿到配方本身 —— 见 `docs/HOW-IT-WORKS.md` §共存）。');
   L.push('');
   L.push('| 令牌 | 行 | 选择器链 | 归属 |');
   L.push('|---|---|---|---|');
@@ -264,7 +278,7 @@ export function buildContract() {
   L.push('| 令牌 | 条数 | 门控 | 行号 | 消费者注记 |');
   L.push('|---|---|---|---|---|');
   for (const t of tokens) {
-    const gates = ['glass', 'wallpaper', 'ungated'].filter((b) => t.buckets.has(b))
+    const gates = ['glass', 'ui-color', 'wallpaper', 'ungated'].filter((b) => t.buckets.has(b))
       .map((b) => `${BUCKET_LABEL[b]}(${cnt(t.decls, b)})`).join(' + ');
     const lines = t.lines.join(', ');
     L.push(`| \`${t.token}\` | ${t.decls.length} | ${gates} | ${lines} | ${NOTES[t.token] || ''} |`);

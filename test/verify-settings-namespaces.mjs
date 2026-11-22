@@ -29,7 +29,7 @@
  * 为什么 ②③④ 必须打**真路由**而不是读源码：它们断言的"磁盘上到底变了哪些键"只有跑一遍才知道；
  * ⑥ 反过来只读源码，两者互补。
  *
- * 环境隔离**必须在 import lib/index.js 之前**（与 test/verify-adapter.mjs:43-69 同一套约定）：
+ * 环境隔离**必须在 import lib/index.js 之前**（与 test/verify-adapter.mjs 同一套约定）：
  * 配置目录由 `DSH_WE_DATA_DIR` 决定，不隔离就会碰用户真实的那份 config.json。
  * 全程不 build、不跑 verify:all、不 commit。
  */
@@ -97,7 +97,7 @@ const dispose = apply({
 });
 const settingsRoute = routes.find((r) => r.path === SETTINGS_URL);
 
-// ── 收体 / 应答替身（形态抄 test/verify-adapter.mjs:191-220 与 verify-cache-dir.mjs:77-99）──
+// ── 收体 / 应答替身（形态抄 test/verify-adapter.mjs 与 verify-cache-dir.mjs）──
 function fakeRes() {
   const state = { status: 200, headers: {}, body: Buffer.alloc(0), ended: false };
   const res = new Writable({
@@ -314,7 +314,7 @@ console.log('\n② /settings/<ns>：只写本簇键，段外键一字不动');
   check('② 本簇键真的落盘（id 改成 core-guard）', readCfg().settings.id === 'core-guard' && coreRes.ok === true);
 
   // ② c 逐簇：用一份"每簇各有一个合法改动"的完整 body 打每个 ns，只允许本簇键变化。
-  // media 簇里 `audioSource` / `mediaIntegration` / `mediaLyricsOnline` 都是 `kind:'const'`（值由宿主
+  // media 簇里 `audioSource` / `mediaIntegration` 都是 `kind:'const'`（值由宿主
   // 决定、body 改不动），唯一可写的键是枚举 `adapterTarget` —— 所以标记值取它。
   const other = schema.sanitizeFromSchema(Object.assign({}, baseline, {
     id: 'other-core', noticeSeen: 'other-seen', blur: 21, ropeShown: false,
@@ -521,13 +521,16 @@ console.log('\n⑦ 客户端差分：只发改动键、按 ns 分组、首启迁
     }
     globalThis.SETTINGS_KEY = CLIENT_KEY;
     globalThis.SETTINGS_URL = SETTINGS_URL;
-    globalThis.selection = clientSnap(hostSettings && typeof hostSettings === 'object' ? hostSettings : {});
+    // 照 client.js 的真实初始化：store 先铺本地缓存（`...readPersisted()`），宿主值由 loadPersisted() 合并进来。
+    // 原先这里用宿主快照当初始值，等于假设"内存里已经有宿主值" —— 会把「采纳宿主时保留本地记忆」这条判据测成恒假。
+    globalThis.selection = clientSnap(localRaw && typeof localRaw === 'object' ? localRaw : {});
     globalThis.DEFAULTS = schema.DEFAULTS;
     globalThis.KINDS = schema.KINDS;
     globalThis.serializeSettings = schema.serializeSettings;
     globalThis.sanitizeSettings = clientSnap;
     globalThis.settingsNamespaceOf = schema.settingsNamespaceOf;
     globalThis.SETTINGS_META_NAMESPACE = schema.SETTINGS_META_NAMESPACE;
+    globalThis.CLIENT_ONLY = schema.CLIENT_ONLY;
     globalThis.emit = () => {};
     globalThis.applyEffects = () => {};
     globalThis.setAdapterFromHost = () => {};
@@ -596,7 +599,6 @@ console.log('\n⑦ 客户端差分：只发改动键、按 ns 分组、首启迁
   check('⑦ 陷阱 1：kind:"const" 的键一个都不发（media 簇只发 adapterTarget）',
     !('audioSource' in (putBody(c1.calls, 'media') || {}))
     && !('mediaIntegration' in (putBody(c1.calls, 'media') || {}))
-    && !('mediaLyricsOnline' in (putBody(c1.calls, 'media') || {}))
     && schema.KINDS.audioSource.kind === 'const');
   check('⑦ 请求形状不变：PUT + keepalive（pagehide 的 flush 能活下来）',
     puts1.length === 3 && puts1.every((p) => p.keepalive === true));
@@ -616,6 +618,30 @@ console.log('\n⑦ 客户端差分：只发改动键、按 ns 分组、首启迁
   check('⑦ 本地缓存仍是整段快照（宿主键数 + CLIENT_ONLY），CLIENT_ONLY 值在里面',
     Object.keys(cache).length === HOST_KEY_COUNT + CLIENT_ONLY_COUNT && cache.frameVariants && cache.frameVariants.guard === 'local-only',
     Object.keys(cache).length + ' 键');
+
+  // ⑦ b2 采纳宿主快照时，设备本地键（CLIENT_ONLY）必须保留本地值 —— #371 的附带发现：
+  // 宿主从不收这两个键，而客户端视角消毒会给它们补默认值；整份 assign 会清空本地记忆、随后写回缓存 ⇒ 真·丢数据。
+  const localOnly = clientSnap({ customFrames: { guard: 'local-memory' }, frameVariants: { v1: { a: 1 } } });
+  const b2 = await loadPersist({ hostSettings: hostPayload, localRaw: localOnly });
+  await b2.mod.loadPersisted();
+  check('⑦ b2 采纳宿主快照后 CLIENT_ONLY 仍是本地缓存的值（不被宿主默认值清空 · #371）',
+    same(b2.selection.customFrames, localOnly.customFrames) && same(b2.selection.frameVariants, localOnly.frameVariants),
+    'customFrames=' + JSON.stringify(b2.selection.customFrames) + ' frameVariants=' + JSON.stringify(b2.selection.frameVariants));
+  const cacheB2 = JSON.parse(b2.store.get(CLIENT_KEY));
+  check('⑦ b2 写回的本地缓存也没被清空（数据丢失只在这一步留痕）',
+    same(cacheB2.customFrames, localOnly.customFrames) && same(cacheB2.frameVariants, localOnly.frameVariants));
+  // 负对照跑**去掉保留逻辑**的那份源码：同一判据必须判红，否则这条断言没有判别力。
+  const dropKeep = (src) => src.replace(
+    /for \(const key of CLIENT_ONLY\) \{[\s\S]{0,240}?\n {6}\}\n/,
+    '');
+  const buggySrc = dropKeep(persistSrc);
+  check('⑦ b2 负对照夹具：去掉保留逻辑后源码确实变了（不是空替换）',
+    buggySrc !== persistSrc && !buggySrc.includes('for (const key of CLIENT_ONLY)'));
+  const b2bug = await loadPersist({ hostSettings: hostPayload, localRaw: localOnly, source: buggySrc });
+  await b2bug.mod.loadPersisted();
+  check('⑦ b2 负对照：缺了保留逻辑就把本地记忆清成默认值（同一条判据判红）',
+    same(b2bug.selection.customFrames, schema.DEFAULTS.customFrames) && !same(b2bug.selection.customFrames, localOnly.customFrames),
+    'customFrames=' + JSON.stringify(b2bug.selection.customFrames));
 
   // ⑦ c 失败 ⇒ 不推进基线 ⇒ 重发同一批键；成功后不再重发
   let failing = true;
@@ -818,19 +844,72 @@ console.log('\n⑦ 客户端差分：只发改动键、按 ns 分组、首启迁
     && same(putsOf(partial.calls).filter((p) => p.url.endsWith('/appearance')).map((p) => p.body),
       [{ blur: 26 }, { blur: 16 }]),
     '宿主 blur=' + partial.saved.blur + '，fx=' + partial.saved.fxEnabled);
+
+  // ⑦ j 复合键（#292）：轮播列表 / 隐藏清单是**就地改**（push/splice）的数组。
+  //    缺陷形态：`serializeSettings` 只做浅拷贝、基线又存了同一引用 ⇒ 就地改同时改到基线，
+  //    引用比较永远相等 ⇒ 复合键从第二次起永远进不了 PUT 体（用户侧：重启后轮播列表消失、
+  //    隐藏的壁纸复活）。修法是**基线冻结 + 按值比较**，两件事缺一不可（见 src/persistence.js 不变量）。
+  const compositeHost = schema.sanitizeFromSchema({ id: 'host-id', blur: 20 }, 'host');
+  const c5 = await loadPersist({ hostSettings: compositeHost });
+  await c5.mod.loadPersisted();
+  c5.selection.rotationGroups.push(
+    { id: 'grp-a', name: 'A', interval: 30, order: 'sequence', trigger: 'interval', wallpaperIds: ['w1', 'w2'] });
+  c5.selection.hiddenIds.push('w3');
+  c5.mod.flushPersist();
+  await drain();
+  const core5 = putBody(c5.calls, 'core') || {};
+  check('⑦ 复合键就地修改（push 到与基线共用的数组）必须进 PUT 体：rotationGroups + hiddenIds 都在',
+    Array.isArray(core5.rotationGroups) && core5.rotationGroups.some((g) => g.id === 'grp-a')
+    && Array.isArray(core5.hiddenIds) && core5.hiddenIds.includes('w3'),
+    'core body=' + JSON.stringify(core5));
+  // 基线推进后再 flush：无改动 ⇒ 一个请求都不发。冻结基线若配引用比较，这里会退化成每次都发。
+  const compositePuts = putsOf(c5.calls).length;
+  c5.mod.flushPersist();
+  await drain();
+  check('⑦ 复合键：基线推进后无改动 ⇒ 不再发（按值比较不能退化成每次全量重发）',
+    putsOf(c5.calls).length === compositePuts,
+    '多发了 ' + (putsOf(c5.calls).length - compositePuts) + ' 条');
+  // 第二次就地修改（splice 删除）同样要被发现 —— 只修「第一次」不算修好。
+  // 取**最后一条** core PUT：同一实例的第二轮改动会追加一条，`putBody` 取首条会读到上一轮。
+  const lastCoreBody = (calls) => {
+    const list = putsOf(calls).filter((c) => c.url === SETTINGS_URL + '/core');
+    return list.length ? list[list.length - 1].body : null;
+  };
+  c5.selection.rotationGroups.splice(0, 1);
+  c5.mod.flushPersist();
+  await drain();
+  const core5b = lastCoreBody(c5.calls) || {};
+  check('⑦ 复合键：splice 删除也要被发现（第二次就地修改照样进 PUT 体）',
+    Array.isArray(core5b.rotationGroups) && !core5b.rotationGroups.some((g) => g.id === 'grp-a')
+    && !('hiddenIds' in core5b),
+    'core body=' + JSON.stringify(core5b));
+  // 负对照：只把「载入宿主值后冻结基线」这一处退回旧写法（基线 = 同一引用）⇒ 同一序列必须判红。
+  const unfrozenSrc = persistSrc.replace(
+    'pushedSnapshot = cloneSettingsSnapshot(serializeSelection());',
+    'pushedSnapshot = serializeSelection();');
+  check('负对照的改写必须真的命中源码（去掉基线冻结）', unfrozenSrc !== persistSrc);
+  const c6 = await loadPersist({ hostSettings: compositeHost, source: unfrozenSrc });
+  await c6.mod.loadPersisted();
+  c6.selection.rotationGroups.push(
+    { id: 'grp-b', name: 'B', interval: 30, order: 'sequence', trigger: 'interval', wallpaperIds: ['w9'] });
+  c6.mod.flushPersist();
+  await drain();
+  const core6 = putBody(c6.calls, 'core') || {};
+  check('⑦ 负对照（基线不冻结 ⇒ 原缺陷）：就地 push 的复合键必须进不了 PUT 体（判据因此有牙）',
+    !('rotationGroups' in core6), 'core body=' + JSON.stringify(core6));
 }
 
 // ═══ ⑧ 刻度：组件写路径的 patch 值按"当前刻度"落盘（P1-FIX）════════════════════
 // 缺陷（终态 verifier 端到端复现）：组件差分 body **不带** `settingsVersion`，宿主把它当"档"跑
 // `migrateSettings` ⇒ v4 的 6 个换算键每次经组件写路径落盘都被**二次换算**（70 ⇒ 100 / 35 / 88）。
-// 机制：`lib/routes/settings.js` 的 `sanitizeSettings(parsed)` → `lib/settings-schema.js:1687-1689`
+// 机制：`lib/routes/settings.js` 的 `sanitizeSettings(parsed)` → `lib/settings-schema.js`
 // `migrateSettings`（`Number(raw.settingsVersion)` 为 NaN ⇒ 不短路）→ `:1713-1719` 的 rescale；
 // `lib/kernel/config.js` 的 `mergeSettings` 又把"未规范化的存量 base + 已换算的 patch"混着迁一次。
 // ⑦ 只断言字节变没变与字符串键 `id`，从不比对这 6 个键的**字面值** ⇒ 缺陷落在它的盲区里（本节由来）。
 // 本节的判据全部读**磁盘上的字面值**，并带"二次换算值 ≠ 期望值"的夹具自检（防止判据恒真）。
 console.log('\n⑧ 组件写路径：v4 换算键按当前刻度落盘（70 就是 70）');
 {
-  // 6 个换算键；WRONG = 若被当旧档再换算一次会得到的值（`lib/settings-schema.js:1706-1719`）。
+  // 6 个换算键；WRONG = 若被当旧档再换算一次会得到的值（`lib/settings-schema.js`）。
   const SCALE_KEYS = [
     'glassAlpha', 'sidebarAlpha', 'sidebarContentAlpha',
     'settingsWindowTransparency', 'floatersTransparency', 'leftSidebarTransparency',
@@ -888,6 +967,62 @@ console.log('\n⑧ 组件写路径：v4 换算键按当前刻度落盘（70 就�
     after.blur === 9, '磁盘=' + JSON.stringify(after.blur));
   check('⑧ 老档：仍是宿主持久键数（迁移没多键也没丢键）',
     Object.keys(after).length === HOST_KEY_COUNT, Object.keys(after).length + ' 键 vs 宿主 ' + HOST_KEY_COUNT + ' 键');
+}
+
+console.log('\n⑨ 纯迁移矩阵：v<4 才换算 / v>=4 一次都不换算（SETTINGS_VERSION 抬高后的防线）');
+{
+  // ⑧ 打的是**组件写路径**（body 不带 settingsVersion ⇒ NaN ⇒ 不短路）。
+  // 本条打的是另一条腿：**正常设置迁移**。旧实现靠 `v >= SETTINGS_VERSION` 早退隐式保证
+  // v4 换算只跑一次；SETTINGS_VERSION 6→8 之后，v6 存档不再早退 ⇒ 会掉进换算
+  //（实测 glassAlpha 55 ⇒ 92）。判据对每个档位逐一断言，不依赖早退这条隐式保证。
+  const SCALED = [
+    { key: 'glassAlpha', factor: 100 / 60, max: 100, legacyMax: 60 },
+    { key: 'sidebarAlpha', factor: 1 / 2, max: 100, legacyMax: 200 },
+    { key: 'sidebarContentAlpha', factor: 100 / 80, max: 100, legacyMax: 80 },
+    { key: 'settingsWindowTransparency', factor: 100 / 60, max: 100, legacyMax: 60 },
+    { key: 'floatersTransparency', factor: 100 / 60, max: 100, legacyMax: 60 },
+    { key: 'leftSidebarTransparency', factor: 100 / 60, max: 100, legacyMax: 60 },
+  ];
+  const scaledTo = (x, s) => Math.min(s.max, Math.round(x * s.factor));
+  const V = schema.sanitizeFromSchema({}, 'host').settingsVersion;
+
+  // 9 a v<4 / 无版本号 ⇒ 必须换算
+  for (const ver of [undefined, 0, 1, 2, 3]) {
+    for (const s of SCALED) {
+      const raw = { [s.key]: Math.min(s.legacyMax, 45) };
+      if (ver !== undefined) raw.settingsVersion = ver;
+      const got = schema.sanitizeFromSchema(raw, 'host')[s.key];
+      check(`⑨ v=${ver ?? '(无版本号)'} ${s.key} 旧刻度 ${raw[s.key]} ⇒ ${scaledTo(raw[s.key], s)}`,
+        got === scaledTo(raw[s.key], s), '实际=' + JSON.stringify(got));
+    }
+  }
+
+  // 9 b v>=4 ⇒ 一次都不许换算（本次修复的要害；55 是 PR 描述里被错标成 92 的那个值）
+  for (const ver of [4, 5, 6, 7, V]) {
+    for (const s of SCALED) {
+      for (const v of [20, 55, 80]) {
+        const capped = Math.min(s.max, v);
+        const got = schema.sanitizeFromSchema({ settingsVersion: ver, [s.key]: capped }, 'host')[s.key];
+        check(`⑨ v=${ver} ${s.key}=${capped}（新刻度）原样保留`, got === capped, '实际=' + JSON.stringify(got));
+      }
+    }
+  }
+
+  // 9 c 负对照：把 preV4Scale 强制为 true 的形态，在 v6 存档上必然二次缩放
+  // —— 证明上面 9 b 不是恒真判据。（对源码做一次字符串替换后临时求值，不落盘、不改仓库文件。）
+  {
+    const src = readFileSync(join(ROOT, 'lib', 'settings-schema.js'), 'utf8');
+    const naiveSrc = src.replace(/const preV4Scale = .*;/, 'const preV4Scale = true;');
+    check('⑨ 负对照装配：源码里 preV4Scale 那行被成功替换（否则下面的自检恒真）',
+      naiveSrc !== src && /const preV4Scale = true;/.test(naiveSrc));
+    const naivePath = join(ISO, 'settings-schema-naive.mjs');
+    writeFileSync(naivePath, naiveSrc);
+    const naive = await import(pathToFileURL(naivePath).href);
+    const victim = 'glassAlpha';
+    const naiveGot = naive.sanitizeFromSchema({ settingsVersion: 6, [victim]: 55 }, 'host')[victim];
+    check(`⑨ 负对照：不补守卫时 v6 存档的 ${victim}=55 会被二次缩放（≠ 55，证明防线有效）`,
+      naiveGot !== 55, '无守卫版得到=' + JSON.stringify(naiveGot));
+  }
 }
 
 if (typeof dispose === 'function') { try { dispose(); } catch { /* 清理失败不影响判定 */ } }

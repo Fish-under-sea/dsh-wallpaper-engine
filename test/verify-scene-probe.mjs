@@ -66,7 +66,10 @@ async function loadMutant (label, transform) {
 // 相对路径是 `../scene-manifest.js` —— 写死 `./` 会让改写落空，临时目录里就解析不到该模块。
     .replace(/['"][^'"]*scene-manifest\.js['"]/, JSON.stringify(pathToFileURL(join(ROOT, 'lib', 'scene-manifest.js')).href))
     // 同上：specifier 形式容忍（真源可能用 `../pkg-read.js`）。
-    .replace(/['"][^'"]*pkg-read\.js['"]/, JSON.stringify(pathToFileURL(join(ROOT, 'lib', 'pkg-read.js')).href));
+    .replace(/['"][^'"]*pkg-read\.js['"]/, JSON.stringify(pathToFileURL(join(ROOT, 'lib', 'pkg-read.js')).href))
+    // #208 起 scene-probe 也 import 缓存键派生点（`../cache-keys.js`）—— 变异体落在 tmp 目录，
+    // 不把这条 specifier 改成绝对 file: URL 就会 ERR_MODULE_NOT_FOUND（本守卫曾因此整片短路）。
+    .replace(/['"][^'"]*cache-keys\.js['"]/, JSON.stringify(pathToFileURL(join(ROOT, 'lib', 'cache-keys.js')).href));
   const dir = join(ISO, 'mutants');
   mkdirSync(dir, { recursive: true });
   const file = join(dir, (mutantSeq++) + '-' + label + '.mjs');

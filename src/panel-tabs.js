@@ -34,12 +34,14 @@
  *   · 本文件必须保持浏览器安全（无 import / require / Node API），且**不得有顶层可执行语句**
  *     读 client.js 的 const（会被内联到 bundle 顶部，撞 TDZ）。
  *
- * 把五个域的**节渲染器**按域搬进同族兄弟模块（构建期内联在本文件之前，
- * 见 scripts/build-client.mjs 的 INLINE_MODULES）：src/panel-tabs-wallpaper.js /
- * -appearance.js / -mascot.js / -effects.js / -advanced.js。本文件只留八个 render*Tab
+ * 域模块的**节渲染器**按域住在同族兄弟模块（构建期内联在本文件之前，见 scripts/build-client.mjs 的
+ * INLINE_MODULES）：src/panel-tabs/appearance.js / -mascot.js / -effects.js / -advanced.js；壁纸库的
+ * 壁纸库 4 节 + 播放 2 节渲染器随子包走（packages/media-bridge/src/*），经面板节注册表挂回来。本文件只留八个 render*Tab
  * （守卫与 src/client.js 的调用点都按名字取它们，导出名必须在**本文件**里有绑定）与
- * extensionModules()。搬出的 render*Section / renderMascotFormCards / renderFont* 等
- * 仍是同一工厂作用域的自由名字（打包后同作用域；按文件 import 的台架按既有口径挂全局）。
+ * extensionModules()。主包内搬出的 render*Section / renderMascotFormCards 等仍是同一工厂作用域的
+ * 自由名字（打包后同作用域；按文件 import 的台架按既有口径挂全局）；**子包**的渲染器
+ * （`packages/fonts` 的字体节、`packages/media-bridge` 的 4+2 节）不在这条作用域里 —— 它们经面板节
+ * 注册表 / 扩展注册表挂回来。
  * **接缝四类越界的判据扫的是全族并集**（test/verify-client.mjs 的 RENDERERS 表 +
  * test/tools/src-scope.mjs 的 panelText()），搬出去不等于搬出判据。
  */
@@ -62,12 +64,16 @@ function weComponentVisibleOf(components, name) {
   // 本页签只把 ctx **转交**给各节、自己不读字段 —— 所以那不是无操作声明，是"要什么写在签名处"。
   function renderWallpaperTab(ctx) {
     const { } = ctx;
-    return React.createElement(React.Fragment, null,
-      renderWallpaperCurrentSection(ctx),
-      renderWallpaperTransitionSection(ctx),
-      renderWallpaperRotationSection(ctx),
-      renderWallpaperUploadsSection(ctx),
-    );
+    // 四节（current / 切换过场 / 自动轮播 / 自定义壁纸）在 P-D S3a–S3c 起全部搬进
+    // packages/media-bridge 的浏览器半边 ⇒ 本页签**只画注册节**，屏上顺序全由描述符的
+    // order 决定（current=10 / transition=20 / rotation=30 / uploads=40；顺序判据见
+    // verify-scene-live 的节顺序一节），**不**靠求值顺序。
+    // ⚠️ 注册表为空 = 该子包没装 / 被关：本页签为空，**不**崩、不整页消失
+    //    （D3①/D3③ 在这条通道上的形态：缺的是这几节，不是这一页）。
+    const registered = wePanelSectionsOf("library").map((section) => (
+      React.createElement(React.Fragment, { key: section.id }, section.render(ctx))
+    ));
+    return React.createElement(React.Fragment, null, registered);
   }
 
 
@@ -78,17 +84,17 @@ function weComponentVisibleOf(components, name) {
   // 用户口径：主题 → 细节 → 玻璃 UI → 侧边栏圆角 → 全局 UI 配色 → 全局字体。
   // 与上一版的差别只有一处：**「玻璃 UI」与「侧边栏圆角」对调**（前者上移到细节之后）。
   // 首行的空解构是**契约**（test/verify-scene-live.mjs 的『每个页签首行都从 ctx 解构』）：
-  // 本页签只把 ctx 转交给各节、自己不读字段 —— 所以那不是无操作声明。
+  // 本页签只把 ctx 转交给各节、自己不读字段 —— 所以那不是无操作声明，是"要什么写在签名处"。
   function renderAppearanceTab(ctx) {
     const { } = ctx;
-    // 第六节「全局字体」在 P-C 之后**住在 packages/fonts**（子包把渲染器登记进
-    // src/extension-registry.js 的面板节注册表）⇒ 这里按注册表续接，屏上位置仍**在最后**
-    //（描述符不写 `order` ⇒ 落到默认位 100；顺序口径与 extensionModules() 同源）。
-    // ⚠️ 注册表为空 = 该子包没装 / 被关：页签照画前五节，**不**整页签消失
-    //    （D3①/D3③ 在这条通道上的形态：缺的是那一节，不是这一页）。
-    const registered = wePanelSectionsOf("appearance").map((section) => (
-      React.createElement(React.Fragment, { key: section.id }, section.render(ctx))
-    ));
+    // 尾部续接的注册节（fonts 落默认位 100 在最后）。⚠️ glass 不在这条通道上：它有**内置位**
+    // （第三节，由下面的 renderAppearanceGlassSection 占位桩锚定）⇒ 排除，否则一节画两遍
+    // （ADR-0016 第二刀：渲染器住 packages/glass，按 id 从注册表取）。
+    const registered = wePanelSectionsOf("appearance")
+      .filter((section) => section.id !== "glass")
+      .map((section) => (
+        React.createElement(React.Fragment, { key: section.id }, section.render(ctx))
+      ));
     return React.createElement(React.Fragment, null,
       renderAppearanceThemeSection(ctx),
       renderAppearanceDetailSection(ctx),
@@ -101,13 +107,24 @@ function weComponentVisibleOf(components, name) {
     );
   }
 
+  // 「主题预设」+「玻璃 UI」节的**注册表占位桩**（ADR-0016 第二刀）：真渲染器住 packages/glass
+  // （它把自己的 render 登记进 src/extension-registry.js 的面板节注册表）。这里按 id 取出来、
+  // 在内置位（第三节）上调它 —— 屏上顺序与搬迁前逐字一致，两种档面（设置页 / 侧栏）同一条路。
+  // 注册表里没有 = 该子包没装 / 行被关 ⇒ 返回 null（React 对 null 子节点零渲染）⇒
+  // **缺的是这一节，不是这一页**（D3①/D3③；fonts 那条尾部通道同款语义）。
+  // 迟到注册（子包产物在面板首画之后才求值）由注册表的 wePanelSectionFire 重画兜底。
+  function renderAppearanceGlassSection(ctx) {
+    const section = wePanelSectionsOf("appearance").find((s) => s.id === "glass");
+    return section ? section.render(ctx) : null;
+  }
+
 
   // 模块级 ↺ 的**薄包装**（issue #192）：真实现住在 `src/module-reset.js`（panel-tabs 与
   // glass-panel 共用，抽出来才能让挂载台 import 真实现）。这里只把"取词 + 处理器"两样外界
   // 喂给它 —— 中文因此留在本文件的 `weT(...)` 里（i18n 扫描器认这个形态；写进被调模块会
   // 被判成"裸中文"），各节调用点则保持 `moduleResetButton("模块名", onResetModule)` 这么短。
   // ⚠️ 必须是**本文件的模块级（工厂作用域）声明**，不能留在 `renderAppearanceTab` 体内：
-  //    五个域模块（src/panel-tabs-*.js）按域搬出后仍按这个名字引用它 —— 打包后同一工厂
+  //    四个域模块（src/panel-tabs/*.js）按域搬出后仍按这个名字引用它 —— 打包后同一工厂
   //    作用域没问题，但按文件 import 的守卫台架（verify-fontset / verify-scene-live 的
   //    侧栏档）只有把真实现挂到全局才找得到。
   function moduleResetButton(moduleName, onResetModule) {
@@ -120,7 +137,7 @@ function weComponentVisibleOf(components, name) {
   function renderAudioTab(ctx) {
     const { onToggleAudio, onVideoVolume, sel } = ctx;
     // 声音：壁纸音轨（视频 / 场景内嵌 MP4 / 场景包内音频共用一套设置）。
-    // 系统音频反应 / 媒体信息 / 在线歌词三键**恒为常开**（schema kind 'const'）：
+    // 系统音频反应 / 媒体信息两键**恒为常开**（schema kind 'const'）：
     // 面板不提供页面定义，运行时两侧一律按默认接入读值。
     return React.createElement(React.Fragment, null,
       React.createElement("div", { className: "we-picker__section" },
@@ -128,8 +145,7 @@ function weComponentVisibleOf(components, name) {
           React.createElement("span", { className: "we-picker__section-label" }, weT("声音")),
         ),
         SliderRow(weT("音量"), 0, 100, 5,
-          Math.round((Number(sel.videoVolume) || 0) * 100), onVideoVolume,
-          Math.round((Number(sel.videoVolume) || 0) * 100) + "%"),
+          Math.round((Number(sel.videoVolume) || 0) * 100), onVideoVolume, "%"),
         switchRow(weT("壁纸音轨"), sel.videoAudioEnabled !== false, () => onToggleAudio(), {
           hint: weT("关闭=静音（保留音量数值）· 开启时音量 0 自动 50%"),
           tooltip: weT("视频壁纸与场景壁纸（内嵌 MP4 音轨 / 包内独立音频）共用；默认静音，开启时若音量为 0 会自动提到 50%"),
@@ -179,6 +195,8 @@ function weComponentVisibleOf(components, name) {
         renderMascotFormCards(sel, previewArt, previewW, previewH, onRopeFormChange, onMascotPick, onMascotClear, onMascotFormConfirm, onDisarmConfirm, paneWidth),
         sel.mascotError
           && React.createElement("div", { className: "we-picker__hint we-avatar-error", key: "rope-custom-err" }, sel.mascotError),
+        // 吉祥物大小的**显示刻度**与存储刻度不同（ropeScale = 倍率，滑杆值本身也是倍率）：
+        // 右侧是 `Math.round(scale*100)+"%"` 的预格式化整串 ⇒ 保持只读回显（#255⑤ 明确保留）。
         SliderRow(weT("吉祥物大小"), ROPE_SCALE_MIN, ROPE_SCALE_MAX, ROPE_SCALE_STEP,
           sel.ropeScale, onRopeScaleChange, Math.round(sel.ropeScale * 100) + "%", "rope-scale"),
       ),
@@ -203,6 +221,12 @@ function weComponentVisibleOf(components, name) {
         }, sidebarSurface ? weT("去挑一张 ›") : weT("选择壁纸")),
       );
     }
+    // P-D S3d：播放配置两节（倍速/帧率上限 order 60、适配/翻转 order 70）已搬进壁纸子包的
+    // 浏览器半边 ⇒ 组装点只按注册表续接（`wePanelSectionsOf('playback')`，与 library 页签同款）。
+    // 注册表为空 ⇒ 只是少这两节，整页签照旧渲染（与 library 的降级口径一致）。
+    const registered = wePanelSectionsOf("playback").map((section) => (
+      React.createElement(React.Fragment, { key: section.id }, section.render(ctx))
+    ));
     return React.createElement(React.Fragment, null,
       React.createElement("div", { className: "we-picker__section" },
         React.createElement("div", { className: "we-picker__section-head" },
@@ -211,8 +235,7 @@ function weComponentVisibleOf(components, name) {
         renderEffectsSlidersSection(ctx),
         renderEffectsLiveSection(ctx),
         renderEffectsSourceSection(ctx),
-        renderEffectsPlaybackSection(ctx),
-        renderEffectsFitSection(ctx),
+        registered,
       ),
     );
   }
@@ -266,7 +289,7 @@ function weComponentVisibleOf(components, name) {
   //   二号 = 点击效果与拖尾效果（packages/fx）、三号 = 3D 效果（packages/parallax）**各自
   //          是一个独立包** —— 三份 bundle 的求值顺序不保证，同一个工厂作用域里再也放不下
   //          一份"按数组顺序排好的清单"，于是"谁登记了什么"落在一张共享注册表上
-  //          （src/extension-registry.js；跨包通道见 BUNDLE-SPLIT §6.2）。
+  //          （src/extension-registry.js；跨包通道见 ADR-0014 S5.1 / S5.4）。
   // ⚠️ **顺序即屏上顺序**：跨包顺序**不能**靠数组序（bundle 求值顺序不是契约），改由描述符的
   //    `order` 声明（avatar=1 / fx=2 / parallax=3），排序 = (order, 注册序)。
   //    加第四项 = 在它自己的包里调 `weRegisterExtensionModule(id, descriptor)`，本文件零改动。
@@ -370,7 +393,7 @@ function weComponentVisibleOf(components, name) {
           React.createElement("p", { className: "we-about__p" },
             weT("把 Wallpaper Engine 的壁纸搬到 DSH 界面后面：视频直接播放，场景（Scene）与网页（Web）壁纸由内置的 WebWallGL 引擎实时渲染，再配上一整套液态玻璃界面改造 —— 你桌面上那张会动的画，现在就在对话背后放着。🎬✨")),
           React.createElement("p", { className: "we-about__p" },
-            weT("壁纸全部来自你自己的机器（本机库 / WE 工程目录 / 手动上传），插件不联网也能用，更不会把它们传到任何地方。🔒")),
+            weT("壁纸默认全部来自你自己的机器（本机库 / WE 工程目录 / 手动上传），插件不联网也能用；只有你主动添加图片 URL / Bing 每日一图时才会联网下载，不会上传你的任何文件。🔒")),
         ),
       ),
       // ── ② 仓库与 Star ──

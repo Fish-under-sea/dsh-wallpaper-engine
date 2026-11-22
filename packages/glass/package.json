@@ -1,0 +1,35 @@
+{
+  "name": "dsh-plugin-wallpaper-engine-glass",
+  "version": "1.4.3",
+  "description": "Liquid glass surfaces for the DSH wallpaper engine: per-surface glaze variables, the surface manager runtime, and the Glass section of the Appearance tab. Disabling this row returns the host to its native theme.",
+  "icon": "./icon.png",
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.glass.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json",
+    "./cordis.patch.yml": "./cordis.patch.yml"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": ["@deepseek-ai/dsh-client-runtime", "dsh-plugin-wallpaper-engine"],
+      "platform": "web",
+      "immediately": true
+    }
+  },
+  "files": ["lib/", "cordis.patch.yml", "locale/", "icon.png", "package.json"],
+  "peerDependencies": {
+    "@deepseek-ai/dsh-host-webserver": ">=0.1.5-rc.1"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-host-webserver": {
+      "optional": true
+    }
+  },
+  "license": "MIT"
+}

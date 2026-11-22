@@ -63,7 +63,7 @@
 //       这是地板的**反向判据**：它证明"绕过地板"只能经这一个显式开关发生。
 //
 // Usage: node test/verify-readability.mjs
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { styleSources, cssBodyOf } from './tools/src-scope.mjs';
 
 const results = [];
@@ -73,6 +73,12 @@ function check(name, ok, detail) {
 }
 
 const SRC = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
+// ADR-0016 第二刀起玻璃设置节的 UI 行（现 packages/glass/src/glass-panel.js）住玻璃子包产物 ⇒ 需要"UI 行
+// 在不在 / 文案过不过 weT"这类**面板文本**判据的，读双工件拼接面（主包 + packages/glass）；
+// 数值/配方判据仍以主包 SRC 为准（玻璃量写入仍在 src/effects.js，第三刀才随包走）。
+const GLASS_BUNDLE_SRC = readFileSync(new URL('../packages/glass/lib/client.glass.js', import.meta.url), 'utf8');
+const PANEL_SRC_ALL = SRC + GLASS_BUNDLE_SRC;
+const GLASS_CSS_SRC = readFileSync(new URL('../packages/glass/src/glass-css.js', import.meta.url), 'utf8');
 
 // ── source → values ─────────────────────────────────────────────────────────
 function num(re, text = SRC) {
@@ -82,8 +88,9 @@ function num(re, text = SRC) {
 
 // 1) the named JS constants (single source of truth for both floor values)
 const FLOOR_JS = {
-  light: num(/const READABILITY_FLOOR = ([\d.]+);/),
-  dark: num(/const READABILITY_FLOOR_DARK = ([\d.]+);/),
+  // ADR-0016 第四刀：常量随玻璃 CSS 走（packages/glass/src/glass-css.js）⇒ 从玻璃包源提取。
+  light: num(/const READABILITY_FLOOR = ([\d.]+);/, GLASS_CSS_SRC),
+  dark: num(/const READABILITY_FLOOR_DARK = ([\d.]+);/, GLASS_CSS_SRC),
 };
 
 // 2) the injected stylesheet: evaluate the CSS template literal with exactly
@@ -91,7 +98,7 @@ const FLOOR_JS = {
 // ⚠️ 锚点锚在行首且容忍缩进（产物把内联模块整段缩进过）：散文里出现同样的声明字面量会把锚点带偏。
 // （刀3）：样式表拆成 8 个域模板 + 组装点 ⇒ 取文改走 cssBodyOf（按声明顺序拼回一份
 // CSS 体，与旧单模板取文逐字节相同）；取不到任何模板会抛错，不再静默返回空串让判据恒真。
-const CSS_BODY = cssBodyOf(SRC);
+const CSS_BODY = cssBodyOf(SRC + readFileSync(new URL('../packages/glass/lib/client.glass.js', import.meta.url), 'utf8'));
 let CSS = '';
 let cssError = null;
 try {
@@ -100,7 +107,8 @@ try {
 } catch (err) { cssError = err && err.message; }
 
 // 3) the glass-alpha mapping, derived from the source (never re-typed here)
-const GMAP = SRC.match(/const glassAlpha = Math\.max\(([\d.]+), ([\d.]+) - \(selection\.glassAlpha \/ ([\d.]+)\) \* ([\d.]+)\);/);
+// ADR-0016 第三刀：glassAlpha 曲线随玻璃层出户 ⇒ 从双工件拼接面提取（主包 + 玻璃包产物）。
+const GMAP = PANEL_SRC_ALL.match(/const glassAlpha = Math\.max\(([\d.]+), ([\d.]+) - \(selection\.glassAlpha \/ ([\d.]+)\) \* ([\d.]+)\);/);
 const glassAlpha = GMAP
   ? (pct) => Math.max(Number(GMAP[1]), Number(GMAP[2]) - (pct / Number(GMAP[3])) * Number(GMAP[4]))
   : null;
@@ -319,6 +327,50 @@ function main() {
   check('C0b the accent-ink function ships and picks a contrast-safe foreground per accent luminance (#127)',
     inkUsable, 'extracted=' + (inkSrc !== null) + ' ' + inkDetail);
 
+  // ── C0c: #334 深色孪生块的「保留比例」（亮 accent 不再被一律掺白洗淡）────────
+  // #239 的现场修法是"深色块一律掺白 45%"；对暗 accent 有效，却把亮 accent（#F1717F，
+  // 相对亮度 0.320）洗成 ≈#F7B1B9。#334 要求按相对亮度分流：亮于 0.3 ⇒ 100%（原色直出），
+  // 否则 55%（= 掺白 45% 的逐位现状）；shimmer 单独一档（亮 82% / 暗 70%）。
+  // 判据直接钉这几个数：默认 accent #4f8cff(0.256) 与 #239 现场 #2050a0/#242424 必须
+  // 仍落 55%（可读性保证不回退），#F1717F/#7aaaff 必须 100%（饱和度不回退）。
+  const fnSrcOf = (name) => {
+    const at = SRC.indexOf('function ' + name + '(');
+    if (at < 0) return null;
+    let depth = 0;
+    for (let i = at; i < SRC.length; i++) {
+      const ch = SRC[i];
+      if (ch === '{') depth++;
+      else if (ch === '}') { depth--; if (depth === 0) return SRC.slice(at, i + 1); }
+    }
+    return null;
+  };
+  const keepSrc = fnSrcOf('weUiDarkKeep');
+  const shimmerSrc = fnSrcOf('weUiDarkShimmerKeep');
+  let keepFx = null;
+  let keepDetail = '';
+  let keepUsable = false;
+  if (keepSrc && shimmerSrc) {
+    try {
+      keepFx = new Function(keepSrc + '\n' + shimmerSrc + '\nreturn { weUiDarkKeep, weUiDarkShimmerKeep };')();
+      const bright = keepFx.weUiDarkKeep('#F1717F');
+      const hostDark = keepFx.weUiDarkKeep('#7aaaff');
+      const defaultAccent = keepFx.weUiDarkKeep('#4f8cff');
+      const darkAccent = keepFx.weUiDarkKeep('#2050a0');
+      const blackAccent = keepFx.weUiDarkKeep('#242424');
+      const invalid = keepFx.weUiDarkKeep('not-a-color');
+      const shimmerBright = keepFx.weUiDarkShimmerKeep('#F1717F');
+      const shimmerDark = keepFx.weUiDarkShimmerKeep('#4f8cff');
+      keepUsable = bright === '100%' && hostDark === '100%' && defaultAccent === '55%'
+        && darkAccent === '55%' && blackAccent === '55%' && invalid === '55%'
+        && shimmerBright === '82%' && shimmerDark === '70%';
+      keepDetail = 'bright=' + bright + ' hostDark=' + hostDark + ' default=' + defaultAccent
+        + ' dark=' + darkAccent + ' black=' + blackAccent
+        + ' shimmer=' + shimmerBright + '/' + shimmerDark;
+    } catch (e) { keepUsable = false; keepDetail = String(e && e.message); }
+  }
+  check('C0c the dark-twin keep-ratio function ships: bright accents keep 100%, dark accents keep 55% (#334)',
+    keepUsable, 'extracted=' + Boolean(keepFx) + ' ' + keepDetail);
+
   const FLOOR = {
     light: lightVars ? Number(lightVars[1]) : NaN,
     dark: darkVars ? Number(darkVars[1]) : NaN,
@@ -406,7 +458,7 @@ function main() {
       fills.length === 2 && !fill(fills[0].replace(/var\(--we-glass-alpha, [^)]+\)/, '0.88')));
     //  用户口径：输入框退出思考玻璃作用域 ⇒ fill 接管的名单只剩
     // 气泡与两类代码围栏；输入卡在挂门规则里出现一次就算红（双向判据）。
-    const roots = ['[class*="_bubble"]',
+    const roots = ['[class*="_bubble_"]',
       '[data-chat-flow] .md-code-block', ':has(> pre > code)'];
     check('F2d bubble and message fences retain their slider fill; composer stays outside the thinking-glass scope',
       roots.every((anchor) => normal.some((r) => r.header.includes(anchor)
@@ -419,23 +471,39 @@ function main() {
     // 判据取宿主写在气泡元素上的 role="tooltip"（全 asar 唯一一处），它同时免疫类名
     // 哈希漂移与浮层 DOM 位置 ⇒ 每一条 _bubble 规则要么 chat-flow 作用域、要么带豁免。
     // 数下界 4 = 现有四条（fill / 霜釉 / 气泡内代码块清底 / fallback 摘霜），少一条即红。
-    const bubbleRules = all.filter((r) => r.header.includes('[class*="_bubble"]')
+    // ⚠️ 第二颗雷（0.2.2-rc.1 的 QuestionReplyView，即「AI 提问框」）：宿主给气泡又包了一层
+    //    无 border-radius 的 `Xxx_bubbleWidth` wrapper，裸 `_bubble` 会把它一起刷成方形玻璃，
+    //    气泡圆角外露出四个方角。⇒ 族锚点用哈希形态 `_bubble_`（宿主 CSS Module 形如
+    //    `_bubble_<hash>_<n>`，camelCase 的 `*_bubbleWidth` 不含它），F2dN2 钉住这条。
+    const bubbleRules = all.filter((r) => r.header.includes('[class*="_bubble_"]')
       && !r.header.includes('@supports'));
     // ⚠️ §11 A1-4：这里原先允许"头里有 [data-chat-flow] 就放行"，于是把
-    //    `… [data-chat-flow] [class*="_bubble"]:not([role="tooltip"]) .md-code-block`（当前
-    //    `src/styles-shell.js` 里那一条）的 `:not(...)` 摘掉仍全绿。作用域与豁免是**两件事**：
+    //    `… [data-chat-flow] [class*="_bubble_"]:not([role="tooltip"]) .md-code-block`（当前
+    //    `src/styles/shell.js` 里那一条）的 `:not(...)` 摘掉仍全绿。作用域与豁免是**两件事**：
     //    `[data-chat-flow]` 只说"在对话流里"，不说"不是宿主 Tooltip 那个 _bubble"。
-    //    今天四条 `_bubble` 规则（三条在 `src/styles-shell.js`、一条在 `src/styles-ext.js`）都同时有两者
+    //    今天四条 `_bubble` 规则（三条在 `src/styles/shell.js`、一条在 `src/styles/ext.js`）都同时有两者
     //    ⇒ 收紧成"每条都必须带 role 豁免"：语义不放松，判据才有牙。
     const bubbleExempt = (r) => (r.header || '').includes(':not([role="tooltip"])');
-    check('F2dN every [class*="_bubble"] rule excludes the host Tooltip (role="tooltip")',
+    check('F2dN every [class*="_bubble_"] rule excludes the host Tooltip (role="tooltip")',
       bubbleRules.length >= 4
       && bubbleRules.every(bubbleExempt),
       bubbleRules.filter((r) => !bubbleExempt(r)).map((r) => r.header).join(' | ')
         || bubbleRules.length + ' 条 _bubble 规则全部带 role 豁免');
     check('negative control: chat-flow 作用域不能代替 role="tooltip" 豁免（A1-4）',
-      bubbleExempt({ header: 'body[data-we-glass-page] [data-chat-flow] [class*="_bubble"] .md-code-block' }) === false
-        && bubbleExempt({ header: 'body[data-we-glass-page] [class*="_bubble"]:not([role="tooltip"]) .md-code-block' }) === true);
+      bubbleExempt({ header: 'body[data-we-glass-page] [data-chat-flow] [class*="_bubble_"] .md-code-block' }) === false
+        && bubbleExempt({ header: 'body[data-we-glass-page] [class*="_bubble_"]:not([role="tooltip"]) .md-code-block' }) === true);
+    // ⚠️ 0.2.2-rc.1：裸 `_bubble` 还会命中无圆角的同族 wrapper（`Xxx_bubbleWidth`）——它把
+    //    气泡包了一层、与气泡同盒，被刷上方形的釉/霜/阴影后，圆角外侧就露出四个方角。
+    //    族锚点必须是宿主 CSS Module 的哈希形态 `_bubble_<hash>_<n>`。
+    const bareBubble = all.filter((r) => r.header.includes('[class*="_bubble"]')
+      && !r.header.includes('@supports'));
+    check('F2dN2 bubble anchors use the hashed form _bubble_ (bare _bubble also matches unrounded wrappers)',
+      bareBubble.length === 0 && bubbleRules.length >= 4,
+      bareBubble.map((r) => r.header).join(' | ')
+        || bubbleRules.length + ' 条使用 _bubble_ 形态（裸 _bubble 会误伤 bubbleWidth wrapper）');
+    check('negative control: a *_bubbleWidth wrapper is only matched by the bare anchor',
+      'BfLV8a_bubbleWidth'.includes('_bubble') && !'BfLV8a_bubbleWidth'.includes('_bubble_')
+        && '_bubble_1sgyj_1'.includes('_bubble_'));
     const clear = (body) => /background: transparent !important/.test(body)
       && /(?:^|[;\s])backdrop-filter: none !important/.test(body)
       && /-webkit-backdrop-filter: none !important/.test(body)
@@ -462,39 +530,26 @@ function main() {
       !clear('background: rgba(28, 28, 28, 0.19) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important;'));
     const chip = normal.find((r) => r.header.includes('[data-chat-flow] :not(pre) > code')
       && r.header.includes('[data-vcp-rawhtml] :not(pre) > code'));
-    check('F2d3 inline capsules restore ten-percent white mist and independent 8px frost',
+    check('F2d3 inline capsules keep the ten-percent mist and carry no backdrop carrier',
       normal.some((r) => r.header === 'body[data-we-glass-page][data-we-thinking-glass]'
         && declValue(r.body, '--dsw-alias-markdown-inline-code') === 'var(--we-capsule-glass-fill)')
       && normal.some((r) => r.header === 'body[data-we-glass-page]'
         && declValue(r.body, '--we-capsule-glass-fill') === 'rgba(var(--we-capsule-tint-rgb, 255, 255, 255), var(--we-inline-code-alpha, 0.10))')
       && !!chip && /background: var\(--dsw-alias-markdown-inline-code\) !important/.test(chip.body)
-      && declValue(chip.body, 'backdrop-filter') === 'blur(var(--we-inline-code-blur, 8px)) saturate(var(--we-saturate, 1.3)) brightness(var(--we-glass-brightness, 1.04))'
+      && declValue(chip.body, 'backdrop-filter') === 'none !important'
       && declValue(chip.body, '-webkit-backdrop-filter') === declValue(chip.body, 'backdrop-filter')
       && declValue(chip.body, 'background-image') === 'none !important'
-      && declValue(chip.body, 'border-color') === 'rgba(255, 255, 255, 0.14) !important'
+      && (declValue(chip.body, 'border-color') || '').startsWith('var(--dsw-alias-border-l2')
+      && declValue(chip.body, 'border-color') === 'var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.14)) !important'
       && !/(?:^|[;\s])(?:color|filter|opacity)\s*:/.test(chip.body));
-    // #197：推理正文由宿主用 compact 变体渲染（宿主模块类带 _thinkBody 后缀），那里的
-    // 行内代码是 display:inline。跨行折断时 backdrop-filter 的取值区取的是**所有行盒的
-    // 外接矩形**，于是胶囊霜釉长成一条横贯整列的矩形底板、盖住同行普通文字。修复=在推理
-    // 正文子树里**只撤模糊载体、保留胶囊填充**（宿主自身的 box-decoration-break: clone
-    // 已把背景按行盒分片）。判据两头钉：① 收口规则在位，且同时带玻璃门与 :not(pre) 围栏
-    // 排除；② 原 chip 规则的霜釉**不得被就地删掉** —— 否则"局部收口"退化成"全局摘霜"，
-    // 助手正文的胶囊也一起失去磨砂。
-    const capsuleScope = (header) => header.includes('[data-we-glass-page]')
-      && header.includes('[data-we-thinking-glass]')
-      && header.includes(':not(pre) > code');
-    const noFrost = (body) => /(?:^|[;\s])backdrop-filter: none !important/.test(body)
-      && /-webkit-backdrop-filter: none !important/.test(body)
-      && !/(?:^|[;\s])background(?:-color)?\s*:/.test(body);
-    // 特异性计数器（Selectors 规范的三级元组 #id / .class·[attr]·:pseudo / 元素名）。
-    // :is() 取最具体实参、:where() 计零、:not() 计其实参。逐条对教科书样例校准过：
-    // * → 0-0-0、li → 0-0-1、ul ol+li → 0-0-3、h1 + *[rel=up] → 0-1-1、li.red.level → 0-2-1。
-    const SPEC_ORDER = (a, b) => (a[0] - b[0]) || (a[1] - b[1]) || (a[2] - b[2]);
-    // 按**顶层**逗号拆选择器列表：`:is()` / `:not()` 实参里的逗号不是列表分隔符。
-    // 朴素 `header.split(',')` 会把 `:is(a, b)` 切成两段、留下一个没有闭括号的 `:is(`，
-    // 伪类计数被误加 —— 实测把收口规则的真实 0-4-3 算成 0-5-1，于是"特异性压过"那条
-    // 判据靠错误数字蒙混通过，只有负对照（去 [data-chat-flow] 应与原规则相等）把它咬出来。
-    const splitTop = (s) => {
+    // 胶囊的霜没了：backdrop-filter 载体会把胶囊背后的壁纸重新采样并重绘（壁纸自己的
+    // 细节变成糊条，读起来像文字被模糊了），跨行盒时还会断裂、糊成一条盖住同行普通文字
+    // 的横板（#197）。判据因此比 #197 那三条更强也更简单：**思考玻璃门下，任何规则都
+    // 不得给行内代码胶囊一个 backdrop-filter 载体**。
+    // 选取**不挑写法**：判据看的是选择器的**主语**（最后一个顶层 ">" 之后的复合选择器是不是
+    // code），不是某一种字面写法 —— "… [data-chat-flow] code {…}" 这类别写法也必须被收进来；
+    // 围栏（"pre > code"）不是行内胶囊，仍然放行。
+    const splitSelectors = (s) => {
       const out = [];
       let depth = 0;
       let cur = '';
@@ -506,49 +561,39 @@ function main() {
       out.push(cur);
       return out;
     };
-    const specificity = (header) => {
-      const oneSel = (sel) => {
-        let s = sel.replace(/:is\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g, (_, inner) => {
-          const parts = splitTop(inner).map((p) => p.trim()).filter(Boolean);
-          return parts.reduce((best, cur) => (SPEC_ORDER(oneSel(cur), oneSel(best)) > 0 ? cur : best), parts[0] || '');
-        });
-        s = s.replace(/:where\([^()]*\)/g, ' ').replace(/:not\(([^()]*)\)/g, ' $1 ');
-        return [
-          (s.match(/#[\w-]+/g) || []).length,
-          (s.match(/\.[\w-]+|\[[^\]]+\]|:(?!:)[\w-]+(?:\([^)]*\))?/g) || []).length,
-          (s.match(/(?:^|[\s>+~])([a-zA-Z][\w-]*)/g) || []).length,
-        ];
-      };
-      return splitTop(header).map((p) => oneSel(p.trim()))
-        .reduce((best, cur) => (SPEC_ORDER(cur, best) > 0 ? cur : best), [0, 0, 0]);
+    const selectorSubject = (selector) => {
+      let depth = 0;
+      let cut = -1;
+      const s = selector.trim();
+      for (let i = 0; i < s.length; i += 1) {
+        const ch = s[i];
+        if (ch === '(') depth += 1;
+        else if (ch === ')') depth -= 1;
+        else if (ch === '>' && depth === 0) cut = i;
+      }
+      return (cut >= 0 ? s.slice(cut + 1) : s).trim();
     };
-    const thinkBodyCode = normal.filter((r) => r.header.includes('[class*="_thinkBody"]')
-      && r.header.includes(':not(pre) > code'));
-    const thinkChip = thinkBodyCode[0];
-    check('F2d3b 推理正文（compact 变体）行内代码只撤模糊载体、保留胶囊填充（#197）',
-      thinkBodyCode.length >= 1
-      && thinkBodyCode.every((r) => capsuleScope(r.header) && noFrost(r.body))
-      && !!chip && /backdrop-filter: blur\(var\(--we-inline-code-blur, 8px\)\)/.test(chip.body),
-      (thinkChip ? thinkChip.header : 'no _thinkBody capsule rule'));
-    // 收口规则必须**顺序无关地**压过原规则。两条都带 !important，若特异性相等，唯一决胜
-    // 因素就是源码顺序 —— 浏览器里把新规则挪到原规则之前，#197 会静默复活，而只看
-    // "规则在位 / 带门 / 保留 :not(pre)" 的判据抓不到（变异实测：对调后套件仍全绿）。
-    const thinkSpec = thinkChip ? specificity(thinkChip.header) : null;
-    const chipSpec = chip ? specificity(chip.header) : null;
-    check('F2d3b2 收口规则的特异性严格压过原 chip 规则（顺序无关，不靠后置取胜）',
-      !!thinkSpec && !!chipSpec && SPEC_ORDER(thinkSpec, chipSpec) > 0,
-      'closing=' + (thinkSpec ? thinkSpec.join('-') : 'n/a')
-        + ' · original=' + (chipSpec ? chipSpec.join('-') : 'n/a'));
-    check('negative control: 抽掉 [data-chat-flow] 后两条特异性相等，顺序又成为唯一决胜因素（#197）',
-      !!thinkChip && !!chipSpec
-      && SPEC_ORDER(specificity(thinkChip.header.replaceAll('[data-chat-flow]', '')), chipSpec) === 0);
-    // 语义锚点必须扛事：_thinkBody 是构建期哈希的一半，DSH-UI-INTERFACES.md 判其
-    // 稳定性为低、明确不许把用户可见功能单独挂上去（宿主改个类名就静默复发）。
-    check('F2d3b3 收口规则带着语义锚点 [data-variant="think"]，不只挂类名后缀（#197）',
-      !!thinkChip && thinkChip.header.includes('[data-variant="think"]'));
-    check('negative control: 少了思考玻璃门的收口规则等于全局摘霜（#197）',
-      thinkBodyCode.length >= 1
-      && !capsuleScope(thinkBodyCode[0].header.replaceAll('[data-we-thinking-glass]', '')));
+    const isInlineCodeSubject = (selector) => {
+      if (selector.includes('pre >')) return false;
+      return /(?:^|[\s>+~])code$/.test(selectorSubject(selector));
+    };
+    const capsuleRules = normal.filter((r) => r.header.includes('[data-we-thinking-glass]')
+      && splitSelectors(r.header).some((s) => isInlineCodeSubject(s)));
+    const carrierless = (body) => declValue(body, 'backdrop-filter') === 'none !important'
+      && declValue(body, '-webkit-backdrop-filter') === 'none !important';
+    check('F2d3b 行内代码胶囊在思考玻璃门下不带 backdrop-filter 载体（无霜 ⇒ 无重采样、无跨行盒并集）',
+      capsuleRules.length >= 1 && capsuleRules.every((r) => carrierless(r.body)),
+      'capsule rules=' + capsuleRules.length
+        + (capsuleRules[0] ? ' · first=' + capsuleRules[0].header : ''));
+    check('negative control: 带霜的胶囊规则会被同一判据判红、无霜的放行',
+      !carrierless('backdrop-filter: blur(var(--we-inline-code-blur, 8px)) !important;')
+      && carrierless('backdrop-filter: none !important; -webkit-backdrop-filter: none !important;'));
+    check('negative control: 另一种写法的行内代码选择器也会被收进同一条判据（判据不挑写法）',
+      isInlineCodeSubject('body[data-we-glass-page][data-we-thinking-glass] [data-chat-flow] code')
+      && isInlineCodeSubject('body[data-we-glass-page][data-we-thinking-glass] [data-chat-flow] :not(pre) code')
+      && isInlineCodeSubject('body[data-we-glass-page][data-we-thinking-glass] [data-chat-flow] :not(pre) > code')
+      && !isInlineCodeSubject('body[data-we-glass-page][data-we-thinking-glass] [data-chat-flow] .md-code-block pre > code')
+      && !isInlineCodeSubject('body[data-we-glass-page][data-we-thinking-glass] [data-vcp-rawhtml] > div > div:has(> pre > code):has(> div > button[title="复制代码"])'));
     const tools = normal.find((r) => declValue(r.body, 'background-color') === 'var(--we-tool-glass-fill) !important');
     const toolScope = (header) => header.split(',').every((selector) =>
       selector.includes('[data-we-glass-page][data-we-thinking-glass]') && selector.includes('[data-chat-flow]')
@@ -590,6 +635,37 @@ function main() {
         && /color: var\(--dsw-alias-label-primary\) !important/.test(r.body))
       && all.some((r) => r.header.includes('data-we-glass-fallback')
         && /--we-chat-glass-fill: color-mix\(in srgb, var\(--we-readability-base\) 92%, transparent\)/.test(r.body)));
+
+    // ── F2h markdown 表格（思考玻璃门下）────────────────────────────────────
+    // 表格这块以前**一条规则都没有**：宿主用 .5px 发丝线画网格、表格自己没
+    // 有面、表头没有强调 ⇒ 壁纸上整张表读起来是一堆悬空的字。这三条新规则
+    // （底面 / 表头带 / 两级边框）必须被钉住，否则将来删掉任何一条都全绿。
+    const tableRules = normal.filter((r) => r.header.includes('[data-we-thinking-glass]')
+      && /\btable\b/.test(r.header));
+    const tableSelectors = tableRules.flatMap((r) => splitSelectors(r.header));
+    const hasTablePlate = tableRules.filter((r) => /(^|[\s>+~])table$/.test(r.header.trim()));
+    const hasHeaderBand = tableRules.filter((r) => /table\s+th$/.test(r.header.trim()));
+    const hasCellBorder = tableRules.filter((r) => /table\s+td$/.test(r.header.trim()));
+    check('F2h markdown 表格在思考玻璃门下：底面带可读性下限、表头带抬起、两级边框都落在插件的边框族',
+      tableRules.length >= 4
+      && hasTablePlate.length >= 1
+      && hasTablePlate.every((r) => hasVeil(declValue(r.body, 'background'), 'table plate').ok)
+      && hasHeaderBand.length >= 1
+      && hasHeaderBand.every((r) => /background-color: rgba\(180, 180, 180, calc\(var\(--we-border-alpha/.test(r.body)
+        && /border-bottom: 1px solid rgba\(180, 180, 180, min\(0\.8, calc\(var\(--we-border-alpha/.test(r.body)
+        && declValue(r.body, 'color') === 'var(--dsw-alias-label-primary) !important')
+      && hasCellBorder.length >= 1
+      && hasCellBorder.every((r) => /border-bottom: 1px solid rgba\(180, 180, 180, calc\(var\(--we-border-alpha/.test(r.body)),
+      'table rules=' + tableRules.length + ' plate=' + hasTablePlate.length
+        + ' th=' + hasHeaderBand.length + ' td=' + hasCellBorder.length);
+    check('F2h 表格规则的锚点只用语义元素与宿主写死的属性（不挂宿主 CSS 模块哈希类名）',
+      tableSelectors.length > 0
+      && tableSelectors.every((s) => !/\[class\*=/.test(s) && !/\[class\^=/.test(s))
+      && tableSelectors.every((s) => /\[data-chat-flow\]/.test(s) || /\[data-vcp-rawhtml\]/.test(s)),
+      tableSelectors.join(' | ').slice(0, 120));
+    check('negative control: 挂着宿主哈希类名的表格选择器会被同一判据判红',
+      /\[class\*=/.test('body[data-we-glass-page] [class*="_tableScroll_rve47_199"] table')
+      && tableSelectors.every((s) => !/\[class\*=/.test(s)));
   }
 
   // 负对照（DEV-GUIDE §4.7 约定 5：变异输入必须喂进**同一条判据**）：把一条真实声明改坏
@@ -962,13 +1038,25 @@ function main() {
     // 链路：默认关（安全不变量）+ 成对挂摘 + UI 行过 weT。
     check('F7e 设置键默认关且 kind 为 boolFalse（默认态地板照旧兜底）',
       /sidebarFullClear:\s*false,/.test(SRC) && /sidebarFullClear:\s*\{\s*kind:\s*'boolFalse'\s*\}/.test(SRC));
-    const sets = (SRC.match(/setAttribute\("data-we-sidebar-fullclear"/g) || []).length;
-    const rems = (SRC.match(/removeAttribute\("data-we-sidebar-fullclear"/g) || []).length;
-    const paired = SRC.includes('else document.body.removeAttribute("data-we-sidebar-fullclear")');
+    // ADR-0016 第三刀：挂/摘都在玻璃包产物里（glass.js 写、disposeGlassLayer 摘）⇒ 双工件面计数。
+    const sets = (PANEL_SRC_ALL.match(/setAttribute\("data-we-sidebar-fullclear"/g) || []).length;
+    const rems = (PANEL_SRC_ALL.match(/removeAttribute\("data-we-sidebar-fullclear"/g) || []).length;
+    const paired = PANEL_SRC_ALL.includes('else document.body.removeAttribute("data-we-sidebar-fullclear")');
     check('F7f 门控属性有挂有摘：applyGlass 成对（if/else）+ clearEffects 卸载再摘一次（rem ≥2）',
       sets >= 1 && paired && rems >= 2, 'set=' + sets + ' rem=' + rems + ' paired=' + paired);
-    check('F7g UI 行存在且文案过 weT（新中文必须进 weT + 词表）',
-      /weT\("侧栏全透明"\)/.test(SRC) && /"侧栏全透明":\s*"/.test(SRC));
+    check('F7g UI 行存在且文案过 weT（新中文必须进 weT + 词表；UI 行在玻璃包产物里，ADR-0016）',
+      /weT\("侧栏全透明"\)/.test(PANEL_SRC_ALL) && /"侧栏全透明":\s*"/.test(SRC));
+    // #329：装饰叶的模糊也必须随开关撤。装饰叶挂在 body > [data-we-surface-root] 下、
+    // 不在面板子树里，归零那七个变量摸不到它（它读 --we-sidebar-blur 等）⇒ 必须有
+    // 独立的 none !important 规则，且左右两片同一条、壁纸门与全透明门都在。
+    const plateRule = fcRules.find((r) => r.header.includes('[data-we-surface-plate="left-sidebar"]')
+      && r.header.includes('[data-we-surface-plate="right-sidebar"]'));
+    const plateOk = (r) => !!r && r.header.includes('data-we-wallpaper')
+      && r.header.includes('data-we-sidebar-fullclear')
+      && r.body.includes('-webkit-backdrop-filter: none !important')
+      && r.body.includes('backdrop-filter: none !important');
+    check('F7h 装饰叶的模糊随开关撤（左右两片 plate 一条规则，壁纸门 + 全透明门 + none !important）',
+      plateOk(plateRule), plateRule ? plateRule.header.slice(0, 120) : '规则缺失');
     // 负对照：把上面几条判据各自喂坏输入，必须判出（判据不是恒真）。
     const gateOk = (r) => r.header.includes('data-we-wallpaper');
     check('negative control F7-1: 缺壁纸门的全透明规则会被同一条判据判出',
@@ -986,9 +1074,23 @@ function main() {
     const unpairOk = (src) => (src.match(/setAttribute\("data-we-sidebar-fullclear"/g) || []).length >= 1
       && src.includes('else document.body.removeAttribute("data-we-sidebar-fullclear")')
       && (src.match(/removeAttribute\("data-we-sidebar-fullclear"/g) || []).length >= 2;
-    check('negative control F7-4: 只挂不摘（漏 clearEffects 那次）会被同一条判据判出',
+    check('negative control F7-4: 只挂不摘（漏 dispose 那次）会被同一条判据判出（挂/摘面 = 双工件，ADR-0016）',
       !unpairOk('setAttribute("data-we-sidebar-fullclear","on"); else document.body.removeAttribute("data-we-sidebar-fullclear")')
-      && unpairOk(SRC));
+      && unpairOk(PANEL_SRC_ALL));
+    check('negative control F7-5: 装饰叶规则缺壁纸门 / 缺全透明门 / 只写 -webkit- 前缀都会被同一条判据判出（#329）',
+      !plateOk({
+        header: 'body[data-we-sidebar-fullclear][data-we-glass-page][data-we-left-sidebar] [data-we-surface-plate="left-sidebar"] [data-we-surface-plate="right-sidebar"]',
+        body: '-webkit-backdrop-filter: none !important; backdrop-filter: none !important',
+      })
+      && !plateOk({
+        header: 'body[data-we-wallpaper][data-we-glass-page][data-we-left-sidebar] [data-we-surface-plate="left-sidebar"] [data-we-surface-plate="right-sidebar"]',
+        body: '-webkit-backdrop-filter: none !important; backdrop-filter: none !important',
+      })
+      && !plateOk({
+        header: 'body[data-we-wallpaper][data-we-sidebar-fullclear] [data-we-surface-plate="left-sidebar"] [data-we-surface-plate="right-sidebar"]',
+        body: 'backdrop-filter: none',
+      })
+      && plateOk(plateRule));
   }
 
   // ── F8 (#164)：原生 select 弹层的选项行必须显式「不透明底 + 对比墨」──────────────────
@@ -1220,6 +1322,50 @@ function main() {
       check('negative control F10-3: 旧的九档采样面对旧实现漏判（该面最差 ≥4.5 ⇒ 全绿）—— 采样面必须连续',
         oldWorstNine >= 4.5, '旧实现九档最差=' + oldWorstNine.toFixed(2) + ':1');
     }
+  }
+
+  // ── F11 内置预设的 themeColors（light）必须在浅色面板上达到 AA（#276）─────────
+  // 字体集的 themeColors 会被写进宿主 --dsw-alias-label-*（影响所有原生插件的说明文字）。
+  // 预设此前 light/dark 写同一组亮色（#fafafa / #75e6f5 / #2de8eb …）⇒ 浅色主题下
+  // 原生界面说明文字对比度只有 1.08–1.34:1（实测背景 #ecf1fc）。本条对**每个**内置预设
+  // 的 light 值判 ≥4.5:1，防止同类漂移再回来；dark 值不判（深色底另有背景）。
+  {
+    const PANEL_BG = '#ecf1fc';
+    const relLum = (hex) => {
+      const rgb = hex2rgb(hex).map((v) => {
+        const c = v / 255;
+        return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+    };
+    const contrast = (a, b) => {
+      const [hi, lo] = relLum(a) >= relLum(b) ? [relLum(a), relLum(b)] : [relLum(b), relLum(a)];
+      return (hi + 0.05) / (lo + 0.05);
+    };
+    const presetDir = new URL('../lib/glass-presets/', import.meta.url);
+    const names = readdirSync(presetDir).filter((f) => f.endsWith('.json'));
+    const bad = [];
+    let seenPresets = 0;
+    for (const name of names) {
+      let doc;
+      try { doc = JSON.parse(readFileSync(new URL(name, presetDir), 'utf8')); } catch { continue; }
+      const colors = doc && doc.assets && doc.assets.font && doc.assets.font.values
+        && doc.assets.font.values.themeColors;
+      if (!colors || typeof colors !== 'object') continue;
+      seenPresets += 1;
+      for (const [role, pair] of Object.entries(colors)) {
+        if (!pair || typeof pair.light !== 'string' || !/^#[0-9a-f]{6}$/i.test(pair.light)) continue;
+        const r = contrast(pair.light, PANEL_BG);
+        if (r < 4.5) bad.push(name + ':' + role + '=' + pair.light + ' (' + r.toFixed(2) + ':1)');
+      }
+    }
+    check('F11 内置预设的 themeColors.light 在浅色面板上达到 AA 4.5:1（#276）',
+      seenPresets >= 2 && bad.length === 0,
+      'presets=' + seenPresets + (bad.length ? ' · ' + bad.join('; ') : ' · 全部达标'));
+    // 负对照：同一判据喂"旧作者自用亮色"必须判红（证明判据有牙）。
+    const legacy = ['#fafafa', '#75e6f5', '#2de8eb'].map((v) => contrast(v, PANEL_BG));
+    check('F11 negative control: 旧的作者自用亮色会被同一条阈值判红',
+      legacy.every((r) => r < 4.5), legacy.map((r) => r.toFixed(2) + ':1').join(' / '));
   }
 
   const failed = results.filter((r) => !r.ok);

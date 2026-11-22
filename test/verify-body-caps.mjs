@@ -16,6 +16,11 @@
  * ⇒ 所以这条判据**从磁盘枚举**每一个 `req.on('data')` 站点，而不是维护一份"该有闸的路由名单"：
  * 名单会漂，枚举不会。新增路由只要写了 `req.on('data')` 就自动进面。
  *
+ * ── 扫描面（S5b 刀1 起）─────────────────────────────────────────────────────
+ * 主包 `lib/**` **与**出户子包的 `packages/<pkg>/lib/**` 一起进面：路由族搬出主包只是换了
+ * 文件位置，不是消失了 —— 只扫 `lib/` 会让搬走的族静默掉出判据面（降地板或删站点都能"变绿"）。
+ * 包内生成物（`client*.js` 浏览器半边）与 vendored 第三方仍排除；来路判据按面分（见下）。
+ *
  * ── 判据形态（为什么是它）──────────────────────────────────────────────────
  * `req.on('data', cb)` 的 `cb` 分两类：
  *   · **收集器**（collector）：内联函数字面量，闭包一个累加变量。**必须**在回调**体内**出现
@@ -47,10 +52,13 @@ import { stripComments } from './tools/js-text.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const LIB = join(ROOT, 'lib');
+const PACKAGES = join(ROOT, 'packages');
 
 /** 扫描面排除：vendored 第三方（不归我们维护）与本半边的生成物。 */
-const EXCLUDE_DIRS = new Set(['vendor', 'webwallgl']);
+const EXCLUDE_DIRS = new Set(['vendor', 'webwallgl', 'node_modules']);
 const EXCLUDE_FILES = new Set(['client.js']);
+/** 出户包的浏览器半边产物（`client.media-bridge.js` 等）：生成物，不是手写路由。 */
+const GENERATED_CLIENT_RE = /^client(\.[\w.-]+)?\.js$/;
 
 /**
  * 上限判据：一次把"字节/长度计数器"与某个限值/常量比大小的比较。
@@ -68,14 +76,28 @@ const check = (name, ok, detail) => {
 };
 
 function walk(dir, out = []) {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+  let entries;
+  try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return out; }
+  for (const entry of entries) {
     const p = join(dir, entry.name);
     if (entry.isDirectory()) {
       if (EXCLUDE_DIRS.has(entry.name)) continue;
       walk(p, out);
-    } else if (entry.name.endsWith('.js') && !EXCLUDE_FILES.has(entry.name)) {
+    } else if (entry.name.endsWith('.js') && !EXCLUDE_FILES.has(entry.name)
+      && !GENERATED_CLIENT_RE.test(entry.name)) {
       out.push(p);
     }
+  }
+  return out;
+}
+
+/** 出户子包的宿主半边面：`packages/<pkg>/lib/**`（每条出户族都在这里，见 §4.6 同批纪律）。 */
+function packageLibFiles(out = []) {
+  let dirs;
+  try { dirs = readdirSync(PACKAGES, { withFileTypes: true }); } catch { return out; }
+  for (const d of dirs) {
+    if (!d.isDirectory()) continue;
+    walk(join(PACKAGES, d.name, 'lib'), out);
   }
   return out;
 }
@@ -195,13 +217,14 @@ check('正对照：`.length` 形式的闸也被认',
     '文件级有比较、回调级没有');
 }
 
-// ── ③ 真实代码：从磁盘枚举 ─────────────────────────────────────────────────
-const files = walk(LIB).sort();
+// ── ③ 真实代码：从磁盘枚举（主包 `lib/**` + 出户包 `packages/<pkg>/lib/**`）─────────
+const files = [...walk(LIB), ...packageLibFiles()].sort();
+const relOf = (file) => relative(ROOT, file).split('\\').join('/');
 const sites = [];
 for (const file of files) {
   const text = stripComments(readFileSync(file, 'utf8'));
   for (const site of findBodyReadSites(text)) {
-    sites.push({ ...site, file: relative(ROOT, file).split('\\').join('/') });
+    sites.push({ ...site, file: relOf(file) });
   }
 }
 
@@ -218,22 +241,40 @@ const readers = sites.filter((s) => s.kind === 'reader');
 //     这里只判"它确实来自那实现"，不重复要求闸。
 // 两条棘轮（都只许朝收敛方向走）：内联收集器**只减**、共享读体器的调用点**只增**。
 const INLINE_CEILING = 2;   // 棘轮：内联收集器上限 = **收敛终点**（只剩两处流式豁免）
-const READER_FLOOR = 9;     // 棘轮：共享读体器的调用点下限（防"只剩一份实现"靠删调用点达成）
+// 棘轮：共享读体器的调用点下限（防"只剩一份实现"靠删调用点达成）。
+// S5b 刀1 把面扩到 `packages/<pkg>/lib/**` 后按实测重算 = 主包 8 + 出户包 5（fonts 1 ·
+// mascot-avatar 2 · wallpaper 2：now-playing 与 we-assets）。
+const READER_FLOOR = 13;
 const READER_MODULE = 'lib/http-body.js';
 
-/** 该文件里被 `bodyReader(` 赋值过的标识符集合（`const reader = bodyReader(req, {…})`）。 */
+/** 该文件里被 `bodyReader(...)` 赋值过的标识符集合。包内族的来路是注入面
+ *  （`http.bodyReader(...)` / `c.http.bodyReader(...)`），主包族仍直接 import。 */
 const readerVarsIn = (src) => new Set(
-  [...src.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*bodyReader\s*\(/g)].map((m) => m[1]));
+  [...src.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:bodyReader|http\.bodyReader|c\.http\.bodyReader)\s*\(/g)].map((m) => m[1]));
+
+/** 包面的来路：必须显示地从调用点注入面取（`c` 解构含 `http`/`bodyReader`，或直接 `c.http.bodyReader(`）。 */
+const hasInjectedHttpFace = (src) => {
+  for (const m of src.matchAll(/(?:const|let|var)\s*\{([^}]*)\}\s*=\s*c\b/g)) {
+    if (/(?:^|[,\s])(?:http|bodyReader)(?:[,\s}]|$)/m.test(m[1])) return true;
+  }
+  return /c\.http\.bodyReader\s*\(/.test(src)
+    || /(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=\s*c\.http\b/.test(src);
+};
 
 const readerSource = existsSync(join(ROOT, READER_MODULE)) ? readFileSync(join(ROOT, READER_MODULE), 'utf8') : '';
 const srcByFile = new Map();
-for (const file of files) srcByFile.set(relative(ROOT, file).split('\\').join('/'), readFileSync(file, 'utf8'));
+for (const file of files) srcByFile.set(relOf(file), readFileSync(file, 'utf8'));
 const bogusReaders = readers.filter((s) => !readerVarsIn(srcByFile.get(s.file) || '').has(s.name));
 const readerFiles = new Set(readers.map((s) => s.file));
-const notImported = [...readerFiles].filter((f) => !/from\s+['"][^'"]*http-body\.js['"]/.test(srcByFile.get(f) || ''));
+/** 主包面来路 = 直接 import 唯一实现；出户包面来路 = 调用点显式给的 `http` 面（主包叶子不可跨包 import）。 */
+const notProvenanced = [...readerFiles].filter((f) => {
+  const src = srcByFile.get(f) || '';
+  if (f.startsWith('packages/')) return !hasInjectedHttpFace(src);
+  return !/from\s+['"][^'"]*http-body\.js['"]/.test(src);
+});
 
-console.log(`\n  扫描面：lib/**/*.js（排除 ${[...EXCLUDE_DIRS].join(' / ')} 与 ${[...EXCLUDE_FILES].join(' / ')}）`
-  + ` —— ${files.length} 个文件`);
+console.log(`\n  扫描面：lib/**/*.js 与 packages/<pkg>/lib/**/*.js（排除 ${[...EXCLUDE_DIRS].join(' / ')}`
+  + ` 与 ${[...EXCLUDE_FILES].join(' / ')} 及 client*.js 生成物）—— ${files.length} 个文件`);
 console.log(`  收 body 站点：${sites.length}（内联收集器 ${collectors.length} · 共享读体器 ${readers.length}`
   + ` · 非收集器 ${sites.length - collectors.length - readers.length - unparsable.length}）`);
 for (const s of collectors) {
@@ -261,11 +302,11 @@ check('棘轮：共享读体器 `' + READER_MODULE + '` 存在，且自身带字
     : '上限语句=' + (/(?:\.length|\bsize\b|\bbytes\b)\s*>\s*maxBytes/.test(readerSource) ? '在位' : '缺失'));
 check('棘轮：共享读体器的调用点 ≥ ' + READER_FLOOR + '（只许增，防"只剩一份"靠删调用点达成）',
   readers.length >= READER_FLOOR, `实测 ${readers.length}`);
-check('每个 `X.onData` 都真的来自同一文件里的 `bodyReader(...)`（任意 `foo.onData` 蒙混不过去）',
+check('每个 `X.onData` 都真的来自同一文件里的共享读体器（`bodyReader` 或注入面 `http.bodyReader`；任意 `foo.onData` 蒙混不过去）',
   bogusReaders.length === 0,
-  bogusReaders.map((s) => `${s.file}:${s.line}(${s.name})`).join(', ') || '全部来自 bodyReader');
-check('用了共享读体器的文件都 import 了它（没 import 就是另一个同名东西）',
-  notImported.length === 0, notImported.join(', ') || '全部已 import');
+  bogusReaders.map((s) => `${s.file}:${s.line}(${s.name})`).join(', ') || '全部来自共享读体器');
+check('用了共享读体器的文件来路正确（主包面 import `lib/http-body.js`；出户包面从调用点显式注入的 `http` 面取）',
+  notProvenanced.length === 0, notProvenanced.join(', ') || '全部来路正确');
 
 // ── 第三条：调用点里被**置位的标志**必须真的在那个作用域里声明过 ──────────────
 // 为什么这条值得单独钉：P4-13 的迁移把 `let done/tooLarge = false` 从内联回调里挪走了，
@@ -329,12 +370,19 @@ check('每个共享读体器调用点里被置位的标志，都在**它之前**
   check('negative control: 内联回调仍按"回调体内有没有闸"判（不被新分类顺带放过）',
     findBodyReadSites("req.on('data', (c) => { chunks.push(c); });")
       .filter((s) => s.kind === 'collector' && !hasCap(s.callback)).length === 1);
+  // 扩面到出户包后新增的来路判据也必须带牙：包面只能经调用点显式注入的 `http` 面取，
+  // 不能凭空出现一个 `http`（跨包 import 主包叶子是另一个违规，由 purity 守卫判）。
+  check('negative control: 出户包面凭空用 `http.bodyReader` 而没有从 `c` 取 ⇒ 来路判红',
+    hasInjectedHttpFace('const reader = http.bodyReader(req, {});') === false);
+  check('正对照: 出户包面从 `c` 解构 `http`（或直接 `c.http.bodyReader`）⇒ 来路合格',
+    hasInjectedHttpFace('const { disposers, http } = c;\nconst reader = http.bodyReader(req, {});') === true
+      && hasInjectedHttpFace('const reader = c.http.bodyReader(req, {});') === true);
 }
 
 console.log('');
 if (failed) {
   console.log(`BODY-CAP CHECKS FAILED — ${failed} 条不合格`);
-  console.log('修法：按 lib/routes/upload.js 文件头的两条不变量改 —— 边收边计字节（size += chunk.length）、'
+  console.log('修法：按 packages/media-bridge/lib/routes/upload.js 文件头的两条不变量改 —— 边收边计字节（size += chunk.length）、'
     + '超限即 413 早退、收完只 Buffer.concat(...).toString("utf8") 解码一次。');
   process.exit(1);
 }

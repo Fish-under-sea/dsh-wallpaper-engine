@@ -22,7 +22,7 @@
  *     · `hiddenIds`     隐藏集合（`selection.hiddenIds`）；缺省视作空集合
  *     · `search`        搜索原文（缺省 / 空串 = 不过滤；内部 trim + 小写）
  *     · `ratingFilter`  内容分级档（`"all" | "everyone" | "pg13" | "mature" | "unrated"`）
- *     · `typeFilter`    类型档（`"all" | "video" | "web" | "image" | "scene"`）
+ *     · `typeFilter`    类型勾选集合（数组；字符串 `"all"` / 具体档仅旧档读兜底）
  *     · `page` / `hiddenPage` / `editorPage`  各列表的页号（可越界，内部 clamp）
  *   返回：
  *     · `query`          归一化后的查询串（`""` = 不过滤）—— 视图的"没有匹配「…」"空态
@@ -51,8 +51,20 @@
 // ── 内容分级：复刻 Wallpaper Engine 自己的分类（project.json `contentrating`）────
 // "Everyone" (G) / "PG13" / "Mature" (R)；没有该字段的项目算「未分级」。匹配大小写
 // 不敏感并接受常见拼写，好让别的本地副本行为一致。
+//
+// 过滤档是**勾选集合**（用户口径 2026-10-30，像 WE 本身的多档勾选）：勾上的档才允许
+// 出现在列表、轮播与播放里，组合完全自由（含"只勾成人"这种纯 R18 用法）。
+//   · 空集合 / 非数组 / 认不得的值一律 fail-closed（判不匹配）—— 免得脏档把成人内容放出来；
+//   · 旧的单档枚举只作为**读兜底**（旧预设、手改 config 不走迁移那一层），映射成等价集合：
+//     'all' ⇒ 四档全勾，'everyone'/'pg13'/'mature' ⇒ 它及其更低的档，'unrated' ⇒ 仅未分级。
 const ADULT_RATING_PATTERN = /^(mature|adult|adultonly|18\+|r18)$/i;
 const PG13_RATING_PATTERN = /^(pg13|pg-13|pg ?13|questionable)$/i;
+
+// 合法分级档（规范顺序；与 lib/settings-schema.js 的 RATING_TIER_VALUES 同一张表，
+// 守卫 test/verify-picker-model.mjs 对账两处）。
+const RATING_TIERS = ['everyone', 'pg13', 'mature', 'unrated'];
+// 类型档的规范顺序（v8 起 typeFilter 也是勾选集合；顺序即消毒后的存档顺序）。
+const TYPE_TIERS = ['video', 'web', 'image', 'scene'];
 
 function isUploadedWallpaper(w) {
   return Boolean(w && w.id && w.id.indexOf("up-") === 0);
@@ -81,14 +93,73 @@ function ratingOf(w) {
   return "unrated";
 }
 
-function matchesRatingFilter(w, filter) {
-  if (filter === "all") return true;
-  return ratingOf(w) === filter;
+// 勾选集合 → 允许档的集合。非数组 / 空 / 全垃圾 ⇒ null（调用方 fail-closed）。
+// 字符串只在这里做**旧档读兜底**：写入路径永远是数组（设置 v7 + 迁移）。
+function ratingAllowSet(allow) {
+  if (typeof allow === "string") {
+    if (allow === "all") return new Set(RATING_TIERS);
+    const legacy = { everyone: ["everyone"], pg13: ["everyone", "pg13"], mature: ["everyone", "pg13", "mature"], unrated: ["unrated"] };
+    const mapped = legacy[allow];
+    return mapped ? new Set(mapped) : null;
+  }
+  if (!Array.isArray(allow)) return null;
+  const set = new Set(allow.filter((tier) => RATING_TIERS.indexOf(tier) !== -1));
+  return set.size ? set : null;
 }
 
-function matchesTypeFilter(w, filter) {
-  if (filter === "all") return true;
-  return w.type === filter;
+function matchesRatingFilter(w, allow) {
+  const set = ratingAllowSet(allow);
+  if (!set) return false; // 空集合 / 非法 ⇒ fail-closed
+  return set.has(ratingOf(w));
+}
+
+// 类型档的集合视图：字符串只作旧档读兜底（'all' = 四档全勾、具体档 = 仅那一档），
+// 数组按白名单过滤；空集 / 非法 ⇒ null（fail-closed）。
+function typeAllowSet(allow) {
+  if (typeof allow === "string") {
+    if (allow === "all") return new Set(TYPE_TIERS);
+    return TYPE_TIERS.indexOf(allow) !== -1 ? new Set([allow]) : null;
+  }
+  if (!Array.isArray(allow)) return null;
+  const set = new Set(allow.filter((tier) => TYPE_TIERS.indexOf(tier) !== -1));
+  return set.size ? set : null;
+}
+
+function matchesTypeFilter(w, allow) {
+  const set = typeAllowSet(allow);
+  if (!set) return false; // 空集合 / 非法 ⇒ fail-closed
+  return set.has(w.type);
+}
+
+/**
+ * 壁纸方向：'landscape' / 'portrait' / ''（正方形或尺寸未知）。
+ * 尺寸由宿主从图片文件头 / MP4 tkhd 读出；scene/web 没有"原生方向" ⇒ 空串。
+ */
+function orientationOf(w) {
+  const width = Number(w && w.width);
+  const height = Number(w && w.height);
+  if (!(width > 0) || !(height > 0) || width === height) return "";
+  return width > height ? "landscape" : "portrait";
+}
+
+/** 'all'（或非法值）放行所有条目；横/竖档只放行**能确定且匹配**的方向。 */
+function matchesOrientationFilter(w, filter) {
+  if (filter !== "landscape" && filter !== "portrait") return true;
+  return orientationOf(w) === filter;
+}
+
+/**
+ * 「文件夹」筛选：`folderFilter` 是 Wallpaper Engine 某个「已安装」文件夹的 id，
+ * `"all"`（或缺省）= 不筛。成员集合由**调用点**从宿主清单的 `folders` 树里取
+ * （`folderWallpaperIds`）—— 本层只收一份 id 数组，不读清单、不读 `selection`。
+ *
+ * 效力与 rating/type **不同**：它只收窄选择器网格（用户在看什么），不写进轮播候选
+ * 与播放闸门 —— 换一个文件夹看一眼，不应该把正在播的壁纸或自动轮播改掉。
+ */
+function matchesFolderFilter(w, folderFilter, folderWallpaperIds) {
+  if (!folderFilter || folderFilter === "all") return true;
+  if (!Array.isArray(folderWallpaperIds)) return false;
+  return folderWallpaperIds.indexOf(w.id) >= 0;
 }
 
 function isPlayableType(w) {
@@ -110,6 +181,14 @@ function isRotatableWallpaper(w, ratingFilter, typeFilter) {
 // 同一个 `typeFilter`**）；把类型档写进播放闸门就会出现「一切过滤档，正在播的壁纸被干掉」。
 function keepPlayingWallpaper(w, ratingFilter) {
   return Boolean(w) && isPlayableType(w) && matchesRatingFilter(w, ratingFilter);
+}
+
+// 轮播成员 / 「下一张」的入选判据（用户口径 2026-10-30）：只认「内容安全 ∧ 可播放」，
+// **不认列表的类型档** —— 类型档只筛选择器网格的显示（issue #294：切类型档不得改变
+// 轮播成员，也不得改变「下一张」的池）。与 keepPlayingWallpaper 共用同一份判定，
+// 免得轮播候选与播放闸门各长一个真源。
+function isRotationEligible(w, ratingFilter) {
+  return keepPlayingWallpaper(w, ratingFilter);
 }
 
 function isHiddenWallpaper(id, hiddenIds) {
@@ -142,22 +221,27 @@ function pickerModel(input) {
   const hiddenIds = input.hiddenIds || [];
   const ratingFilter = input.ratingFilter;
   const typeFilter = input.typeFilter;
+  const orientationFilter = input.orientationFilter;
   // 标题搜索（选择器模态框）：在两级过滤之上再收窄可播放网格。大小写不敏感的**子串**匹配。
   const query = (input.search || "").trim().toLowerCase();
   // 只有可播放的 Video/Web/Image 才进网格 —— Scene/Application 不能嵌进 web UI，
   // 隐掉它们网格才有用。已隐藏（软删除）的壁纸离开这里去「已隐藏」区；两级过滤再收窄。
   const playableList = list.filter((w) =>
     isRotatableWallpaper(w, ratingFilter, typeFilter) && !isHiddenWallpaper(w.id, hiddenIds)
+    && matchesFolderFilter(w, input.folderFilter, input.folderWallpaperIds)
+    && matchesOrientationFilter(w, orientationFilter)
     && (!query || String(w.title || "").toLowerCase().indexOf(query) !== -1));
   // 两个过滤下拉的分档计数（可播放、未隐藏）：反映实际可用量，与当前生效的过滤无关。
   const basePlayable = list.filter((w) => isPlayableType(w) && !isHiddenWallpaper(w.id, hiddenIds));
   // 单遍聚合 —— 分档计数各刷一遍 basePlayable 是 10 次 O(n)（5 个分级档 + 5 个类型档）。
   const ratingCounts = { everyone: 0, pg13: 0, mature: 0, unrated: 0 };
   const typeCounts = { video: 0, web: 0, image: 0, scene: 0 };
+  const orientationCounts = { landscape: 0, portrait: 0, unknown: 0 };
   for (const w of basePlayable) {
     const r = ratingOf(w);
     ratingCounts[r] = (ratingCounts[r] || 0) + 1;
     typeCounts[w.type] = (typeCounts[w.type] || 0) + 1;
+    orientationCounts[orientationOf(w) || "unknown"] += 1;
   }
   const editorList = playableWallpapers(list, ratingFilter, typeFilter, hiddenIds);
   const hiddenList = hiddenWallpapers(list, hiddenIds);
@@ -167,6 +251,7 @@ function pickerModel(input) {
     basePlayable,
     ratingCounts,
     typeCounts,
+    orientationCounts,
     editorList,
     hiddenList,
     normalPage: pageSlice(playableList, input.page),
@@ -181,9 +266,11 @@ export {
   ratingOf,
   matchesRatingFilter,
   matchesTypeFilter,
+  matchesOrientationFilter,
   isPlayableType,
   isRotatableWallpaper,
   keepPlayingWallpaper,
+  isRotationEligible,
   isHiddenWallpaper,
   PICKER_PAGE_SIZE,
   pageSlice,

@@ -1,4 +1,5 @@
-# cordis.patch.yml — 「系统媒体桥」子包自己的行（ADR-0014 S4.1 / S4.2 / S4.4）。
+# cordis.patch.yml — `media-bridge` 子包（P-D 阶段1 起承载壁纸域宿主/浏览器半边，包名不变）自己的行
+# （ADR-0014 S4.1 / S4.2 / S4.4）。
 #
 # ⚠️ 一次安装形态（主包 patch 用 name 引用子包，ADR-0014 S4.1）下，这一行由**主包**的
 # cordis.patch.yml 插入；只有把这个子包自己当成独立 bundle 时
@@ -8,7 +9,9 @@
 # 行名 = 真实包名（裸真名）：本版 DSH 不传 bareModuleBaseUrl ⇒ 行名一律从 <profile>/cordis.yml
 # 旁起算，裸名 → <profile>/node_modules/<name>；开发期靠 scripts/dev-link-subpackages.mjs 建的
 # junction 让这个名字出现在 profile/node_modules 里（ADR-0014 S4.4），发布期靠传递依赖 hoist。
-# id 一旦定下不再改（ADR-0014 S4.3）。
+# ⚠️ P-D 阶段1：壁纸域的宿主路由族与浏览器半边并入本包，但**包名与行 id 维持
+# `media-bridge` 不变**（upstream 1.4.0 已按此名发布 npm 八包集；ADR-0014 §S4.3 的
+# id = `wallpaper-engine-<目录名>` 因此自然成立）。id 一旦定下不再改（ADR-0014 S4.3）。
 - insert:
     - id: wallpaper-engine-media-bridge
       name: 'dsh-plugin-wallpaper-engine-media-bridge'

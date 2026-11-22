@@ -47,6 +47,8 @@ import { fileURLToPath } from 'node:url';
 import { stripExportBlocks } from './tools/js-text.mjs';
 // 刀3：样式族取文（8 个域模板 + 组装点）——源码侧用 styleText()，产物侧用 cssBodyOf()。
 import { styleText, cssBodyOf, cssPartsOf, panelText, liveText, parseInlineModules } from './tools/src-scope.mjs';
+// 可读性下限常量（ADR-0016 第四刀起随玻璃 CSS 出户）的唯一读法：match 失败即 throw，不返回 NaN。
+import { readabilityFloors } from './tools/readability-floors.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CLIENT = process.argv[2] || join(ROOT, 'lib', 'client.js');
@@ -94,7 +96,15 @@ const SURFACES = [
       + ' `--we-floaters-blur` ⇒ 与上面两个自有浮层同档，故并进本行而不是新开一条。',
   },
   {
-    id: 'conversation-bubbles', label: '消息气泡', anchors: ['[class*="_bubble"]'], tier: 'private',
+    id: 'hover-card', label: '悬停卡玻璃（子项）',
+    anchors: ['[role="dialog"]:not([class*="_dialog"])'], tier: 'private',
+    why: 'v1.4.x 新增面：宿主自己 portal 出来的 HoverCard（git 提交行悬停详情等）画在'
+      + ' `div[role="dialog"] > div` 上，底色读 `--dsw-alias-bg-overlay`、本身不带霜 ⇒ 之前只看到'
+      + '"随玻璃保真度变色的纯色板"。`glass.js` 写 `--we-hovercard-alpha` / `-blur`，样式表那条'
+      + '规则读同两个变量 ⇒ 与其余子项同档 private。',
+  },
+  {
+    id: 'conversation-bubbles', label: '消息气泡', anchors: ['[class*="_bubble_"]'], tier: 'private',
     why: '上游为「对话栏框架」单独拆了一把保真度尺（--we-chat-*），作用点是**令牌**（气泡 / 输入卡的'
       + '--dsw-specific-* 声明）而不是元素规则，因此它的消费点按令牌归属，见 PRIVATE_VARS 的注释。'
       + '这是既有事实，重构时按 P2 迁移。',
@@ -182,7 +192,7 @@ const SURFACES = [
     // ⚠️ 合并 #134（扩展思考玻璃）：新增一批只在 `[data-we-thinking-glass]` 下生效的宿主锚点
     //（思考区/文件卡/工具结果/代码块/导航按钮…）—— 全部归本面认领；锚点清单取自
     // 合并后物化 CSS 的枚举输出（认领判据会双向核对）。
-    anchors: ['[data-vcp-reasoning]', '[data-vcp-reasoning-body]', '[data-changed-files]', '[data-presented-file]', '[data-chat-flow]', '[data-chat-flow-kind="context"]', '[data-vcp-rawhtml]', '[data-code-block-banner]', '[data-context-injection-body]', '[data-diff]', '[data-dsh-navbar]', '[data-vlln-load-older]', '[data-vlln-preview]', '[data-read]', '[data-terminal]', '[data-sample="bash"]', '[data-search="matches"]', '[data-search="paths"]', '[data-slot="conversation.view"]', '[data-slot="tool.call.toolview"]', '[data-tool="glob"]', '[data-tool="grep"]', '[data-tool="read"]', '[data-tool="write"]', '[data-variant="think"]', '[data-variant="others"]'], tier: 'global',
+    anchors: ['[data-vcp-reasoning]', '[data-vcp-reasoning-body]', '[data-changed-files]', '[data-presented-file]', '[data-plan-card]', '[data-changes-hover-preview]', '[data-changes-preview-path]', '[data-chat-flow]', '[data-chat-flow-kind="context"]', '[data-vcp-rawhtml]', '[data-code-block-banner]', '[data-context-injection-body]', '[data-diff]', '[data-dsh-navbar]', '[data-vlln-load-older]', '[data-vlln-preview]', '[data-read]', '[data-terminal]', '[data-sample="bash"]', '[data-search="matches"]', '[data-search="paths"]', '[data-slot="conversation.view"]', '[data-slot="tool.call.toolview"]', '[data-tool="glob"]', '[data-tool="grep"]', '[data-tool="read"]', '[data-tool="write"]', '[data-variant="others"]'], tier: 'global',
     // PR #130 的面：门是 `data-we-thinking-glass`（默认关）。⚠️ v1.3.0 追版收敛后它**不再**
     // 认领 `[data-turn-trigger]`（那一条改由上面的 conversation-thinking-trigger 认领 ——
     // 触发条吃玻璃，本面只管推理区/文件卡/工具结果等的清底与玻璃）。
@@ -218,6 +228,8 @@ const PRIVATE_VARS = {
   //    不得有私有前缀"）。本次一并纠正，并把反向那条补成判据（③ 组内的 (d)）。
   'glass-child-settings-window': ['--we-settings-window-blur', '--we-settings-window-alpha'],
   'glass-child-floaters': ['--we-floaters-blur', '--we-floaters-alpha'],
+  // 宿主悬停卡：W4 借过 floaters 的模糊，v1.4.x 单开一面（见 SURFACES 那行 why）。
+  'hover-card': ['--we-hovercard-blur', '--we-hovercard-alpha'],
   'left-sidebar-override': ['--we-left-sidebar-blur', '--we-left-sidebar-alpha'],
   // 标题栏：与左栏完全同构的一组按面变量（glass.js 写、CSS 读）。
   'titlebar-override': ['--we-titlebar-blur', '--we-titlebar-alpha'],
@@ -243,16 +255,15 @@ const MODE_MARKERS = new Set(['data-ds-dark-theme', 'data-sidebar-right-open', '
 // 得到的才是插件真正注入的那份 CSS；再剥注释。
 const SRC = readFileSync(CLIENT, 'utf8');
 
-const FLOOR = {
-  light: Number((SRC.match(/const READABILITY_FLOOR = ([\d.]+);/) || [])[1]),
-  dark: Number((SRC.match(/const READABILITY_FLOOR_DARK = ([\d.]+);/) || [])[1]),
-};
+// 可读性下限常量随玻璃 CSS 出户（ADR-0016 第四刀）⇒ 从玻璃包源读（test/tools/readability-floors.mjs，
+// match 失败即 throw）。旧写法从主产物 `SRC` 取 ⇒ undefined ⇒ NaN 被插进求值后的样式表。
+const FLOOR = readabilityFloors();
 // 刀3：样式表从单个 CSS 模板拆成 8 个域模板 + 组装点 ⇒ 取文改走 cssBodyOf
 // （按声明顺序把族内每个域模板拼回一份 CSS 体，与旧单模板取文逐字节相同：276,804 B）。
 // 取不到任何模板会**抛错**（旧写法是静默拿到 undefined）——这里把失败显式转成退出码 1。
 let CSS_BODY = '';
 try {
-  CSS_BODY = cssBodyOf(SRC);
+  CSS_BODY = cssBodyOf(SRC + readFileSync(join(ROOT, 'packages', 'glass', 'lib', 'client.glass.js'), 'utf8'));
 } catch (err) {
   console.error('✗ 取不到样式表（产物结构变了？）—— ' + CLIENT + '：' + (err && err.message));
   process.exit(1);
@@ -300,13 +311,38 @@ const isGlassCarrier = (body) => /backdrop-filter\s*:/.test(body)
   || /var\(--dsw-alias-(?:bg-layer|markdown|button|interactive|turn-trigger)/.test(body);
 
 /**
+ * 去掉选择器里的 :not(...) 段。**排除项不是依赖**：一条规则写
+ * `[role="dialog"]:not([data-shortcut-modal]) > div` 不等于它依赖 data-shortcut-modal 这个面，
+ * 若把它当锚点收进来，② 组会把它报成"新增的未登记玻璃面"（实测：给宿主抽屉加排除后误报）。
+ * 正/负对照见 ② 组：正向出现的锚点仍必须被收进来。
+ */
+function withoutNegations(header) {
+  let out = '';
+  let i = 0;
+  while (i < header.length) {
+    const at = header.indexOf(':not(', i);
+    if (at < 0) { out += header.slice(i); break; }
+    out += header.slice(i, at);
+    let depth = 0;
+    let j = at + 4;
+    for (; j < header.length; j++) {
+      if (header[j] === '(') depth++;
+      else if (header[j] === ')') { depth--; if (depth === 0) { j++; break; } }
+    }
+    out += ' ';
+    i = j;
+  }
+  return out;
+}
+
+/**
  * 一条规则依赖的**宿主锚点**。值限定的锚点（`[data-slot="sidebar"]`）返回完整形态
  * `data-slot="sidebar"`；裸锚点返回 `data-slot`。这样"只靠裸锚点认领不了"的面
  * （左栏与设置窗口都靠 data-slot，但值不同）能在枚举里被分开认领。
  */
 function anchorsOf(header) {
   const out = new Set();
-  for (const m of header.matchAll(/\[(data-[a-z0-9-]+)(?:([~^$*|]?=)"([^"]*)")?/g)) {
+  for (const m of withoutNegations(header).matchAll(/\[(data-[a-z0-9-]+)(?:([~^$*|]?=)"([^"]*)")?/g)) {
     if (m[1].startsWith('data-we-') || MODE_MARKERS.has(m[1])) continue;
     out.add(m[3] !== undefined ? m[1] + '="' + m[3] + '"' : m[1]);
   }
@@ -384,22 +420,26 @@ function claimKeysOf(surface) {
 // ── 接线实况：从 src/effects.js **按代码**提取「哪些面 × 参数**真的**接了取值解析器」 ──
 // 这不是手抄清单：判据的两侧各自独立 —— 一侧是 schema 的默认值（运行时数据），
 // 另一侧是解析器调用点（源码文本）。两者不一致就是漂移。
-// ⚠️ 玻璃那一段住在 `src/glass.js`（R3b 第一步抽出去的，见 wip §10.13）。
+// ⚠️ 玻璃那一段住在 `packages/glass/src/glass.js`。
 // 构建期把两个文件**内联进同一个工厂作用域** ⇒ 判据要看的"玻璃代码"= 两者拼接
 // （顺序同构建表：glass.js 在前）。下面的谓词因此继续成立，而**不会**盯着一份
 // 已经没有玻璃代码的 `effects.js` 变成恒真。
-const GLASS_SRC = readFileSync(join(ROOT, 'src', 'glass.js'), 'utf8');
+const GLASS_SRC = readFileSync(join(ROOT, 'packages', 'glass', 'src', 'glass.js'), 'utf8');
 const EFFECTS_SRC = readFileSync(join(ROOT, 'src', 'effects.js'), 'utf8');
-const EFFECTS = GLASS_SRC + '\n' + EFFECTS_SRC;
+// ADR-0016 第三刀：effects 的玻璃段随玻璃层出户 ⇒ 执行面 = glass.js + effects.js + glass-layer.js
+// （glass-extra 仍由 Proxy 替身承担 —— 基线里 syncExtraGlassCss 本就是替身，行为不变）。
+const GLASS_LAYER_SRC = readFileSync(join(ROOT, 'packages', 'glass', 'src', 'glass-layer.js'), 'utf8');
+const EFFECTS = GLASS_SRC + '\n' + EFFECTS_SRC + '\n' + GLASS_LAYER_SRC;
 // 第 ⑫ 组要读样式表：它需要从 CSS 的**内层兜底**反推"没被 JS 写出的变量实际取到哪个值"
 // （单层链 `var(--we-<面>-x, var(--we-global, lit))`）⇒ 判据与"管道形状"解耦。
 // 刀3：样式族已按域拆成 8 个模块 + 组装点 ⇒ 这里取**整族源码文本**（构建序拼接），判据文本不变。
-const STYLES_TEXT = styleText();
+const STYLES_TEXT = styleText() + readFileSync(join(ROOT, 'packages', 'glass', 'src', 'glass-css.js'), 'utf8');
 // 「玻璃 UI」开关的读数/翻转处理器都住在 client.js（不在 effects.js）—— 第 ⑧ 组要看它。
 const CLIENT_SRC = readFileSync(join(ROOT, 'src', 'client.js'), 'utf8');
 // 「独立配置」开关的**两个落点**：登记表子项由 glass-panel 自动渲染，既有面（左侧栏 / 侧栏 /
 // 内容面）的开关手写在 panel-tabs。第 ⑧ 组的"mode 可达性"判据要同时看这两处。
-const GLASS_PANEL_SRC = readFileSync(join(ROOT, 'src', 'glass-panel.js'), 'utf8');
+const GLASS_PANEL_SRC = readFileSync(join(ROOT, 'packages', 'glass', 'src', 'glass-panel.js'), 'utf8')
+  + '\n' + readFileSync(join(ROOT, 'packages', 'glass', 'src', 'glass-presets-panel.js'), 'utf8');
 const PANEL_SRC = panelText();
 // schema 模块（模块级：多个判据组都要读它的 DEFAULTS / GLASS_CHILDREN）。
 const SCHEMA = await import(new URL('../lib/settings-schema.js', import.meta.url).href);
@@ -462,7 +502,8 @@ function anchorGateCoverageGlaze(cssText, memberRe, anchorRe) {
   }
   const members = rules.filter((r) => memberRe.test(r.header) && /var\(--we-/.test(r.body));
   const ungated = members.filter((r) => !anchorRe.test(r.header)).map((r) => r.header.slice(0, 80));
-  return { total: members.length, gated: members.length - ungated.length, ungated };
+  // raw 留全量成员（header + body）——上层的基础层豁免要按 body 复算（ADR-0016 第四刀）。
+  return { total: members.length, gated: members.length - ungated.length, ungated, raw: members };
 }
 
 /**
@@ -590,6 +631,11 @@ console.log('\n② 没有未登记的玻璃面（防"新增锚点面无人知"�
     '报出=[' + synthUnregistered.join(', ') + ']');
   check('positive control: 不带玻璃声明的锚点不算玻璃面',
     enumerateGlassAnchors('body[data-we-wallpaper] [data-synthetic-plain] { color: red; }').size === 0);
+  // 排除项不得被算成"面"：给一个面写 :not([宿主标记]) 只是在缩小射程，不是依赖那个面。
+  // 负对照（:not 里的标记不被收集）+ 正对照（正向出现的锚点照样收集）都钉在同一条判据上。
+  check('positive control: :not(...) 里的排除项不算玻璃锚点，正向锚点照收',
+    !enumerateGlassAnchors('body[data-we-wallpaper] [role="dialog"]:not([data-synthetic-excluded]) > div { backdrop-filter: blur(4px); }').has('data-synthetic-excluded')
+      && enumerateGlassAnchors('body[data-we-wallpaper] [data-synthetic-included][role="dialog"] { backdrop-filter: blur(4px); }').has('data-synthetic-included'));
   // 状态标记不得被算成"面"（否则每次新增开关态都会假红）。
   check('positive control: 状态标记（data-sidebar-right-open）不被算成独立的面',
     !enumerateGlassAnchors(CSS).has('data-sidebar-right-open')
@@ -932,7 +978,7 @@ console.log('\n⑥ settings golden 夹具的键集快照（新增键必须逐用
       && exact.missing.length === 0 && exact.extra.length === 0);
 }
 
-// ═══ ⑦ 量纲统一：**一把刻度** + 调用点传裸值（R4，wip §10.19）═══════════════════
+// ═══ ⑦ 量纲统一：**一把刻度** + 调用点传裸值═══════════════════
 // 背景（§4.10）：各面的键曾经**量纲不同**（透明度 0–60 / 0–200 / 0–80、模糊 0–60 / 0–200）。
 // 把一边的值喂给另一边的曲线 = "把 60 分制当 200 分制用" —— 实测后果就是"跟随"档下
 // 全局雾化 47 被放大成 `--we-sidebar-blur: 156.67px`（等价性探针留着这条证据）。
@@ -953,9 +999,9 @@ console.log('\n⑦ 量纲统一（一把刻度：模糊 0–60 · 透明度 0–
   const effectsSrc = uncommented(EFFECTS);
   /** 规范刻度：参数族 → 上界。**唯一真源**，下面几条都对照它。 */
   const CANON = { blur: 60, transparency: 100, fidelity: 100 };
-  const BLUR_KEYS = ['blur', 'sidebarBlur', 'settingsWindowBlur', 'leftSidebarBlur', 'floatersBlur'];
+  const BLUR_KEYS = ['blur', 'sidebarBlur', 'settingsWindowBlur', 'leftSidebarBlur', 'floatersBlur', 'hoverCardBlur'];
   const ALPHA_KEYS = ['glassAlpha', 'sidebarAlpha', 'sidebarContentAlpha',
-    'settingsWindowTransparency', 'leftSidebarTransparency', 'floatersTransparency'];
+    'settingsWindowTransparency', 'leftSidebarTransparency', 'floatersTransparency', 'hoverCardTransparency'];
   const FID_KEYS = ['glassFidelity', 'chatGlassFidelity'];
 
   /** 取 glassValue( 的实参（支持嵌套括号与字符串字面量）。纯函数，负对照喂它。 */
@@ -1064,7 +1110,7 @@ console.log('\n④ 接线 ↔ 注册表 ↔ 面名 三方对账');
   const MUTATE = process.env.WE_GLASS_MUTATE || '';
   if (MUTATE === 'drop-wire' && wired.size) wired.delete([...wired.keys()][0]);
 
-  // ── 注册表 `params` ↔ 代码接线：**逐参数**相等（R3a 补，wip §10.12）────────────────
+  // ── 注册表 `params` ↔ 代码接线：**逐参数**相等────────────────
   // 为什么需要它：注册表可以声明一个**代码从不读取**的参数 —— 面板会照样渲染出一行，
   // 用户拖它毫无反应。实测（R3a 前）有 **5 个**：`settingsWindowColor` /
   // `conversationTransparency` / `conversationBlur` / `floatersColor` / `leftSidebarColor`
@@ -1101,8 +1147,8 @@ console.log('\n④ 接线 ↔ 注册表 ↔ 面名 三方对账');
     return 'selection.' + (ov || (id + param.charAt(0).toUpperCase() + param.slice(1)));
   };
   const badOwnKey = [];
-  // 取值接线住在 `src/glass.js`（"玻璃后端的唯一落点"）—— 直接读源文件（同 STYLES_TEXT 的做法）。
-  const glassSrc = readFileSync(join(ROOT, 'src', 'glass.js'), 'utf8');
+  // 取值接线住在 `packages/glass/src/glass.js`（"玻璃后端的唯一落点"）—— 直接读源文件（同 STYLES_TEXT 的做法）。
+  const glassSrc = readFileSync(join(ROOT, 'packages', 'glass', 'src', 'glass.js'), 'utf8');
   // ⚠️ 这里自带一个实参提取器（不复用上面那个 `callArgs`：它定义在另一个判据组的块作用域里）
   //    —— 判据自己成块、自己能跑，是这份文件的一贯形态。
   const argsOf = (text) => {
@@ -1170,7 +1216,7 @@ console.log('\n④ 接线 ↔ 注册表 ↔ 面名 三方对账');
       && wired.has('sidebar') === true
       && !wiredOverrides('const x = selection.sidebarBlur;').has('sidebar'));
 
-  // ── 已删除的键必须**真的消失**（R3b-ii，wip §10.17）────────────────────────────
+  // ── 已删除的键必须**真的消失**────────────────────────────
   // 为什么单列一条：删代码容易、删**键**容易漏 —— 而漏掉的那个键会继续被消毒、被序列化、
   // 被写进用户存档，于是"删掉的能力表"以另一种形式活着。三条一起判：KINDS / DEFAULTS / 接线点。
   const shouldBeGone = ['glassOverrides'];
@@ -1227,7 +1273,7 @@ console.log('\n⑧ 「玻璃 UI」子项的模式语义（两态 · 一个键）
     'base=' + switchSemantics(BASE).length + ' bad1=' + switchSemantics(BAD1).length
       + ' bad2=' + switchSemantics(BAD2).length + ' bad3=' + switchSemantics(BAD3).length);
 
-  // ⚠️ **默认必须是"跟随全局"**（R3b 语义迁移，wip §10.16）：
+  // ⚠️ **默认必须是"跟随全局"**：
   //    这条判据曾经要求"`sidebar` / `sidebarContent` 默认**独立**"，理由是它们从 P2 起就读自己的键。
   //    那个口径已被**推翻** —— 用户要的是"全局的玻璃使用同一套配置语义"，而"既有独立"从未真正
   //    生效过（§4.25 修好默认值机制之前能力表恒空）⇒ 独立必须是**显式选择**。判据口径不变：
@@ -1260,7 +1306,7 @@ console.log('\n⑧ 「玻璃 UI」子项的模式语义（两态 · 一个键）
     '子项 ' + childIds.length + ' 个 · 缺接线的 ' + JSON.stringify(childWithNoWire));
 
   // ── mode 的**可达性**：每个被读的面都必须有"能把它设成 custom"的 UI 入口 ────────────
-  // 为什么单列（wip §10.24 的真实缺口）：`glassMode` 的唯一写入方是 `onToggleChildIndependent`，
+  // 为什么单列：`glassMode` 的唯一写入方是 `onToggleChildIndependent`，
   // 而它原先只被 `GLASS_CHILDREN` 那四项 + 左侧栏调用；`sidebar` / `sidebarContent` **不在**登记表里
   // ⇒ 它们的 mode 永远停在 `'inherit'` ⇒ 那 5 个既有滑块（侧栏模糊/透明度/颜色、内容面透明度/底色）
   // **全是死的**（拖了没有任何变化）。当时**没有任何判据看得见**这一类"旋钮无入口"。
@@ -1297,7 +1343,7 @@ console.log('\n⑧ 「玻璃 UI」子项的模式语义（两态 · 一个键）
 console.log('\n⑨ W5：各面的锚点门控覆盖率（防"关掉后还剩一点玻璃味"）');
 {
   // 面 → { 成员选择器, 认定的锚点, 是否已完成 W5 }
-  // ✅ **四个面全部 done: true**（W5 收口，见 wip §4.23）。`done` 字段保留是因为它让
+  // ✅ **四个面全部 done: true**。`done` 字段保留是因为它让
   //    "哪些面回退干净、哪些还没有"在判据里**可见** —— 将来新增一个面时，
   //    若它的规则没有门控，把 done 设成 false 会立刻暴露出"已知未做"，而不是静默半成品。
   //    登记它们是为了让"哪些面回退干净、哪些没有"这件事**在判据里可见**，而不是靠记忆。
@@ -1310,23 +1356,42 @@ console.log('\n⑨ W5：各面的锚点门控覆盖率（防"关掉后还剩一�
     { id: 'left-sidebar-override', member: /:has\(> \[data-slot="sidebar"\]\)(?!\))/, anchor: /data-we-left-sidebar/, done: true },
     // 标题栏：与左栏同族的"乙类"面，门是 body[data-we-titlebar-glass]
     // （开关），另加 html[data-windows-titlebar]（壳层形态锚，只出现在 Windows Electron）。
-    // ⚠️ member 必须是**这一面自己的选择器形态**（顶栏那个 CSS 模块哈希类名的子串
-    //    `div[class*="pI_x6G_frame"]`，见 src/styles-sidebar.js 的标题栏 `::before` 规则），**不能**写成门控属性本身 ——
+    // ⚠️ member 必须是**这一面自己的选择器形态**（[data-we-titlebar-anchor] 是插件运行时
+    //    探针打的属性标记，见 src/effects.js 的 syncTitlebarAnchor），**不能**写成门控属性本身 ——
     //    两者写成同一条正则时，"这条规则丢了门控"会让它同时不再是 member ⇒ ungated 恒空、
     //    该面的 W5 判据**不可能红**（正是这条要防的失效模式：锚点外新增一条同面规则）。
-    { id: 'titlebar-override', member: /pI_x6G_frame/, anchor: /data-we-titlebar-glass/, done: true },
+    //    #235 起不再认宿主 CSS-module 构建哈希（pI_x6G_frame 之类，跨构建会漂）。
+    { id: 'titlebar-override', member: /data-we-titlebar-anchor/, anchor: /data-we-titlebar-glass/, done: true },
     // W5 推广（本轮）：对话栏三条主规则已加 `[data-we-glass-chat]` 锚点。
     // ⚠️ 合并 #134：思考玻璃一族在对话面新增了「+」白釉 / 气泡清底等规则，它们的门是
     //    `data-we-thinking-glass`（默认关）—— 与 chat 门同样满足"关 ⇒ 整组不生效"，
     //    并入本面的合法锚点集合（回退干净的性质不变）。
-    { id: 'glass-child-conversation', member: /data-(composer-card|question-key|plan-review-key|approval-key)|_bubble|data-code-block-banner/, anchor: /data-we-glass-fallback|data-we-glass-chat|data-we-thinking-glass/, done: true },
+    { id: 'glass-child-conversation', member: /data-(composer-card|question-key|plan-review-key|approval-key|plan-card)|_bubble|data-code-block-banner/, anchor: /data-we-glass-fallback|data-we-glass-chat|data-we-thinking-glass/, done: true },
     // ⚠️ 新登记面必须同步进 member：`[data-install-registry]`（#156② 注册表浮层的霜）当年
     //    只进了 SURFACES 的锚点清单、没进这里，于是"删掉效果规则"在这条棘轮上无感
     //    （§11 A1-2）。member 与 SURFACES[].anchors 是**两套**登记，新增面时两处都要动。
-    { id: 'plugin-floaters', member: /\.we-(update-notice|repo-panel)|\[data-install-registry\]/, anchor: /data-we-glass-floaters|data-we-glass-fallback/, done: true },
+    // ADR-0016 第四刀：plugin-floaters 面**拆两层**——玻璃皮（门内，anchor 照旧）+ 基础层
+    // （无门、只读 --we-panel-color 的实底几何，玻璃行停用时兜住公告/抽屉）。allowBaseLayer
+    // = 基础层豁免判据：无门但 body 只读面板色/宿主令牌（**不读任何玻璃按面变量**）的规则
+    // 不算违规——它不是漏门的玻璃规则，是行停用时的原生回退（ADR-0016 D2）。
+    { id: 'plugin-floaters', member: /\.we-(update-notice|repo-panel)|\[data-install-registry\]/, anchor: /data-we-glass-floaters|data-we-glass-fallback/, allowBaseLayer: (r) => !/var\(--we-(floaters|blur|saturate|glass|surface-tint|readability|sidebar|content-surface|settings-window|chat)-/.test(r.body) && /--we-panel-color/.test(r.body), done: true },
+    // #277：第三方浮层的实底底板（新面）。门 = data-we-floater-solid（设置键
+    // floaterSolidBase，默认开）。成员 = 带这道门的 ARIA 浮层规则：
+    // role="dialog" / role="alertdialog" 两条。它们**不**按面私有变量、只读全局
+    // 的 --we-readability-base ⇒ tier global，不进 ④ 组接线对账。
+    // ⚠️ 这一面的规则选择器里**不得出现 data-slot 等未登记锚点**（② 组会判红）——
+    //    排除项一律用 :has() 以外的写法（见 glass-css.js 里那段的取舍说明）。
+    { id: 'third-party-floater-solid', member: /data-we-floater-solid/, anchor: /data-we-floater-solid/, done: true },
   ];
 
-  const results = GATE.map((g) => ({ ...g, cov: anchorGateCoverageGlaze(CSS, g.member, g.anchor) }));
+  const results = GATE.map((g) => {
+    const cov = anchorGateCoverageGlaze(CSS, g.member, g.anchor);
+    if (g.allowBaseLayer) cov.ungated = cov.ungated.filter((h) => {
+      const rule = cov.raw.find((r) => r.header.slice(0, 80) === h);
+      return !(rule && g.allowBaseLayer(rule));
+    });
+    return { ...g, cov };
+  });
   const doneBad = results.filter((g) => g.done && g.cov.ungated.length > 0);
   check('已完成 W5 的面：规则**全部**带锚点（关 ⇒ 回退干净）',
     doneBad.length === 0,
@@ -1365,6 +1430,8 @@ console.log('\n⑨ W5：各面的锚点门控覆盖率（防"关掉后还剩一�
   //    这类残留只有卸载路径才暴露，日常切换看不出来 —— 所以必须写成判据。
   {
     const clearStart = EFFECTS.indexOf('function clearEffects');
+    // ADR-0016 第三刀：玻璃摘除清单随 disposeGlassLayer 出户（在 face 的 glass-layer 段）——
+    // clearBody 取"clearEffects 起到文件尾"即天然包含它（glass-layer 排在 effects 之后）。
     const clearBody = clearStart >= 0 ? uncommented(EFFECTS.slice(clearStart)) : '';
     // 从 applyEffects 里提取"会写出的门控属性"与"会写出的按面变量"
     const applyBody = clearStart >= 0 ? uncommented(EFFECTS.slice(0, clearStart)) : uncommented(EFFECTS);
@@ -1392,7 +1459,7 @@ console.log('\n⑨ W5：各面的锚点门控覆盖率（防"关掉后还剩一�
 }
 
 // ═══ ⑩ 默认值可达性：这两态必须**真的取到值** ══════════════════════════════════
-// 为什么单列一组（为一次**已发生的真实事故**补的，wip §4.25）：
+// 为什么单列一组：
 // 前面几组多是**形态判据** —— 它们能证明"接线写对了"，却证明不了"接线在真实会话里可达"。
 // 实测：`readOne` 把 `def` 丢掉 ⇒ `DEFAULTS` 里那几张表成了**死代码**，真实会话里恒为 `{}`，
 // 于是"每个「独立配置」旋钮天生不动"、面板总开关显示为关 —— 用户看到的正是
@@ -1492,6 +1559,7 @@ const makeSandbox = (body) => {
     detectMicaSupport: () => true, detectSoftwareRender: () => false,
     useLegacySaturateCoupling: () => false,
     weClampSurfaceColor: (hex) => hex,
+    sanitizeExtraGlassSelectors: SCHEMA.sanitizeExtraGlassSelectors,
     snapshotHostFontDefaults: () => {}, applyComponentFonts: () => {},
     removeFontStyles: () => {}, removeComponentFonts: () => {},
     applyCaretStyles: () => {}, removeCaretStyles: () => {}, syncSceneAudio: () => {},
@@ -1503,13 +1571,13 @@ const makeSandbox = (body) => {
     set: () => true,
   });
   const mod = new Function('__scope', 'with (__scope) { ' + body
-    + '\nreturn { applyEffects }; }')(scope);
+    + '\nreturn { applyEffects, applyGlassLayer }; }')(scope);
   return {
     wrote, attrs,
     /** 按覆盖调一次；覆盖**累加**（模拟用户连续改设置）。 */
     call: (patch) => {
       Object.assign(selection, patch);
-      try { mod.applyEffects(); } catch (e) { runtimeErrors.push(String((e && e.message) || e)); }
+      try { mod.applyEffects(); mod.applyGlassLayer(); } catch (e) { runtimeErrors.push(String((e && e.message) || e)); }
     },
   };
 };
@@ -1552,7 +1620,7 @@ const eff = (box, name) => {
 };
 
 // ═══ ⑪ 按面变量必须**无条件写出**（"不写 ≠ 撤销"的正面形式；R1 起）════════════
-// 历史（wip §4.26 → §10.10）：这些变量原先走"**写 / 撤**两态" —— 独立档写、跟随档撤。
+// 历史：这些变量原先走"**写 / 撤**两态" —— 独立档写、跟随档撤。
 // 而 CSS 的 `var(--we-x, 兜底)` **只在 `--we-x` 未定义时**才取兜底；变量一旦被写到
 // `document.body.style` 上，它就一直是"已定义"的 ⇒ 只是"跳过写入"会把上一档的旧值留在
 // body 上，表现为"关掉独立配置后没接受全局配置，而是保留自己的配置"（用户实测原话）。
@@ -1679,6 +1747,21 @@ console.log('\n⑫ 语义表（执行型 · 扰动自证：跟随全局 / 独立
     inheritBad.length === 0,
     inheritBad.length ? inheritBad.map((r) => r.row.label).join(', ') : rows.length + ' 行全部成立');
 
+  // 独立档 + **本面键没设过值**（#324）：`conversationColor` 这类键在 schema 里没有默认值，
+  // 用户只翻「独立配置」开关、没点色板时它是 undefined。旧管道直接把它交给
+  // weClampSurfaceColor，颜色一缺就掉到主题常量（深色 #0d1524 / 浅色 #ffffff）——
+  // 面板看着"跟随全局"、画面却是另一块板（用户实测：关掉独立配置立刻恢复）。
+  // 判据：own 取 undefined、custom 档下扰动全局键，有效取值必须**跟着动**。
+  // 负对照：旧写法（`glassModeOn ? profileValue : globalValue`）下它是主题常量 ⇒ 判红。
+  const emptyBad = rows.filter((r) => {
+    const emptyBase = run(effectsBody, Object.assign({}, mode(true), { [r.row.own[0]]: undefined, [r.row.glob[0]]: r.row.glob[1] }));
+    const emptyPert = run(effectsBody, Object.assign({}, mode(true), { [r.row.own[0]]: undefined, [r.row.glob[0]]: r.row.glob[2] }));
+    return eff(emptyBase, r.row.v) === eff(emptyPert, r.row.v);
+  });
+  check('独立档但本面键未设值：必须回落全局（改全局键要推动有效取值，不能掉到主题常量）',
+    emptyBad.length === 0,
+    emptyBad.length ? emptyBad.map((r) => r.row.label).join(', ') : rows.length + ' 行全部回落全局');
+
   // 默认档：全新会话（glassMode 用 schema 消毒出来的**真默认值**）下应当全部跟随全局。
   // ⚠️ 已知偏差走**登记表**（不空转：登记了却不再偏差的必须删掉那条）—— 这样"现状偏差"
   //    既不会把树判红，也不会被遗忘；R3 把默认改成 inherit 时，这条登记会自动要求删除。
@@ -1698,7 +1781,7 @@ console.log('\n⑫ 语义表（执行型 · 扰动自证：跟随全局 / 独立
     staleReg.length === 0,
     staleReg.length ? '已失效的登记：' + staleReg.join(', ') : '登记 ' + deviated.length + ' 个，全部仍在偏差');
 
-  // 门控属性（wip §10.20 之后分**两类**）：
+  // 门控属性：
   //   · **恒挂**（"要不要玻璃"那一层已退役）：设置窗口 / 对话栏 / 插件浮层 —— 任何输入下都必须在，
   //     而且源码里**不许**再有摘除分支（那条路正是被删掉的）。
   //   · **仍可切**：左侧栏液态玻璃 / 侧栏液态玻璃 —— 它们各有自己的总开关，开 ⇒ 挂、关 ⇒ 摘。
@@ -1822,7 +1905,7 @@ console.log('\n⑫b 玻璃色分主题（#159②：一对颜色 ⇒ 两套配色
     box.wrote.has('--we-surface-tint-rgb-light') && box.wrote.has('--we-surface-tint-rgb-dark')
       && eff(box, '--we-surface-tint-rgb-light') !== eff(box, '--we-surface-tint-rgb-dark'),
     'rgb-light=' + eff(box, '--we-surface-tint-rgb-light') + ' · rgb-dark=' + eff(box, '--we-surface-tint-rgb-dark'));
-  // ❸ 对话栏那一面（`src/glass.js` 的 applyGlass）同样要分开 —— 只在**跟随全局**那一档
+  // ❸ 对话栏那一面（`packages/glass/src/glass.js` 的 applyGlass）同样要分开 —— 只在**跟随全局**那一档
   //    （custom 档读自己的 conversationColor，与玻璃色无关）
   check('分主题：对话栏的 --we-chat-surface-tint-{light,dark} 在跟随全局时也各自只随自己那一半变',
     judgesBothHalvesChat(effectsBody, Object.assign({}, mode(false), fx)),
@@ -1853,12 +1936,12 @@ console.log('\n⑫b 玻璃色分主题（#159②：一对颜色 ⇒ 两套配色
 // ═══ ⑬ CSS 契约：按面变量**零兜底** + 门控许可证 + 双向对账（R2 起）═══════════
 // R2 去掉了样式表里 62 处按面变量的**内层兜底**（`var(--we-<面>-x, <兜底>)` → `var(--we-<面>-x)`）。
 // 为什么可以去掉（**许可证**，本组要把它判住）：那些规则（至少）挂在
-// **JS 写出的门控属性**之下 —— 整页那一族是 `data-we-glass-page`（`src/glass.js` 的
+// **JS 写出的门控属性**之下 —— 整页那一族是 `data-we-glass-page`（`packages/glass/src/glass.js` 的
 // applyGlass 恒挂：插件在跑就挂，与有没有壁纸无关），壁纸让开那一族是 `data-we-wallpaper`
 // （`src/live-layer.js` 的 ACTIVE_ATTR）⇒ 规则匹配时 `applyEffects` 已经跑过、这些变量
 // 已经写出来了。R1 又保证"每档都写"⇒ **兜底在原理上不可达**。
 // ⚠️ 刻意**不动**的：`--we-readability-*` / `--we-chat-readability-*`（CSS 自己声明、F1c/F2a 锁定）
-//    与全局 `--we-glass-alpha`（E2 配方字面量）—— 见 wip §10.7 的"明确保留"。
+//    与全局 `--we-glass-alpha`（E2 配方字面量）—— 见  的"明确保留"。
 console.log('\n⑬ CSS 契约（按面变量零兜底 / 门控许可证 / 双向对账）');
 {
   const FACE_RE = /^--we-(?:settings-window|left-sidebar|floaters|sidebar-|chat-(?:glass-fidelity|surface-tint))/;
@@ -1875,7 +1958,7 @@ console.log('\n⑬ CSS 契约（按面变量零兜底 / 门控许可证 / 双向
   //     是"派生变量 / 宿主令牌"的定义点 —— 那个 `, 1` / `, #ffffff` **就是缺省形态本身**
   //     （verify-readability 的 F1e/F1f 查的正是这个形态），而且该守卫**独立求值整份样式表**
   //     （不跑插件 JS）⇒ 去掉它会让 dark 侧整片算式变成 NaN。
-  //     ⚠️ 这条是 R2 第一版**多删了 8 处**换来的教训（wip §10.11）：口径必须按"角色"分，
+  //     ⚠️ 这条是 R2 第一版**多删了 8 处**换来的教训：口径必须按"角色"分，
   //        不能按"名字前缀看起来像不像面变量"分。
   const REMOVE_RE = /^--we-(?:settings-window-|left-sidebar-|floaters-|sidebar-)/;
   const KEEP_RE = /^--we-(?:chat-glass-fidelity$|chat-surface-tint-)/;
@@ -1901,7 +1984,7 @@ console.log('\n⑬ CSS 契约（按面变量零兜底 / 门控许可证 / 双向
   //   ② **只声明自定义属性的规则豁免**（`--we-x: …` / `--dsw-…: …`）：它们自己不画任何像素，
   //      是"派生变量 / 宿主令牌"的定义点；真正画东西的是**消费**它们的那些规则，而消费者带门控
   //      （这正是 ⑨ 组在查的"门控覆盖率"）。把定义点也算成"必须有门控"是把范围放错了地方。
-  // ⚠️ 门控属性与按面变量的**写入**现在都在 `src/glass.js`（R3b 第一步搬的，见 wip §10.13）；
+  // ⚠️ 门控属性与按面变量的**写入**现在都在 `packages/glass/src/glass.js`；
   //    `data-we-wallpaper` 仍由 `src/live-layer.js` 的 ACTIVE_ATTR 挂 ⇒ 两个来源都要收。
   const gateSrc = GLASS_SRC.concat(liveText());
   const jsGates = [...new Set([
@@ -1911,35 +1994,48 @@ console.log('\n⑬ CSS 契约（按面变量零兜底 / 门控许可证 / 双向
   const PAINTS = /^\s*-{0,2}(?:webkit-)?(?:backdrop-filter|background|background-color|background-image|border|border-color|box-shadow|color|filter)\s*:/m;
   // ⚠️ 扫描器必须**下钻进 at-rule**（`@supports` / `@media`）：第一版把 at-rule 块本身当成一条
   //    规则，于是拿 `@supports not (...)` 当选择器去查门控 —— 而真正的门控在它**内部**的选择器上。
+  // ADR-0016 第四刀：scanRules 换成 softrender 的 parseCssRules 同款实现（剥 CSS 注释 +
+  // 字符串跟踪 + 扁平 rules 带 ancestors）。原朴素括号栈对源全文的 JS 部分与嵌套 at-rule
+  // 会走飞（实测 89/180：停在三号扩展模块的转盘规则处），本判据从此喂**双工件模板体**。
   const scanRules = (text) => {
+    const t = text.replace(/\/\*[\s\S]*?\*\//g, '');
     const out = [];
-    const walk = (t) => {
-      let depth = 0; let start = 0; let selStart = 0; let sel = '';
-      for (let i = 0; i < t.length; i++) {
-        if (t[i] === '{') {
-          if (depth === 0) {
-            sel = t.slice(selStart, i).split('\n').map((s) => s.trim()).filter(Boolean).slice(-1)[0] || '';
-            start = i + 1;
-          }
-          depth++;
-        } else if (t[i] === '}') {
-          depth--;
-          if (depth === 0) {
-            const body = t.slice(start, i);
-            if (sel.startsWith('@')) walk(body);       // 容器：继续往里找真正的选择器
-            else out.push({ sel, body });
-            selStart = i + 1;
-          }
+    const stack = [];
+    let start = 0;
+    let i = 0;
+    while (i < t.length) {
+      const ch = t[i];
+      if (ch === '"' || ch === "'") {
+        const quote = ch;
+        i++;
+        while (i < t.length && t[i] !== quote) {
+          if (t[i] === '\\') i++;
+          i++;
         }
+        i++;
+        continue;
       }
-    };
-    walk(text);
+      if (ch === '{') {
+        stack.push({ header: t.slice(start, i).trim(), bodyStart: i + 1 });
+        start = i + 1;
+      } else if (ch === '}') {
+        const frame = stack.pop();
+        if (frame) out.push({ sel: frame.header, body: t.slice(frame.bodyStart, i) });
+        start = i + 1;
+      }
+      i++;
+    }
     return out;
   };
   const gateCheck = (text) => {
     const bad = [];
     let checked = 0;
     for (const r of scanRules(text)) {
+      // at-rule 容器条目（@supports / @media）让位给它的**内层**规则：内层条目自带完整
+      // 选择器（门控判定看它），容器条目的 body 是整个块、sel 是 at-rule 头（永远无门控）
+      // —— 不跳过会把每条 @supports 玻璃回退误判成"无门控"（旧扫描器对 @ 容器递归下钻，
+      // 容器本身从不进表；这条 continue 就是那个语义）。
+      if (r.sel.startsWith('@')) continue;
       const names = [...r.body.matchAll(/var\((--we-[a-z0-9-]+)\)/g)].map((m) => m[1]).filter((n) => FACE_RE.test(n));
       if (!names.length) continue;
       if (!PAINTS.test(r.body)) continue;        // 只声明自定义属性 ⇒ 自己不画东西（见上面的范围限定②）
@@ -1948,7 +2044,9 @@ console.log('\n⑬ CSS 契约（按面变量零兜底 / 门控许可证 / 双向
     }
     return { bad, checked };
   };
-  const gate = gateCheck(STYLES_TEXT);
+  // ADR-0016 第四刀：STYLES_TEXT 是**源全文**拼接（含各文件头注释/声明行）——朴素括号栈
+  // 会被 JS 部分带飞 ⇒ 本判据喂**模板体**（cssBodyOf 抽出的纯 CSS，跨主包 + 玻璃包两产物口径）。
+  const gate = gateCheck(cssBodyOf(STYLES_TEXT));
   // 覆盖面地板 = **防"解析器静默返回空表"**（本文件头注释的纪律），不是紧贴实测值：
   // 实测 9 条（设置窗的令牌声明已从「会画东西的 ::before」挪回对话框本体 ⇒ 那一族
   // 不再是本判据口径下的"画东西"规则），地板取 8 —— 留出正常重构的余量，
@@ -1966,6 +2064,62 @@ console.log('\n⑬ CSS 契约（按面变量零兜底 / 门控许可证 / 双向
   check('双向对账：effects.js 写的 ' + written.length + ' 个按面变量都必须被样式表读到',
     written.length >= 15 && deadWrites.length === 0,
     deadWrites.length ? '写了没人读：' + deadWrites.join(', ') : written.length + ' 个全部有消费者');
+
+  // ── ADR-0016 第四刀常驻判据：主包保留样式**不得裸引用玻璃写入变量** ─────────────
+  // 玻璃运行时随玻璃包走 ⇒ 停用玻璃行时这些变量无人写出。主包保留样式里凡**读**它们的
+  // 规则，选择器必须挂玻璃域门控（data-we-glass-* / data-we-sidebar-* / data-we-left-sidebar /
+  // data-we-titlebar-glass / data-we-thinking-*）：门在 ⇒ 变量必在（零兜底契约不变）；
+  // 门失效 ⇒ 规则整体不生效 ⇒ 不会出现"读 undefined 变量的坏样式"。唯一豁免 = ADR-0016
+  // 第四刀的**基础层**规则（不读玻璃变量、只读 --we-panel-color 的行停用回退层——它们
+  // 天然不进本判据的扫描面，因为扫描面就是"读了玻璃写入变量的规则"）。
+  {
+    const MAIN_CSS_BODY = cssBodyOf(styleText());
+    const glassWritten = new Set([...(GLASS_SRC + GLASS_LAYER_SRC)
+      .matchAll(/setProperty\(\s*"(--we-[a-z0-9-]+)"/g)].map((m) => m[1]));
+    const GLASS_GATE_RE = /data-we-(glass-[a-z-]+|sidebar-glass|sidebar-fullclear|sidebar-follow|left-sidebar|titlebar-glass|thinking-glass|thinking-native)/;
+    const bareReads = [];
+    for (const r of scanRules(MAIN_CSS_BODY)) {
+      // at-rule 容器条目跳过（同门控许可证那条的语义）：内层条目自带完整选择器与门控。
+      if (r.sel.startsWith('@')) continue;
+      const reads = [...r.body.matchAll(/var\(\s*(--we-[a-z0-9-]+)\s*[,)]/g)]
+        .map((m) => m[1]).filter((n) => glassWritten.has(n));
+      if (!reads.length) continue;
+      if (GLASS_GATE_RE.test(r.sel)) continue;
+      bareReads.push(r.sel.slice(0, 60) + ' ← ' + [...new Set(reads)].join(','));
+    }
+    check('主包样式不得裸引用玻璃写入变量（停玻璃行 ⇒ 变量无人写 ⇒ 读者必须挂玻璃门，ADR-0016 第四刀）',
+      glassWritten.size >= 20 && bareReads.length === 0,
+      bareReads.length ? '裸引用：' + bareReads.slice(0, 3).join(' · ')
+        : '玻璃写入变量 ' + glassWritten.size + ' 个 · 主包读者全部带门');
+    // 负对照：把一条门内规则的选择器剥掉门 ⇒ 同一条判据必须判出（判据有牙）。
+    const mutatedSel = 'body .we-picker__modal';
+    const mutatedBody = 'background: var(--we-settings-window-alpha);';
+    const fakeRules = [{ sel: mutatedSel, body: mutatedBody }];
+    const fakeBare = fakeRules.filter((r) => !GLASS_GATE_RE.test(r.sel)
+      && [...r.body.matchAll(/var\(\s*(--we-[a-z0-9-]+)\s*[,)]/g)]
+        .some((m) => glassWritten.has(m[1])));
+    check('negative control: 无门的玻璃变量读者会被同一条判据判出',
+      fakeBare.length === 1, '判出 ' + fakeBare.length + ' 条');
+  }
+
+  // ── #333 常驻判据：设置页顶部标题卡的几何住**主包**，玻璃子包禁用时不得塌 ────────
+  // 背景：#333「禁用 wallpaper-engine-glass 后设置页顶部标题排版错」。标题卡由主包
+  // client.js 渲染（.we-picker__card-shell/card-head/card-name/card-badge/card-desc），
+  // 但几何曾只写在玻璃 CSS 里 ⇒ 停玻璃行后玻璃 CSS 不再注入，标题塌成裸文本。
+  // 判据：几何必须在主包样式里；玻璃 CSS 不得重复声明同一批选择器（两份工件会漂移）。
+  {
+    const MAIN_CSS = cssBodyOf(styleText());
+    const GLASS_CSS = cssBodyOf(readFileSync(join(ROOT, 'packages', 'glass', 'src', 'glass-css.js'), 'utf8'));
+    const CARD_CLASSES = ['we-picker__card-shell', 'we-picker__card-head',
+      'we-picker__card-name', 'we-picker__card-badge', 'we-picker__card-desc'];
+    const missing = CARD_CLASSES.filter((c) => !new RegExp('\\.' + c + '\\s*[,{]').test(MAIN_CSS));
+    const duplicated = CARD_CLASSES.filter((c) => new RegExp('\\.' + c + '\\s*[,{]').test(GLASS_CSS));
+    check('设置页标题卡几何在主包样式里，不随玻璃子包启停（#333）',
+      missing.length === 0 && duplicated.length === 0,
+      missing.length ? '主包缺：' + missing.join(', ')
+        : (duplicated.length ? '玻璃包重复声明：' + duplicated.join(', ')
+          : CARD_CLASSES.length + ' 个选择器全在主包、玻璃包无重复'));
+  }
 
   // ⚠️ **模板字符串的边界**：样式族的每份 CSS 各自住在一个 JS 模板字符串里
   //    （`const CSS[_域] = \`…\`;`）⇒ 注释或规则里出现**裸反引号**会提前终止它，
@@ -2004,7 +2158,7 @@ console.log('\n⑬ CSS 契约（按面变量零兜底 / 门控许可证 / 双向
 }
 
 // ═══ ⑭ 三方对账：经 setProperty 写出的变量必须有人读（R4）════════════════════════
-// R4 的验收口径（wip §10.6）不能是"我看了一遍"，而是这条**不变量**。
+// R4 的验收口径不能是"我看了一遍"，而是这条**不变量**。
 // 口径（单向，故意不判反向）：
 //   · **写出** = 客户端模块里 `setProperty("--we-x"` 的**字面量**调用
 //     （`"--we-host-" + k` 这种动态拼名不算 —— 它没有确定的变量名）
@@ -2025,7 +2179,11 @@ console.log('\n⑭ 三方对账：写出的变量必须有人读（R4 死码清�
   // 单一真源；与 test/verify-module-layout.mjs 的 parseInlineModules 同款口径）。
   // 覆盖面无损：迁走的四个浏览器半边文件里没有**字面量** setProperty("--we-…") 写入，
   // 也没有 var(--we-…) 消费（只有一处注释提及）⇒ 本组两个集合与迁移前逐字相同。
-  const CLIENT_MODULES = parseInlineModules().map((e) => e.file);
+  // ADR-0016 第三刀：玻璃运行时随玻璃包出产物 ⇒ 扫描面 = 主包 INLINE_MODULES ∪ 玻璃包
+  // 配方的 inline 文件（真源 = 各自的构建配方，不手抄文件列表）。
+  const GLASS_RECIPE = JSON.parse(readFileSync(join(ROOT, 'packages', 'glass', 'client.build.json'), 'utf8'));
+  const CLIENT_MODULES = parseInlineModules().map((e) => e.file)
+    .concat(GLASS_RECIPE.inline.map((e) => 'packages/glass/' + e.file));
   const texts = CLIENT_MODULES.map((f) => readFileSync(join(ROOT, f), 'utf8'));
   const written = new Set();
   for (const t of texts) {
@@ -2043,7 +2201,7 @@ console.log('\n⑭ 三方对账：写出的变量必须有人读（R4 死码清�
   // 变量属于"对外可观测契约"，删它要先改观察者。
   //   · `--we-glass-color` —— `test/compat-harness-pages.mjs` 用 `getComputedStyle(body)` 读它，
   //     并要求非空 + 与 DSH 设置窗口 token 同源。该 harness **不在任何 npm 脚本里**（要浏览器页面）
-  //     ⇒ 在此环境无法验证"改完观察者仍旧绿"，所以先保留写入、在这里显式登记（wip §10.18）。
+  //     ⇒ 在此环境无法验证"改完观察者仍旧绿"，所以先保留写入、在这里显式登记。
   //     正确顺序：先改 harness 的观察点为 `--we-surface-tint-light`，再删写入 + 删这条登记。
   // 下面那条"登记表不空转"会**逼**着这条登记在条件变化时被复核。
   const OBSERVED_ONLY = new Set(['--we-glass-color']);
@@ -2088,7 +2246,7 @@ console.log('\n⑭ 三方对账：写出的变量必须有人读（R4 死码清�
 // 这条判据防的是"哪次改动又把输入框塞回思考玻璃门下"——选择器文本级负向棘轮。
 console.log('\n⑪ 思考玻璃门不碰输入框（用户口径 2026-10-04）');
 {
-  const stylesSrc = styleText();
+  const stylesSrc = STYLES_TEXT; // ADR-0016 第四刀：玻璃门规则在玻璃包源里，读双工件
   // 剥 CSS 块注释后再逐条规则解析：注释里可以提 data-we-thinking-glass / 输入框
   //（记录口径的注释必须能写这些词），判据只看**真规则**。
   const css = stylesSrc.replace(/\/\*[\s\S]*?\*\//g, '');
@@ -2389,11 +2547,11 @@ console.log('\n⑱ 宿主模糊令牌覆盖（#156①：值本身必须真的模
 
 console.log('\n⑲ 标记值跟走 resolver（t9-001 运行级断言：真跑 weSurfaceRefresh 的 stub DOM）');
 {
-  // 真 `src/glass-surfaces.js` 装进 `new Function` + with-scope 替身 DOM，把
+  // 真 `packages/glass/src/glass-surfaces.js` 装进 `new Function` + with-scope 替身 DOM，把
   // weSurfaceRefresh 真正跑起来 —— 源码子串断言看不见运行期的标记值漂移
   // （t9-001：resolver 返回 extra-fallback 时标记仍停留 "extra"，CSS 规则全不匹配）。
-  const SURF_SRC = readFileSync(join(ROOT, 'src', 'glass-surfaces.js'), 'utf8');
-  const runSurfaces = (src) => {
+  const SURF_SRC = readFileSync(join(ROOT, 'packages', 'glass', 'src', 'glass-surfaces.js'), 'utf8');
+  const runSurfaces = (src, opts = {}) => {
     const elAttrs = new Map();
     const bodyAttrs = new Map([['data-we-glass-page', '']]);
     const mkRect = () => ({ left: 0, top: 0, right: 100, bottom: 100, width: 100, height: 100, x: 0, y: 0, toJSON() { return this; } });
@@ -2413,7 +2571,7 @@ console.log('\n⑲ 标记值跟走 resolver（t9-001 运行级断言：真跑 we
       MutationObserver: class { observe() {} disconnect() {} },
       requestAnimationFrame: () => 0, cancelAnimationFrame: () => {},
       addEventListener: () => {}, removeEventListener: () => {},
-      getComputedStyle: (target, pseudo) => (pseudo ? { content: 'normal' } : elStyle()),
+      getComputedStyle: (target, pseudo) => (pseudo ? { content: 'normal' } : (opts.unsafeExtra ? { ...elStyle(), position: 'static' } : elStyle())),
     };
     const el = {
       nodeType: 1, isConnected: true, scrollTop: 0, scrollLeft: 0,
@@ -2437,14 +2595,31 @@ console.log('\n⑲ 标记值跟走 resolver（t9-001 运行级断言：真跑 we
       querySelector: () => null, querySelectorAll: () => [],
       getBoundingClientRect: () => ({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0, toJSON() { return this; } }),
     };
+    // #277：造一个"宿主设置窗"节点，用来验证运行时**真的**给 ARIA 对话框打
+    // data-we-host-dialog（否则浮层底板规则里的那个 :not 是永不匹配的死条件）。
+    const dialogAttrs = new Map();
+    const dialog = {
+      nodeType: 1, isConnected: true, scrollTop: 0, scrollLeft: 0,
+      ownerDocument: null, parentElement: null, style: elStyle(),
+      getAttribute: (k) => (dialogAttrs.has(k) ? dialogAttrs.get(k) : null),
+      setAttribute: (k, v) => { dialogAttrs.set(k, String(v)); },
+      removeAttribute: (k) => { dialogAttrs.delete(k); },
+      hasAttribute: (k) => dialogAttrs.has(k),
+      closest: () => null, matches: () => true,
+      querySelector: () => null, querySelectorAll: () => [],
+      getBoundingClientRect: mkRect,
+      getAnimations: () => [],
+    };
+    const SETTINGS_SEL = '[role="dialog"]:has([data-slot="settings.section"])';
     const doc = {
       hidden: false, defaultView: win, body,
       documentElement: { nodeType: 1, closest: () => null },
-      querySelector: (sel) => (sel === '#plugin-card' ? el : null),
-      querySelectorAll: (sel) => (sel === '#plugin-card' ? [el] : []),
+      querySelector: (sel) => (sel === '#plugin-card' ? el : sel === SETTINGS_SEL ? dialog : null),
+      querySelectorAll: (sel) => (sel === '#plugin-card' ? [el] : sel === SETTINGS_SEL ? [dialog] : []),
       addEventListener: () => {}, removeEventListener: () => {},
     };
     el.ownerDocument = doc;
+    dialog.ownerDocument = doc;
     const scope = new Proxy({
       document: doc,
       sanitizeExtraGlassSelectors: (v) => (typeof v === 'string' ? v : ''),
@@ -2457,7 +2632,7 @@ console.log('\n⑲ 标记值跟走 resolver（t9-001 运行级断言：真跑 we
       + '\nreturn { syncGlassSurfaces, disposeGlassSurfaces, weGlassSurfaceStatus }; }')(scope);
     const selection = {};
     return {
-      el, body, status: mod.weGlassSurfaceStatus,
+      el, body, dialog, status: mod.weGlassSurfaceStatus,
       sync: (patch) => { Object.assign(selection, patch); mod.syncGlassSurfaces(selection); },
       dispose: mod.disposeGlassSurfaces,
     };
@@ -2472,8 +2647,11 @@ console.log('\n⑲ 标记值跟走 resolver（t9-001 运行级断言：真跑 we
   check('② 软渲档标记跟走为 "extra-fallback"（t9-001 运行级先红点）',
     app.el.getAttribute('data-we-surface-runtime') === 'extra-fallback',
     '实际: ' + String(app.el.getAttribute('data-we-surface-runtime')));
+  // ⚠️ 按 id 找，不能取 [0]：桩里现在多了一个"宿主设置窗"节点（⑳ 用），它的枚举位置
+  //    可能排在 extra 之前 ⇒ 写死下标会读错面（实测：这条曾因此假红）。
+  const statusOf = (list, id) => (list || []).find((x) => x && x.id === id) || {};
   check('②b status() 观测量同步反映 extra-fallback',
-    (app.status()[0] || {}).mode === 'extra-fallback');
+    statusOf(app.status(), 'extra').mode === 'extra-fallback');
   app.body.removeAttribute('data-we-glass-fallback');
   app.sync({ extraGlassSelectors: '#plugin-card' });
   check('③ 软渲解除后标记切回 "extra"',
@@ -2493,6 +2671,220 @@ console.log('\n⑲ 标记值跟走 resolver（t9-001 运行级断言：真跑 we
   legacy.sync({ extraGlassSelectors: '#plugin-card' });
   check('negative control: 旧形态（标记只写 entry.id）在软渲档停留 "extra" 被②判出',
     legacy.el.getAttribute('data-we-surface-runtime') === 'extra');
+
+  // ── ⑳ #277 浮层实底底板：不得命中宿主自己的对话框 ──────────────────────────────
+  // 这一条是为**一次真实漏检**补的：第一版给 role=dialog 涂不透明底的规则把宿主设置窗
+  // 也盖成了实心（设置窗本身就是 role="dialog"，玻璃画在 ::before 上），而当时所有守卫
+  // 全绿、CI 也全绿 —— 说明缺的就是这条判据。
+  // 判据分两半，缺一不可：
+  //   a/b 两个排除条件都在选择器里（否则「保留原生」档会被命中，因为那一档运行时会把
+  //       data-we-surface-runtime 摘掉，只用它挡不住）；
+  //   c   运行时确实会打上 data-we-host-dialog（否则排除条件是个永不匹配的死条件，
+  //       上面那半条会退化成"字面上有就算过"的空转）。
+  console.log('\n⑳ #277 第三方浮层实底底板：两个排除条件 + 运行时真的打上标记');
+  // 实底经「层令牌重声明」落地（见下方 ㉒）：按 --dsw-alias-bg-layer-1 的声明筛规则，
+  // 而不是按旧的 background-color —— 后者正是误伤宿主菜单材质浮层的写法。
+  const floaterRules = rulesOf(CSS).filter((r) => /data-we-floater-solid/.test(r.header)
+    && /--dsw-alias-bg-layer-1\s*:/.test(r.body));
+  const roleRules = floaterRules.filter((r) => /\[role="(dialog|alertdialog)"\]/.test(r.header));
+
+  check('⑳a 浮层底板规则存在（两条 ARIA 面）', roleRules.length === 2,
+    floaterRules.length + ' 条带门规则，其中 ARIA ' + roleRules.length + ' 条');
+  check('⑳b 每条都排除运行时标记（玻璃开着时的已认领面）',
+    roleRules.length === 2 && roleRules.every((r) => r.header.includes(':not([data-we-surface-runtime])')));
+  check('⑳c 每条都排除宿主对话框标记（保留原生档的兜底；只用 b 挡不住）',
+    roleRules.length === 2 && roleRules.every((r) => r.header.includes(':not([data-we-host-dialog])')));
+  // ⑳e：宿主 primitives 的 Modal（role=dialog + class*="_dialog"）不进实底组。
+  // 「添加插件」安装对话框 / 确认框 / 审批卡都走这套 Modal；它们的遮罩自己画
+  // var(--dsw-mask-blur)（本包在 body 上换成模糊配方），卡片玻璃是安全且既有的观感。
+  check('⑳e 每条都排除宿主 Modal（class*="_dialog"；添加插件界面玻璃丢失的回归）',
+    roleRules.length === 2 && roleRules.every((r) => r.header.includes(':not([class*="_dialog"])')));
+
+  // 运行时那一半：同一份 SURF_SRC 造出设置窗节点，确认标记真的打上。
+  const markedRun = runSurfaces(SURF_SRC);
+  markedRun.body.setAttribute('data-we-glass-window', '');
+  markedRun.sync({});
+  check('⑳d 运行时给宿主设置窗打上 data-we-host-dialog（排除条件不是死条件）',
+    markedRun.dialog.getAttribute('data-we-host-dialog') === 'settings-window',
+    '实际=' + String(markedRun.dialog.getAttribute('data-we-host-dialog')));
+
+  // 负对照：把排除条件从选择器里摘掉，b/c 的判据必须判红（证明它们有牙）。
+  const strippedRules = roleRules.map((r) => r.header.replace(/:not\(\[data-we-(?:surface-runtime|host-dialog)\]\)/g, '')
+    .replace(/:not\(\[class\*="_dialog"\]\)/g, ''));
+  check('negative control: 摘掉排除条件后 ⑳b/⑳c/⑳e 会判红（判据不是恒真）',
+    strippedRules.length === 2
+      && !strippedRules.every((h) => h.includes(':not([data-we-surface-runtime])'))
+      && !strippedRules.every((h) => h.includes(':not([data-we-host-dialog])'))
+      && !strippedRules.every((h) => h.includes(':not([class*="_dialog"])')));
+
+  // ── ㉑ #315 无 role 浮层的可声明实底：只认声明产生的稳定锚点 ──────────────────────
+  // #277 修掉 ARIA 浮层后，没有 role 的框架层/吸顶条/第三方容器仍是「半透明且无霜」。
+  // 按类名猜会误伤宿主框架层，所以出路是「用户显式声明 → 运行时打稳定锚点」：
+  //   a  CSS 规则必须同时在玻璃门与 floaterSolidBase 门内（一把可回退）；
+  //   b  运行时只在 extra 面 resolver 退回原生时打锚点（可玻璃化时不打）；
+  //   c  退出声明（从额外选择器里删掉）后锚点还原，不残留实底；
+  //   negative control：摘掉运行时打锚点那一行，b 必须判红（判据有牙）。
+  console.log('\n㉑ #315 无 role 浮层的可声明实底：规则在门内 + 运行时锚点成对');
+  const solidRules = rulesOf(CSS).filter((r) => /\[data-we-solid-base\]/.test(r.header)
+    && /background-color\s*:/.test(r.body));
+  check('㉑a 实底规则存在且同时带玻璃门与浮层门（floaterSolidBase 一把回退）',
+    solidRules.length === 1
+      && /body\[data-we-glass-page\]/.test(solidRules[0].header)
+      && /data-we-floater-solid/.test(solidRules[0].header)
+      && /var\(--we-readability-base/.test(solidRules[0].body),
+    solidRules.length ? solidRules[0].header : '规则不存在');
+  const solidRun = runSurfaces(SURF_SRC, { unsafeExtra: true });
+  solidRun.sync({ extraGlassSelectors: '#plugin-card' });
+  check('㉑b extra 只能退回原生时打上数据锚点（声明过才补实底）',
+    solidRun.el.getAttribute('data-we-solid-base') === 'extra',
+    '实际=' + String(solidRun.el.getAttribute('data-we-solid-base')));
+  solidRun.sync({ extraGlassSelectors: '' });
+  check('㉑c 退出声明后锚点被还原（删选择器不残留实底）',
+    solidRun.el.getAttribute('data-we-solid-base') === null,
+    '实际=' + String(solidRun.el.getAttribute('data-we-solid-base')));
+  const solidLine = '      if (entry.id === "extra") weSurfaceSolid(record);';
+  const noSolidSrc = SURF_SRC.replace(solidLine, '      // (removed for negative control)');
+  const noSolidRun = runSurfaces(noSolidSrc, { unsafeExtra: true });
+  noSolidRun.sync({ extraGlassSelectors: '#plugin-card' });
+  check('negative control: 摘掉运行时打锚点后 ㉑b 会判红（判据不是恒真）',
+    SURF_SRC.split(solidLine).length === 2
+      && noSolidRun.el.getAttribute('data-we-solid-base') === null);
+  // ── ㉒ 浮层实底不是「涂底 + 杀霜」───────────────────────────────────────────
+  // 症状（用户截图：上下文已用 / Token 用量 / 会话统计 三个浮层）：这三类宿主锚定
+  // 浮层都是 portal 到 body 的 role="dialog"，且自带菜单材质
+  // （background: var(--dsw-specific-menu) + backdrop-filter: var(--dsw-menu-backdrop-filter)），
+  // 本来就有 blur(40px) 的玻璃。⑳ 那两条规则对**所有** role=dialog 一刀切涂实底
+  // 并摘霜 ⇒ 把它们刷成不透明板 = 用户口径的「玻璃组件丢失」。
+  // 判据：实底只经「层令牌重声明」落地（读 --dsw-alias-bg-layer-* 的浮层变实底），
+  // 不得直接涂 background-color，也不得摘 backdrop-filter —— 后者是宿主菜单霜的命门。
+  console.log('\n㉒ 浮层实底只重声明层令牌：不涂底、不摘霜（宿主菜单材质浮层保玻璃）');
+  const floaterFormOf = (r) => ({
+    paints: /(^|[;{\s])background-color\s*:/.test(r.body),
+    killsFrost: /(?:-webkit-)?backdrop-filter\s*:\s*none/.test(r.body),
+    layers: ['--dsw-alias-bg-layer-1', '--dsw-alias-bg-layer-2', '--dsw-alias-bg-layer-3']
+      .filter((k) => new RegExp(k + '\\s*:').test(r.body)),
+  });
+  const floaterForms = roleRules.map(floaterFormOf);
+  check('㉒a 不直接涂 background-color（涂底会盖掉菜单材质的 --dsw-specific-menu）',
+    roleRules.length === 2 && floaterForms.every((f) => !f.paints));
+  check('㉒b 不摘 backdrop-filter（菜单霜是宿主浮层自己的玻璃，摘掉只剩半透明板）',
+    roleRules.length === 2 && floaterForms.every((f) => !f.killsFrost));
+  check('㉒c 三层层令牌都重声明成 --we-readability-base（读层令牌的浮层仍然变实底）',
+    roleRules.length === 2 && floaterForms.every((f) => f.layers.length === 3));
+  const syntheticOldFloater = {
+    body: 'background-color: var(--we-readability-base) !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important;',
+  };
+  const oldForm = floaterFormOf(syntheticOldFloater);
+  check('negative control: 旧形态（涂底 + 杀霜）会被 ㉑a/㉑b 判红',
+    oldForm.paints && oldForm.killsFrost && oldForm.layers.length === 0);
+
+  // ── ㉓ 上下文占用环：轨道不得吃「边框」滑杆 ──────────────────────────────────
+  // 用户截图：底栏那个上下文占用的小圈「总像满了」。根因是 #255④ 把
+  // --dsw-alias-border-l3 也接进「边框」滑杆（实测用户配置 border=0.9），而
+  // ContextMeter 的轨道圆环（circle._track）正是用它画的；进度弧（circle._fill）
+  // 用 --dsw-alias-label-tertiary。轨道被拉到 ~#a6a6a6 后比弧还亮 ⇒ 整圈都像已占用，
+  // 弧反而看不出来（截图采样：轨道 160~166，弧 #979da6=151~166）。
+  // 判据：轨道规则存在、带玻璃页门、且**不读** border 令牌。
+  console.log('\n㉓ 上下文占用环的轨道不吃「边框」滑杆（防"整圈像满了"）');
+  const trackRules = rulesOf(CSS).filter((r) => /circle\[class\*="_track"\]/.test(r.header));
+  check('㉓a 轨道规则存在且带 data-we-glass-page 门', trackRules.length === 1
+    && /data-we-glass-page/.test(trackRules[0].header));
+  check('㉓b 轨道 stroke 不读 border 令牌（边框滑杆才是"整圈亮"的来源）',
+    trackRules.length === 1 && !/--dsw-alias-border-l[0-9]/.test(trackRules[0].body));
+  check('㉓c 轨道由文字三档色稀释而来（与进度弧同源、恒比它淡）', trackRules.length === 1
+    && /--dsw-alias-label-tertiary/.test(trackRules[0].body) && /color-mix\(/.test(trackRules[0].body));
+
+  // ── ㉔ 浮层令牌豁免三层齐全（#354）──────────────────────────────────────────
+  // 症状：设置 → IM机器人页里第三人插件 tooltip（dsh-im 的 .dim-presetTooltip）几乎全透明，
+  // 下面那行正文透上来叠字；把「玻璃透明度」滑杆拉满也不动。
+  // 根因：设置窗那组规则把 --dsw-alias-bg-layer-3 也重声明成读 --we-settings-window-alpha
+  // 的玻璃配方，而浮层令牌豁免规则只回填了 layer-1/2 —— 拿 layer-3 当底色的第三方 tooltip
+  // 命中不了豁免，仍吃对话框继承下来的半透明配方。
+  // 判据：豁免规则（[role="tooltip"] 与 [class*="popup" i] 在同一条选择器列表里）三层令牌
+  // 都重声明成 --we-panel-color 96% 的实底配方；负对照只留两层必须判红。
+  console.log('\n㉔ 浮层令牌豁免三层齐全（#354：拿 layer-3 当底色的 tooltip 也要实底）');
+  const floaterTokenRules = rulesOf(CSS).filter((r) => /\[role="tooltip"\]/.test(r.header)
+    && /\[class\*="popup" i\]/.test(r.header));
+  const SOLID_LAYER = (k) => new RegExp(k + '\\s*:\\s*color-mix\\(in srgb, var\\(--we-panel-color, #1e1f26\\) 96%, transparent\\)');
+  const floaterLayersOf = (r) => ['--dsw-alias-bg-layer-1', '--dsw-alias-bg-layer-2', '--dsw-alias-bg-layer-3']
+    .filter((k) => SOLID_LAYER(k).test(r.body));
+  check('㉔a 浮层令牌豁免规则存在（role=tooltip 与 class*=popup 同一条规则）',
+    floaterTokenRules.length === 1, '实际=' + floaterTokenRules.length);
+  check('㉔b 三层 bg-layer 令牌都重声明成 --we-panel-color 96%（#354）',
+    floaterTokenRules.length === 1 && floaterLayersOf(floaterTokenRules[0]).length === 3,
+    '实际=' + (floaterTokenRules.length === 1 ? floaterLayersOf(floaterTokenRules[0]).join(',') : '无规则'));
+  check('negative control: 只回填两层时 ㉔b 会判红（判据不是恒真）',
+    floaterLayersOf({ body: '--dsw-alias-bg-layer-1: color-mix(in srgb, var(--we-panel-color, #1e1f26) 96%, transparent); --dsw-alias-bg-layer-2: color-mix(in srgb, var(--we-panel-color, #1e1f26) 96%, transparent);' }).length === 2);
+  // ── ㉔ 计划卡片（ui-plan 的 PlanCards）与交付卡同一种平铺玻璃 ────────────────
+  // 用户对照：同一主题下交付卡（[data-presented-file]）正确、计划卡被洗白。
+  // 两者必须逐字同形：只上 --we-chat-glass-fill，不加釉、不加霜。
+  console.log('\n㉔ 计划卡片吃平铺对话底（与交付卡同档）');
+  const planRules = rulesOf(CSS).filter((r) => /\[data-plan-card\]/.test(r.header));
+  const planMain = planRules.filter((r) => /data-we-glass-chat/.test(r.header) && !/data-we-glass-fallback/.test(r.header));
+  const flatFormOf = (rule) => ({
+    chat: /background-color:\s*var\(--we-chat-glass-fill\)/.test(rule.body),
+    flat: /background-image:\s*none/.test(rule.body),
+    noFrost: /backdrop-filter:\s*none/.test(rule.body),
+  });
+  const planForms = planMain.map(flatFormOf);
+  check('㉔a 主规则带对话玻璃门并读 chat 平铺底（不加釉不加霜）', planMain.length === 1
+    && planForms.every((f) => f.chat && f.flat && f.noFrost));
+  check('㉔b 主规则排除原生挡（原生 = 宿主实色）', planMain.length === 1
+    && /:not\(\[data-we-thinking-native\]\)/.test(planMain[0].header));
+  const syntheticSheen = flatFormOf({ body: 'background-color: var(--we-chat-glass-fill) !important; background-image: linear-gradient(#fff, #fff); backdrop-filter: blur(16px);' });
+  check('negative control: 加了釉/霜的合成规则会被 ㉔a 判红', !(syntheticSheen.flat && syntheticSheen.noFrost));
+
+  // ── ㉕ 改动文件卡片 / 变更请求面板：补掉宿主实色底 ───────────────────────────
+  // 用户截图：「已编辑 N 个文件」卡片与「无法读取 Git 信息」条都是宿主实色底。
+  console.log('\n㉕ 改动文件卡片与变更请求面板不再有实色死底');
+  const changedRules = rulesOf(CSS).filter((r) => /\[data-changed-files\]/.test(r.header));
+  const changedMain = changedRules.filter((r) => /data-we-glass-chat/.test(r.header) && !/data-we-glass-fallback/.test(r.header));
+  const changedForms = changedMain.map(flatFormOf);
+  check('㉕a 改动文件卡片带对话玻璃门、清掉 --changes-fill 并读 chat 平铺底', changedMain.length === 1
+    && /--changes-fill:\s*transparent/.test(changedMain[0].body)
+    && changedForms.every((f) => f.chat && f.flat && f.noFrost));
+  const forgeRules = rulesOf(CSS).filter((r) => /\[data-forge-panel\]/.test(r.header));
+  check('㉕b 变更请求面板清掉 --forge-fill 实色（背景归右栏玻璃）', forgeRules.length === 1
+    && /--forge-fill:\s*transparent/.test(forgeRules[0].body));
+  const syntheticSolidHeader = { body: 'background: var(--changes-fill);' };
+  check('negative control: 没清 --changes-fill 的合成规则会被 ㉕a 判红',
+    !/--changes-fill:\s*transparent/.test(syntheticSolidHeader.body));
+
+  // ── ㉖ 文件预览浮层（编辑文件悬停的改动预览）有实底与上深下浅 ────────────────
+  console.log('\n㉖ 文件预览浮层有实底、顶部更深、portal 也垫底');
+  const previewRules = rulesOf(CSS).filter((r) => /\[data-changes-hover-preview\]/.test(r.header));
+  const previewRoot = previewRules.filter((r) => !/span\[/.test(r.header));
+  const previewPortal = previewRules.filter((r) => /span\[/.test(r.header) && /--dsw-alias-bg-layer-1:/.test(r.body));
+  check('㉖a 预览根铺固定 rgb 底（不依赖 color-mix，变量没解析也一定有底）', previewRoot.length === 2
+    && previewRoot.every((r) => /background-color:\s*rgb\(/.test(r.body) && !/color-mix/.test(r.body)));
+  check('㉖b 外层卡片画上深下浅（深色 55% → 透明；浅色 25% → 透明）',
+    previewRules.some((r) => /linear-gradient\(180deg, rgba\(0, 0, 0, 0\.55\)/.test(r.body))
+    && previewRules.some((r) => /linear-gradient\(180deg, rgba\(0, 0, 0, 0\.25\)/.test(r.body)));
+  check('㉖c portal 垫底并把宿主 --dsw-alias-bg-layer-1 换成本层实底（外层卡片自己画的那层也实）',
+    previewPortal.length === 2
+    && previewPortal.every((r) => /background-color:\s*rgb\(/.test(r.body)
+      && /--dsw-alias-bg-layer-1:/.test(r.body)));
+  const synthPlain = { body: 'background-color: transparent;' };
+  check('negative control: 透明底的合成规则会被 ㉖a 判红', !/background-color:\s*rgb\(/.test(synthPlain.body));
+
+  // ── ㉗ HoverCard 玻璃只认唯一的直接子 div ───────────────────────────────────
+  // 回归：> div 会把宿主 TurnUsagePanel（title / titleRule 两个 div）和第三方弹层
+  // （标题 / 摘要 / 影响清单等多个 div）的每个直接子 div 都涂上 HoverCard 的底、
+  // 渐变与霜，看起来是多条不同色的色带。真实 HoverCard 的外层只有一张卡片 div。
+  console.log('\n㉗ 悬停卡玻璃只涂唯一的直接子 div');
+  const hovercardRules = rulesOf(CSS).filter((r) => /data-we-glass-floaters/.test(r.header)
+    && /\[role="dialog"\]/.test(r.header)
+    && (/--we-hovercard-alpha/.test(r.body) || /data-we-glass-fallback/.test(r.header)));
+  check('㉗a 正常档与无霜回退档各一条', hovercardRules.length === 2,
+    hovercardRules.length + ' 条');
+  check('㉗b 两条都只认唯一的直接子 div（> div:only-of-type）',
+    hovercardRules.length === 2
+    && hovercardRules.every((r) => r.header.endsWith('> div:only-of-type')),
+    hovercardRules.map((r) => r.header.slice(-28)).join(' | '));
+  const strippedHovercard = hovercardRules.map((r) => r.header.replace(':only-of-type', ''));
+  check('negative control: 摘掉 :only-of-type 会被 ㉗b 判红',
+    !strippedHovercard.every((h) => h.endsWith('> div:only-of-type')));
+
 }
 
 console.log('');

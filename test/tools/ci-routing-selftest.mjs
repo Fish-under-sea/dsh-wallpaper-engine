@@ -19,7 +19,7 @@
  * Usage:  node test/tools/ci-routing-selftest.mjs
  */
 import {
-  MODE_DOCS, MODE_DOCS_ASSETS, MODE_FULL, MODES,
+  MODE_DOCS, MODE_DOCS_ASSETS, MODE_NOTICE, MODE_FULL, MODES,
   DIFF_FLOOR, DOC_ROOT_FILES, GENERATED_CONTRACTS,
   classify, parseNameStatus, parseRawDiff, judgeResult,
   docReferences, conflictMarkers, trailingWhitespace, auditDocs,
@@ -43,6 +43,7 @@ const CLASSIFY_CASES = [
   { name: '根目录 README.en.md ⇒ docs（不是白名单外）', entries: [E('M', 'README.en.md')], mode: MODE_DOCS },
   { name: '根目录 README.beginner.md ⇒ docs', entries: [E('M', 'README.beginner.md')], mode: MODE_DOCS },
   { name: 'CONTRIBUTING.md ⇒ docs', entries: [E('M', 'CONTRIBUTING.md')], mode: MODE_DOCS },
+{ name: 'AGENTS.md ⇒ docs', entries: [E('M', 'AGENTS.md')], mode: MODE_DOCS },
   { name: 'docs/ 子目录 Markdown ⇒ docs', entries: [E('M', 'docs/DEV-GUIDE.md')], mode: MODE_DOCS },
   { name: '展示素材图片 ⇒ docs-assets', entries: [E('M', 'assets/readme/hero-dark.png')], mode: MODE_DOCS_ASSETS },
   { name: 'docs + 展示素材 ⇒ docs-assets', entries: [E('M', 'docs/README.md'), E('M', 'assets/readme/hero-dark.png')], mode: MODE_DOCS_ASSETS },
@@ -63,7 +64,12 @@ const CLASSIFY_CASES = [
   { name: 'package.json ⇒ full', entries: [E('M', 'package.json')], mode: MODE_FULL, reason: '包清单' },
   { name: 'CI 接线 ⇒ full', entries: [E('M', '.github/workflows/verify.yml')], mode: MODE_FULL, reason: 'CI 接线' },
   { name: '符号链接（mode 120000）冒充 Markdown ⇒ full', entries: [E('A', 'docs/sneaky.md', { newMode: '120000' })], mode: MODE_FULL, reason: '符号链接' },
+  { name: 'gitlink（mode 160000）冒充 Markdown ⇒ full（P08）', entries: [E('A', 'docs/sub.md', { newMode: '160000' })], mode: MODE_FULL, reason: '非普通文件模式' },
+  { name: '普通文件改成 gitlink（M 100644→160000）⇒ full', entries: [E('M', 'docs/sub.md', { oldMode: '100644', newMode: '160000' })], mode: MODE_FULL, reason: '非普通文件模式' },
+  { name: '未知模式位 ⇒ full', entries: [E('M', 'docs/weird.md', { newMode: '100777' })], mode: MODE_FULL, reason: '非普通文件模式' },
+  { name: '公告文件变 gitlink ⇒ 拒绝 notice 快通道（④-b 在 ⑦ 之前加理由）', entries: [E('A', 'src/client.js', { newMode: '160000' })], mode: MODE_FULL, reason: '非普通文件模式' },
   { name: '普通文件 mode 100644 的 Markdown ⇒ docs（mode 不误伤）', entries: [E('M', 'docs/README.md', { newMode: '100644' })], mode: MODE_DOCS },
+  { name: '可执行位 100755 也不误伤', entries: [E('M', 'docs/run.md', { oldMode: '100644', newMode: '100755' })], mode: MODE_DOCS },
 ];
 
 for (const c of CLASSIFY_CASES) {
@@ -74,7 +80,8 @@ for (const c of CLASSIFY_CASES) {
       '理由里必须有「' + c.reason + '」：' + got.reasons.join(' | '));
   }
 }
-check('MODES 恰为三条路径', JSON.stringify(MODES) === JSON.stringify([MODE_DOCS, MODE_DOCS_ASSETS, MODE_FULL]), MODES.join('/'));
+check('MODES 恰为四条路径（docs / docs-assets / notice / full）',
+  JSON.stringify(MODES) === JSON.stringify([MODE_DOCS, MODE_DOCS_ASSETS, MODE_NOTICE, MODE_FULL]), MODES.join('/'));
 check('GENERATED_CONTRACTS 不含不存在的 docs/ARCHITECTURE.md',
   !GENERATED_CONTRACTS.includes('docs/ARCHITECTURE.md'), GENERATED_CONTRACTS.join(' '));
 check('DOC_ROOT_FILES 覆盖三个根 README',
@@ -159,6 +166,28 @@ const fakeFs = (files) => ({
   check('Markdown 的行尾双空格是换行语义 ⇒ 不查尾随空白', r.findings.length === 0, JSON.stringify(r.findings));
 }
 {
+  // P08（二审 F02）：A/M 白名单文档读不到内容 ⇒ 显式 unreadable 发现，不是零审计假成功。
+  const fs8 = fakeFs({});
+  const r = auditDocs({ entries: [E('A', 'docs/new.md')], ...fs8 });
+  check('A/M 文档读不到 ⇒ unreadable 发现（拒绝静默放行）',
+    r.findings.some((f) => f.kind === 'unreadable' && f.file === 'docs/new.md')
+    && r.counts.files === 0, JSON.stringify(r.findings));
+}
+{
+  // 删除件读不到仍豁免：分类层把 D 判 full，审计不重复判（保留原语义，不制造假红）。
+  const fs9 = fakeFs({});
+  const r = auditDocs({ entries: [E('D', 'docs/gone.md')], ...fs9 });
+  check('D 读到 null 不报 unreadable（分类层负责）', r.findings.length === 0, JSON.stringify(r.findings));
+}
+{
+  // 图片素材读不到文本不受影响：素材走"存在与大小"检查（asset-missing / asset-empty）。
+  const fs10 = fakeFs({});
+  const r = auditDocs({ entries: [E('A', 'assets/readme/new.png')], ...fs10 });
+  check('新增图片不在盘上 ⇒ asset-missing（unreadable 不误伤图片通道）',
+    r.findings.some((f) => f.kind === 'asset-missing')
+    && !r.findings.some((f) => f.kind === 'unreadable'), JSON.stringify(r.findings));
+}
+{
   // 路径越界：引用爬出仓库的，必须由探针拒绝（CLI 的 exists 会做包含性检查）。
   const calls = [];
   auditDocs({
@@ -214,7 +243,7 @@ for (const c of RESULT_CASES) {
 
 // ── ⑦ collectDiff 的差异边界（合成 git，零 spawn）────────────────────────────────
 // force-push 场景：PR 需要的是 merge-base 完整差异；push 的 before/after 是**精确范围**。
-// 反例拓扑（captain 2026-10-18 裁定，与 E2E force 幕同图）：
+// 反例拓扑（captain 裁定，与 E2E force 幕同图）：
 //   共同祖先 A **没有** app/index.js；before 分支独有提交**新增** app/index.js；
 //   after 从 A 只改文档、仍没有 app/index.js。merge-base(before, after)=A：
 //   A→after 只见文档 ⇒ merge-base 通道判 docs 是**真实的误判**（把 before→after 的

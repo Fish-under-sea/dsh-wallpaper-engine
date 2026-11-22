@@ -56,6 +56,28 @@ const fsFetch = (path, options) => apiFetch(path, Object.assign({ parse: "always
 const fsJson = (path, options) => fsFetch(path, Object.assign({ method: "GET" }, options || {}));
 
 /**
+ * 启动预取：启动链里 `loadFontSet()` 原本要等 `loadPersisted()` 之后才发 `/fontsets` 请求，
+ * 而这份清单**与设置无关**。apply 一开始就把它发出去，等启动链走到字体集那一步时通常已经
+ * 回来（trace 2026-10-30：清单请求 242ms，且串在 settings 之后）。
+ * 只预取一次；`loadFontSet` 消费后清空，后续 activate/create 仍走自己的请求。
+ *
+ * **预取只加速成功路径**：`apiFetch` 不抛错，网络瞬断会以 `{ ok:false, status:0 }`
+ * 的已兑现 promise 留在这里。启动链若直接采用这份失败清单，就会把一次瞬断写成
+ * `fontSetError`，而原本排在其后的那次请求（宿主通常已就绪）反而不再发 —— 所以
+ * 消费前先看 `ok`，预取没成功就照旧发一次自己的请求。
+ */
+let fontSetListPrefetch = null;
+function prefetchFontSetList() {
+  if (fontSetListPrefetch) return fontSetListPrefetch;
+  try { fontSetListPrefetch = fsJson(fontSetsUrl()); } catch { fontSetListPrefetch = null; }
+  return fontSetListPrefetch;
+}
+/** 启动链失败时丢弃未消费的清单预取（下一次 loadFontSet/refreshFontSets 重新取）。 */
+function cancelFontSetListPrefetch() {
+  fontSetListPrefetch = null;
+}
+
+/**
  * 字体集通道的失败文案。
  *
  * **裸状态码 = 请求没到本族**。本族的每个非 2xx 都由 `sendJson` 发 `{ error }` 信封
@@ -247,7 +269,13 @@ async function loadFontSet() {
   let id = "";
   let why = "";
   try {
-    const listRes = await fsJson(fontSetsUrl());
+    // 启动预取（apply 入口已发出）：成功才消费；没预取 / 预取失败（后续 activate / 刷新）
+    // 就自己发 —— 否则一次启动瞬断会被当成宿主的最终回答。
+    const prefetched = fontSetListPrefetch;
+    fontSetListPrefetch = null;
+    let pre = null;
+    try { pre = prefetched ? await prefetched : null; } catch { pre = null; }
+    const listRes = (pre && pre.ok && !pre.error) ? pre : await fsJson(fontSetsUrl());
     const listData = (listRes.ok && !listRes.error && listRes.data) ? listRes.data : null;
     // 清单**顺手更新**：它就在手里。少了这一句，`loadFontSet()` 的调用方（新建 / 切换）之后
     // 列表还是旧的 —— 新那一行不出现、"使用中"的落点看着也不对，要刷新页面才好（真机报过）。
@@ -530,7 +558,8 @@ function cancelPendingFontSet() {
 }
 
 export {
-  fontValueDefaults, readCachedFontSetValues, loadFontSet, setFontValues, persistFontSet,
+  fontValueDefaults, readCachedFontSetValues, loadFontSet, prefetchFontSetList, cancelFontSetListPrefetch,
+  setFontValues, persistFontSet,
   onPageHideFlushFontSet, onVisibilityResyncFontSet, cancelPendingFontSet,
   landPresetFontSet,
   refreshFontSets, activateFontSet, createFontSet, renameFontSet, deleteFontSet,

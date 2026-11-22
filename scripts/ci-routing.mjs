@@ -8,11 +8,15 @@
  *
  * ## 用法
  *   node scripts/ci-routing.mjs check [--base <ref>] [--head <ref>] [--json] [--github-output]
- *       —— 只分类，输出 docs / docs-assets / full 与原因；分类成功退出码 0。
+ *       —— 只分类，输出 docs / docs-assets / notice / full 与原因；分类成功退出码 0。
  *         取不到差异 / 参数错误退出码 2（阻断：分类失败绝不能默认文档）。
  *   node scripts/ci-routing.mjs docs [--base <ref>] [--head <ref>] [--json] [--github-output]
  *       —— 跑文档快通道（冲突标记 / 尾随空白 / 本地引用 / 素材非空）。
  *         有发现退出码 1；**差异不是纯文档时退出码 3（明确拒绝，不是"跳过即通过"）**。
+ *   node scripts/ci-routing.mjs notice [--base <ref>] [--head <ref>] [--json] [--github-output]
+ *       —— 跑**公告快通道**（只改更新公告文案的提交）。内容级判据：两个公告文件的
+ *         `UPDATE NOTICE COPY` 区块**外**逐字节一致、区块**内**代码骨架一致。
+ *         通过退出码 0；骨架/区块外有改动退出码 1；取不到内容或差异不是纯公告退出码 2/3。
  *
  * ## 四个曾经写错的地方（都在这里钉住）
  *   ① **差异必须是整段 PR 的**：`--base` 给定时取 `merge-base(base, head)` 再 diff，
@@ -38,18 +42,33 @@ import {
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { parseInlineModules } from '../test/tools/src-scope.mjs';
 import {
-  MODES, MODE_FULL, SYMLINK_MODE,
-  parseRawDiff, classify, auditDocs, judgeResult,
+  MODES, MODE_FULL, MODE_NOTICE, SYMLINK_MODE, NOTICE_FILES,
+  parseRawDiff, classify, auditDocs, judgeResult, judgeNoticeEdit,
 } from '../test/tools/ci-routing.mjs';
+
+/**
+ * 词表族文件（`src/i18n/i18n-copy.js` + 各 `src/i18n/i18n-copy-*.js`）。
+ * 从构建脚本的 INLINE_MODULES 现解析（单一真源，不抄第二份）；解析失败就退回只查公告
+ * 词表文件 —— 缺文件的真实缺陷由 full 链的 `verify-i18n` 判，不在这里重复实现。
+ */
+function dictionaryFamilyFiles() {
+  try {
+    return parseInlineModules().map(({ file }) => file)
+      .filter((file) => /(?:^|\/)i18n-copy(?:-[^/]+)?\.js$/.test(file));
+  } catch {
+    return ['src/i18n/i18n-copy-ext.js'];
+  }
+}
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const posix = (p) => String(p == null ? '' : p).split('\\').join('/');
 
 const USAGE = [
-  '用法：node scripts/ci-routing.mjs <check|docs|judgeResult> [选项]',
+  '用法：node scripts/ci-routing.mjs <check|docs|notice|judgeResult> [选项]',
   '',
-  'check / docs 选项：',
+  'check / docs / notice 选项：',
   '  --base <ref>        PR 基线：取 merge-base(base, head) 之后的完整差异（缺省用 head^）',
   '  --head <ref>        被检视的提交（缺省 HEAD）',
   '  --base-mode <mode>  差异边界模式：merge-base（缺省，PR 用）| exact（push 用，按 before→after 原样 diff，需 --base 与 --head 双端）',
@@ -58,9 +77,10 @@ const USAGE = [
   '  --github-output     把 mode / reason / count 写进 $GITHUB_OUTPUT（CI 用）',
   '',
   'judgeResult 选项（ci/result 汇总核验，fail-closed）：',
-  '  --mode <mode>       changes 作业分类出的模式（docs / docs-assets / full）',
+  '  --mode <mode>       changes 作业分类出的模式（docs / docs-assets / notice / full）',
   '  --changes <result>  changes 作业的 needs.<job>.result',
   '  --docs <result>     docs 作业的 needs.<job>.result',
+  '  --notice <result>   notice 作业的 needs.<job>.result',
   '  --full <result>     full 作业的 needs.<job>.result',
   '  --github-output     把 ok / reason 写进 $GITHUB_OUTPUT（CI 用）',
   '',
@@ -77,6 +97,7 @@ const FLAGS = {
   '--mode': 'value',
   '--changes': 'value',
   '--docs': 'value',
+  '--notice': 'value',
   '--full': 'value',
 };
 
@@ -335,6 +356,7 @@ export function judgeResultMain(args, deps) {
   const jobs = {
     changes: String(args.changes || ''),
     docs: String(args.docs || ''),
+    notice: String(args.notice || ''),
     full: String(args.full || ''),
   };
   const verdict = judgeResult({ mode: args.mode, jobs });
@@ -349,7 +371,8 @@ export function judgeResultMain(args, deps) {
     }
   }
   log('\nci/result（mode=' + String(args.mode || '空') + ' · changes=' + (jobs.changes || '空')
-    + ' docs=' + (jobs.docs || '空') + ' full=' + (jobs.full || '空') + '）');
+    + ' docs=' + (jobs.docs || '空') + ' notice=' + (jobs.notice || '空')
+    + ' full=' + (jobs.full || '空') + '）');
   if (verdict.ok) {
     log('  ✓ 该跑的作业都真的 success（跳过的那条腿是按设计跳过）');
     return 0;
@@ -357,6 +380,82 @@ export function judgeResultMain(args, deps) {
   for (const r of verdict.reasons) log('  ✗ ' + r);
   log('\nRESULT GATE FAILED — 不放行（fail-closed：失败/取消/缺失/意外跳过/未知 mode 都不是绿）');
   return 1;
+}
+
+/**
+ * `notice` 子命令：公告快通道的**内容级**判定（CLI 侧负责取两份内容，判据在纯函数里）。
+ *
+ * 分类器（`classify`）只能看出"恰好改了两个公告文件"，看不到内容；这里把 base 侧与 head 侧
+ * 的**文件内容**读出来交给 `judgeNoticeEdit`：区块外必须逐字节一致、区块内代码骨架必须一致。
+ *
+ * 取旧版本内容走 `git show <baseRef>:<path>`（**不是**工作树）—— 工作树就是新版，拿它当旧版
+ * 会让判据恒真。任一取不到 ⇒ exit 2 阻断（fail-closed，绝不"取不到就算通过"）。
+ *
+ * 退出码：0 = 纯公告换血（放行）/ 1 = 结构或区块外有改动（判红，回落 full）/ 2 = 取不到内容（阻断）。
+ */
+export function noticeMain(args, deps) {
+  const d = deps || {};
+  const log = d.log || ((s) => console.log(s));
+  const env = d.env || process.env;
+  const root = d.root || ROOT;
+  const git = d.git || makeGit(root);
+  const readCurrent = d.readCurrent || ((rel) => {
+    try { return readFileSync(resolve(root, rel), 'utf8'); } catch { return null; }
+  });
+
+  const diff = collectDiff({ git, root, base: args.base, head: args.head, local: args.local, baseMode: args.baseMode });
+  if (!diff.ok) {
+    log('\n公告快通道：取不到差异 ⇒ 阻断：' + diff.reason);
+    return 2;
+  }
+  const classified = classify(diff.entries);
+  if (classified.mode !== MODE_NOTICE) {
+    // 不是纯公告改动：与 docs 通道同一口径 —— 明确拒绝（exit 3），不假成功。
+    log('\n拒绝：本次差异不是"只改公告文案"（分类=' + classified.mode + '）—— 请跑 `npm run verify:all`。');
+    for (const r of classified.reasons) log('   · ' + r);
+    return EXIT_REFUSED;
+  }
+
+  const before = {};
+  const after = {};
+  for (const rel of NOTICE_FILES) {
+    const show = git(['show', diff.baseRef + ':' + rel]);
+    before[rel] = show.ok ? show.out : null;
+    // ⚠️ **两个文件的当前内容都要读**（不只改动那个）：译文覆盖检查要拿未改动的那一侧
+    // 现读的词表来核 —— 只改中文时正需要这条。
+    after[rel] = readCurrent(rel);
+  }
+  const changed = diff.entries.map((e) => e.path).filter((p) => NOTICE_FILES.includes(p));
+
+  // 译文覆盖检查要**整个词表族**：公告里的「知道了」等词条住在别的域文件
+  // （`src/i18n/i18n-copy-core.js`），只查 `i18n-copy-ext.js` 会误判成漏译。族清单从构建脚本的
+  // INLINE_MODULES 现解析（不抄第二份），文件读不到就跳过（缺文件由 full 链判）。
+  const dictionary = dictionaryFamilyFiles()
+    .map((rel) => readCurrent(rel))
+    .filter((t) => t != null)
+    .join('\n');
+
+  const verdict = judgeNoticeEdit({ before, after, changed, dictionary });
+  const payload = {
+    ok: verdict.ok,
+    mode: MODE_NOTICE,
+    reasons: verdict.reasons,
+    files: NOTICE_FILES.slice(),
+    base: diff.baseRef,
+    head: diff.target,
+    count: diff.entries.length,
+  };
+  if (args.githubOutput) writeOutputs(payload, env);
+  if (args.json) {
+    log(JSON.stringify(payload, null, 2));
+  } else {
+    log('\n公告快通道（base=' + diff.baseRef + ' head=' + diff.target + '）');
+    for (const r of verdict.reasons) log('  ' + (verdict.ok ? '✓' : '✗') + ' ' + r);
+    log('\n' + (verdict.ok
+      ? 'NOTICE FAST PATH PASSED —— 只改了公告文案（区块外逐字节一致 · 区块内骨架一致）'
+      : 'NOTICE FAST PATH FAILED —— 这不是"只改公告文案"，回落 `npm run verify:all`'));
+  }
+  return verdict.ok ? 0 : 1;
 }
 
 /**
@@ -379,6 +478,21 @@ export function main(argv, deps) {
       return 2;
     }
     return judgeResultMain(args, { log, env });
+  }
+
+  // 公告快通道：取两份内容 → 内容级判据（区块外逐字节一致 + 区块内骨架一致）。
+  if (args.cmd === 'notice') {
+    if (args.errors.length) {
+      for (const e of args.errors) log('参数错误：' + e);
+      log(USAGE);
+      return 2;
+    }
+    if (args.baseMode === 'exact' && args.local) {
+      log('参数错误：--base-mode exact（push 精确范围）与 --local（本地未提交通道）互斥');
+      log(USAGE);
+      return 2;
+    }
+    return noticeMain(args, { log, env, root, git });
   }
 
   if (args.errors.length || !['check', 'docs'].includes(args.cmd)) {

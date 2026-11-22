@@ -4,6 +4,9 @@
   "name": "紫色心情",
   "values": {
     "glassSurfacePolicy": {},
+    "floaterSolidBase": true,
+    "marketStickyClip": true,
+    "marketStickyFade": 26,
     "scrim": 0.5,
     "border": 0.9,
     "blur": 9,
@@ -16,24 +19,40 @@
     "switchTransitionDir": "left",
     "switchTransitionSpeed": "normal",
     "rotationEnabled": false,
+    "rotationLiveInterval": 0,
+    "settingsMaskStrength": 100,
+    "pictureSlideSeconds": 0,
     "playbackRate": 1,
     "videoVolume": 0,
     "videoAudioEnabled": false,
     "fpsCap": 0,
     "sceneLive": true,
     "sceneLiveFps": 30,
+    "sceneAutoQuality": true,
+    "sceneSoftRenderPause": true,
     "liveBootDelay": 3,
     "audioSource": "auto",
     "adapterTarget": "auto",
     "mediaIntegration": true,
-    "mediaLyricsOnline": true,
     "pauseOnHidden": false,
     "pauseOnBlur": false,
     "pauseOnBattery": false,
+    "startPaused": false,
     "flip": false,
     "objectFit": "cover",
-    "contentRatingFilter": "all",
-    "typeFilter": "all",
+    "contentRatingFilter": [
+      "everyone",
+      "pg13",
+      "mature",
+      "unrated"
+    ],
+    "typeFilter": [
+      "video",
+      "web",
+      "image",
+      "scene"
+    ],
+    "orientationFilter": "all",
     "pickerLayout": "fixed",
     "edgeCompat": true,
     "accent": "#b388ff",
@@ -68,7 +87,8 @@
       "settingsWindow": "inherit",
       "conversation": "custom",
       "thinkingTrigger": "inherit",
-      "floaters": "inherit"
+      "floaters": "inherit",
+      "filePreview": "inherit"
     },
     "settingsWindowTransparency": 90,
     "settingsWindowBlur": 8,
@@ -101,6 +121,8 @@
     "uiColorTab": "",
     "uiColorDeepDiving": "",
     "themeFollow": false,
+    "perfEnabled": false,
+    "perfFloat": false,
     "fxEnabled": true,
     "fxClick": false,
     "fxClickStyle": "ripple",
@@ -131,7 +153,11 @@
     "avatarEnabled": false,
     "avatarSize": 40,
     "avatarRadius": 100,
-    "avatarAiRepeatRows": 6
+    "avatarAiRepeatRows": 6,
+    "filePreviewTransparency": 10,
+    "filePreviewBlur": 24,
+    "hoverCardTransparency": 39,
+    "hoverCardBlur": 16
   },
   "assets": {
     "font": {
@@ -139,11 +165,11 @@
       "values": {
         "themeColors": {
           "secondary": {
-            "light": "#c9a8ff",
+            "light": "#6d5f94",
             "dark": "#c9a8ff"
           },
           "caption": {
-            "light": "#c4aaff",
+            "light": "#6b6093",
             "dark": "#c4aaff"
           }
         },

@@ -40,6 +40,9 @@ ADR 里**不写会随代码漂移的具体数值**（条数、行数、体积、
 `Status` 只有一条纪律：**决定被推翻时不要改写旧 ADR**，把它的 `Status` 改成 `Superseded by ADR-NNNN`，
 然后新写一份说明为什么推翻。旧 ADR 的正文保持原样 —— 它是历史，改它就等于伪造决策记录。
 
+> 推论：ADR 正文里的文件路径是**决策当时**的锚点，可能随代码迁移。看到路径不存在时以代码为准，
+> **不追溯改写正文** —— 要更新的是文件头注释与 `docs/CODE-STRUCTURE.md`，不是这篇 ADR。
+
 ## 正文骨架
 
 ```markdown
@@ -58,13 +61,16 @@ ADR 里**不写会随代码漂移的具体数值**（条数、行数、体积、
 | [0003](./0003-build-time-module-inlining.md) | 浏览器半边拆分靠构建期内联，不用运行时模块 | Accepted |
 | [0004](./0004-two-tier-guard-verification.md) | 守卫按"失败的含义"分硬/软两档 | Accepted |
 | [0005](./0005-media-loopback-origin.md) | 媒体由宿主自建的独立 loopback 源提供 | Accepted |
-| [0006](./0006-comment-discipline-as-written-convention.md) | 注释与文档纪律改为纯写作约定，撤掉文档类机器守卫 | Accepted |
+| [0006](./0006-comment-discipline-as-written-convention.md) | 注释与文档纪律改为纯写作约定，撤掉文档类机器守卫 | Superseded by ADR-0017 |
 | [0007](./0007-machine-checks-target-code-not-prose.md) | 机器判据只针对代码与磁盘，不针对散文（给出四问判定程序 + 保留/撤除清单） | Accepted |
 | [0008](./0008-glass-config-two-state.md) | 玻璃配置收成"每面两态 + 一把刻度 + 门控分两类"；放弃按面变量间接层与"关即回原生纯色" | Amended by ADR-0010 |
 | [0009](./0009-system-fonts-from-the-os.md) | 本机字体清单由宿主问操作系统（不自己解析字体文件、也不让浏览器枚举） | Accepted |
 | [0010](./0010-glass-off-revisit-four-states.md) | 修订 ADR-0008 的"放弃关玻璃"结论（令牌层整组回退的前置条件已成立，由令牌契约守卫钉住）；目标形态定为**一个模式键四态**（full / glass-only / wallpaper-only / off），主开关最后落地 | Accepted |
-| [0011](./0011-preset-full-snapshot.md) | 预设从「玻璃子集快照」升为「整机配置快照」：键集由 `KINDS` 派生分四段（settings + 字体 / 吉祥物 / 头像资产段）；资产按需勾选携带；旧预设直接作废；新增导入导出 | Proposed |
+| [0011](./0011-preset-full-snapshot.md) | 预设从「玻璃子集快照」升为「整机配置快照」：键集由 `KINDS` 派生分四段（settings + 字体 / 吉祥物 / 头像资产段）；资产按需勾选携带；旧预设直接作废；新增导入导出 | Accepted |
 | [0012](./0012-artifact-untracking.md) | 构建产物出库（`lib/client.js` 不入库，改由 build / prepack 现场构建）＋ README 展示图迁至 Release 资产外链；修订 ADR-0003 的 D6 | Accepted |
 | [0013](./0013-bundle-multi-component-rows.md) | **插件拆分**：终态 = **多包**（主包 + 子包，版本一致；2026-10-14 **就地改写 D6/D8**，原为「单包多行 / 不做多包」）＋ 单包多行是**起点与已落地形态**；三件核心目标并列（降复杂度 / 锚定模块边界 / 解耦合）；行级开关 = 宿主路由 + 该组件的浏览器可见面；组件化前先库化 + 内核化。**原编号 0012**（与上游 `0012-artifact-untracking` 撞号 ⇒ 让位顺延） | Accepted |
-| [0014](./0014-subpackage-contract.md) | **子包规范（`packages/<pkg>` 的成文契约，条款号 `S*`）** —— 术语把「独立子包行」与「组件行」分开；依赖方向定成**两张平面**（宿主平面 = 主包 `provide` 服务 → 子包 `inject` 只读；浏览器平面 = 主包冻结面 → 子包产物 `require` 真名且唯一）＋禁止边；判据**只加在代码与磁盘**、**不再新增任何 markdown 判据**；树形依赖图 = 人工维护的 Mermaid（[`docs/SUBPACKAGE-GRAPH.md`](../SUBPACKAGE-GRAPH.md)），放弃机器对账 | Accepted |
+| [0014](./0014-subpackage-contract.md) | **子包规范（`packages/<pkg>` 的成文契约，条款号 `S*`）** —— 术语把「独立子包行」与「组件行」分开；依赖方向定成**两张平面**（宿主平面 = 主包 `provide` 服务 → 子包 `inject` 只读；浏览器平面 = 主包冻结面 → 子包产物 `require` 真名且唯一）＋禁止边；判据**只加在代码与磁盘**、**不再新增任何 markdown 判据**；树形依赖图 = 人工维护的 Mermaid（[`docs/CODE-STRUCTURE.md`](../CODE-STRUCTURE.md) §11），放弃机器对账 | Accepted |
 | [0015](./0015-glass-surface-ownership.md) | 统一背景所有权、安全装饰叶节点、未知面原生回退与外部模态让路；修订全局背景令牌泛化接管 | Accepted |
+| [0016](./0016-glass-subpackage.md) | **玻璃子包**：液态玻璃抽离为独立子包行（`wallpaper-engine-glass`），设置面板 / 运行时 / CSS 逐刀出户；停用该行 ⇒ 宿主回到原生外观（ADR-0010 D2 的 wallpaper-only 态转正） | Accepted |
+| [0017](./0017-code-is-truth-docs-reference-source.md) | **代码即真相**：文档只引用源码位置/复算命令，不复制源码与清单；取消文档类门禁与"文档同步"审阅约束（取代 ADR-0006）。**原编号 0016**（与 glass 子包撞号 ⇒ 让位顺延） | Accepted |
+| [0018](./0018-focus-fence-trusted-gesture-window.md) | **焦点围栏按「可信手势窗口」放行**：帧级一刀切；元素级只在可信来源（原生事件 / shim 注入期）打开的窗口内放行，壁纸自派事件不再能开窗口；HTML 与 SVG 两族原型都守；不经过 `focus()` 的路径由宿主半交还兜底，宿主侧「焦点被腾到 body」先只记账 | Accepted |

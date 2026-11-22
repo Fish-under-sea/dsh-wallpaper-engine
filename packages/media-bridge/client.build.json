@@ -1,0 +1,54 @@
+{
+  "entry": "src/client.js",
+  "artifact": "lib/client.media-bridge.js",
+  "inline": [
+    {
+      "file": "src/wallpaper-current-section.js",
+      "why": "「壁纸库」页签第一节「当前壁纸」的渲染器（ADR-0013/ADR-0014 子包出户）；入口的 registerPanelSection 把它的 render 登记进面板节注册表（library，order 10）",
+      "markers": [
+        "function renderWallpaperCurrentSection(ctx) {",
+        "we-picker__current-actions"
+      ]
+    },
+    {
+      "file": "src/wallpaper-transition-section.js",
+      "why": "「壁纸库」页签第二节「切换过场」的渲染器（ADR-0013/ADR-0014 子包出户）；入口的 registerPanelSection 把它的 render 登记进面板节注册表（library，order 20）",
+      "markers": [
+        "function renderWallpaperTransitionSection(ctx) {",
+        "onSwitchTransitionDir"
+      ]
+    },
+    {
+      "file": "src/wallpaper-rotation-section.js",
+      "why": "「壁纸库」页签第三节「自动轮播」的渲染器（ADR-0013/ADR-0014 子包出户）；入口的 registerPanelSection 把它的 render 登记进面板节注册表（library，order 30）",
+      "markers": [
+        "function renderWallpaperRotationSection(ctx) {",
+        "onToggleRotation"
+      ]
+    },
+    {
+      "file": "src/wallpaper-uploads-section.js",
+      "why": "「壁纸库」页签第四节「自定义壁纸」的渲染器（ADR-0013/ADR-0014 子包出户）；入口的 registerPanelSection 把它的 render 登记进面板节注册表（library，order 40）",
+      "markers": [
+        "function renderWallpaperUploadsSection(ctx) {",
+        "we-picker__uploads-list"
+      ]
+    },
+    {
+      "file": "src/playback-rate-section.js",
+      "why": "「播放」页签「倍速 / 帧率上限」节渲染器（含私有 renderTranscodeProgress；ADR-0013/ADR-0014 子包出户）；入口的 registerPanelSection 把它登记进面板节注册表（playback，order 60）",
+      "markers": [
+        "function renderEffectsPlaybackSection(ctx) {",
+        "we-picker__prog-track"
+      ]
+    },
+    {
+      "file": "src/wallpaper-fit-section.js",
+      "why": "「播放」页签「适配 / 水平翻转」节渲染器（ADR-0013/ADR-0014 子包出户）；入口的 registerPanelSection 把它登记进面板节注册表（playback，order 70）",
+      "markers": [
+        "function renderEffectsFitSection(ctx) {",
+        "weT(\"水平翻转\")"
+      ]
+    }
+  ]
+}

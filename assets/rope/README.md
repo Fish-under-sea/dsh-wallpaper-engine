@@ -1,26 +1,46 @@
-# 立绘（Rope artwork）派生载荷
+# 立绘（Rope artwork）运行时载荷
 
 本目录存放**拉绳吉祥物立绘的运行时载荷**：10 张已经缩放、抠底、编码好的 PNG。
-它们原本以 10 条单行 base64 常量内联在 `src/client.js` 里（合计 2,369,676 个字符 /
-1,777,009 字节 PNG），是当时全仓最大的一处内聚污染（4300 行正文里塞了 2.3MB 数据）。
-2026-10-13 起改为**构建期注入**：字节住这里，产物照样自包含。
+它们原本以 10 条单行 base64 常量内联在 `src/client.js` 里（合计 2,369,676 字符 /
+1,777,009 字节 PNG），是当时全仓最大的一处内聚污染。
 
-## 构建期注入契约
+## 2026-10-30：从"内联进产物"改为"按需外置"
 
-源码里保留声明与注释，只把载荷换成占位符：
+启动性能 trace（`Trace-20261030T132329`）测出：主产物 4.2 MB 里 **56% 是这 10 张图的
+base64**，下载 178 ms、`v8.compile` 25 ms；而启动时桌面只需要**当前形态一张**，其余九张
+只在吉祥物面板里出现。于是改成：
+
+- 字节仍住本目录（`assets/rope/<name>.png`），**随 npm 包发布**（`package.json` 的 `files`
+  含 `assets/rope/`）；
+- 客户端 `src/client.js` 的 `ROPE_IMG_*` 只保存 URL：
+  `BASE + "/rope-art/<name>.png"`；
+- 宿主只读路由 `GET/HEAD /wallpaper-engine/rope-art/<name>.png`
+  （实现：`lib/routes/rope-art.js`，文件名白名单 + PNG + ETag 复核）按需直出；
+- `scripts/build-client.mjs` 的 `checkRopeArtDeclarations()` 只做**对账**，不再把字节拼进
+  bundle：声明形态唯一、声明名 ↔ 文件名一致、文件存在且是 PNG、目录里没有孤儿 PNG、
+  正文没有残留占位符。
+
+效果：主产物 4,208,662 B → 1,844,564 B（−56%）；启动少传约 2.37 MB。图片字节本身**没有
+改** —— 外置是搬位置，不是重编码。
+
+## 构建期对账契约
+
+源码里一个形态一项声明：
 
 ```js
-const ROPE_IMG_WHALE = "data:image/png;base64,__ROPE_ART_WHALE__";
+const ROPE_IMG_WHALE = BASE + "/rope-art/whale.png";
 ```
 
-`scripts/build-client.mjs` 在拼装产物前扫一遍 `src/client.js`，把
-`__ROPE_ART_<NAME>__` 替换成 `本目录/<NAME 小写>.png` 的 base64，并断言：
+`scripts/build-client.mjs` 在拼装产物前扫一遍 `src/client.js`，断言：
 
-1. 每个占位符在正文里**恰好命中一次**（漏写/写重都当场 exit 1）；
-2. 10 个占位符**全部被消费**（改名或漏文件 → 红）；
-3. 替换后正文里**不再残留** `__ROPE_ART_`（占位符泄漏进产物 = 白屏，宁可构建失败）。
+1. 每个声明**恰好命中一次**（漏写/写重都当场 exit 1）；
+2. `const ROPE_IMG_` 声明数 == 命中数（有人改回内联 base64 / 改错形态 → 红）；
+3. 声明名与文件名一致（`ROPE_IMG_WHALE` ↔ `whale.png`；改名两边一起动）；
+4. 每个文件在盘且是 PNG（magic 校验；路由按 `.png` 出 content-type）；
+5. 本目录里每个 `.png` 都被某个声明用到（改名只改一边会留下孤儿 → 红）；
+6. 替换后正文里没有残留 `__ROPE_ART_`。
 
-因此：**文件名 = 占位符名的小写形式**。改名必须同时动 `src/client.js`、本 README 与构建脚本。
+因此：**文件名 = 声明名的小写形式**。改名必须同时动 `src/client.js`、本 README 与构建脚本。
 
 ## 文件与形态
 
@@ -43,9 +63,9 @@ filter** 的完整派生流程与踩坑记录在 [`../mascot/README.md`](../masc
 
 ## 两条纪律
 
-- **禁止重新编码/压缩/改格式**（WebP、优化 PNG、换 filter 都不行）：`lib/client.js` 的字节
-  与拆分前**完全一致**正是这一刀的等价性证据（sha256 相同）。任何重编码都会改变 data URI
-  字符串 ⇒ 该证据失效，且必须重新走一遍守卫。
-- **不进 npm 包**（不在 `package.json` 的 `files` 白名单内），但构建期已注入 `lib/client.js`
-  ⇒ 发布出去的包仍然自包含、可用。构建只在仓库内跑（`prepack` → `scripts/prepare.mjs`），
-  不需要把本目录打进 tarball。
+- **运行时载荷就是这些字节**：路由按 `.png` 直出，别换格式（WebP/JPEG）、别改扩展名；
+  要重编码/降采样就得同时评估观感并更新本表与 `assets/mascot/README.md` 的派生流程
+  （不再有"与拆分前逐字节相同"的等价性证据可依赖）。
+- **必须随包发布**：`package.json` 的 `files` 里有 `assets/rope/`；从发布包里删掉它
+  等于所有内置形态 404。构建期对账只证明"仓库里对得上"，`test/verify-package-files.mjs`
+  负责"发布面覆盖"。

@@ -71,7 +71,8 @@ const hasNodeEngine = (p) => Boolean(p && p.engines && p.engines.node);
   // ⚠️ 媒体子系统在本分支住**组件行**（P2 拆包）：面要跟着实现走，否则'是否用了有版本要求的 API'
 // 会推导出 0（判据非空转自检立刻报红——这正是它该做的）。
 const hostSrc = ['lib/index.js', 'packages/media-bridge/lib/legacy.js', 'packages/media-bridge/lib/backend.js',
-  'packages/media-bridge/lib/supervisor.js', 'packages/media-bridge/lib/index.js']
+  'packages/media-bridge/lib/supervisor.js', 'packages/media-bridge/lib/supervisor-protocol.js',
+  'packages/media-bridge/lib/index.js']
     .map((f) => { try { return read(f); } catch { return ''; } }).join('\n');
   const need = requiredFloor(hostSrc);
   const declared = pkg.engines && pkg.engines.node;
@@ -224,7 +225,7 @@ const tabsSrc = panelText();
   // **不走流式落盘**：上限只有 8MB（客户端导入前已按 512px 缩过一轮）⇒ 走共享读体器 +
   // 原子落盘，内联收集器那条棘轮因此不增（见 test/verify-body-caps.mjs 的两条棘轮）。
   // ⚠️ 头像路由族在本分支归**组件行** mascot-avatar（P2 拆包；实现入包、主包不留注册点）。
-  // P-F（2026-10-16）：该组件行已出户到 `packages/mascot-avatar/`，实现跟着走。
+  // P-F：该组件行已出户到 `packages/mascot-avatar/`，实现跟着走。
   const routeSrc = read('packages/mascot-avatar/lib/routes/avatar.js');
   // ⚠️ 读点更正（T2 #8 / task-10 G）：`AVATAR_*` / `MASCOT_*` / `avatarDir()` / `mascotDir()` 的真源
   //    在本分支是 `lib/media/media-dirs.js`（上游同名副本 `lib/asset-paths.js` 已不在 import 图上）
@@ -259,7 +260,7 @@ const tabsSrc = panelText();
     && /AVATAR_MAX_BYTES = 8 \* 1024 \* 1024/.test(hostNow));
 
   // 吉祥物立绘族（packages/mascot-avatar/lib/routes/mascot.js）：与头像同形，但**只有一张**（导入即覆盖）。
-  // P-F（2026-10-16）：随 `mascot-avatar` 出户，读点跟着实现走（同头像那条）。
+  // P-F：随 `mascot-avatar` 出户，读点跟着实现走（同头像那条）。
   const mascotRouteSrc = read('packages/mascot-avatar/lib/routes/mascot.js');
   check('立绘路由：形态与头像同族（共享读体器 + 原子落盘，不是新的流式豁免）',
     // 与头像那条同款：出户后经注入面 `http` 调共享实现，不写带引号的 `from '…/http-body.js'` 字面。

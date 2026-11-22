@@ -8,7 +8,7 @@ import { registerOfficialPetRoutes } from '../packages/pet-link/lib/routes/offic
 const routes = new Map();
 const off = applyImpl({ webServer: { port: 49123,
   register(route) { routes.set(route.path, route); return () => routes.delete(route.path); },
-} }, {}, { base: '/wall', http: httpView });
+} }, {}, { base: '/wall', http: httpView, tolerantWebServer: (ws) => ws });
 assert.ok(routes.has('/wall/pet-link/official'), '默认即为正式官方桥接');
 assert.equal(routes.has('/wall/pet-link/capability'), false, '不存在内置资格入口');
 off(); off();

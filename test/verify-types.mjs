@@ -115,9 +115,14 @@ const WALLPAPER_REQUIRED = [
   { name: 'title', why: 'picker label; both construction sites assign it (buildInventory)' },
   { name: 'type', why: 'drives every capability branch (buildInventory)' },
   { name: 'contentrating', why: 'rating filter input; readProjectP / metaEntry always produce it' },
-  { name: 'playable', why: 'portableCount and rotation filter read it (buildInventory)' },
+  { name: 'urlSource', why: 'image URL import record (Bing daily / pasted URL) or null; inventory attaches it to upload entries and the panel uses it for the badge / refresh button' },
+  { name: 'width', why: 'real pixel width for image / video entries (file header / MP4 tkhd); the orientation filter compares it with height, null for scene / web / failed probes' },
+  { name: 'height', why: 'real pixel height for image / video entries; paired with width for the orientation filter' },  { name: 'playable', why: 'portableCount and rotation filter read it (buildInventory)' },
   { name: 'media', why: 'the video/web media URL the browser half plays (buildInventory)' },
   { name: 'mediaExt', why: 'real container suffix of that media file: the token-shaped URL carries no extension, so the client\'s "browser can play it natively" decision has no other source (buildInventory)' },
+  { name: 'slideCount', why: 'number of images in a picture / slideshow entry (0 for everything else): the panel disables the picture-interval picker on <2 (buildInventory)' },
+  { name: 'slidesUrl', why: 'host route listing the sibling images of a multi-image picture entry (null otherwise); the client only stacks the cross-fade layers when it is present (buildInventory)' },
+  { name: 'slideIntervalMs', why: 'WE preset image-switch cadence in ms (null when the project declares none); the client then falls back to 30 s (buildInventory + readProjectP)' },
   { name: 'preview', why: 'picker thumbnail (buildInventory)' },
   { name: 'frameUrl', why: 'scene static-frame source (buildInventory)' },
   { name: 'schemeColor', why: 'load-time placeholder colour before a frame exists (buildInventory)' },
@@ -144,6 +149,7 @@ const INVENTORY_REQUIRED = [
   { name: 'portableCount', why: 'playable count shown in the picker (buildInventory payload)' },
   { name: 'wallpapers', why: 'the entry list itself (payload shorthand)' },
   { name: 'playlists', why: 'scoped-rotation source (payload shorthand)' },
+  { name: 'folders', why: 'Wallpaper Engine "Installed" folder tree; the picker mirrors it as a filter (readFoldersP → foldersWithIds → assembleInventory)' },
 ];
 
 /** inventory 构造代码 = 基础条目 + 两个字段提供者（它们经 spread 进入每条）。
@@ -208,7 +214,7 @@ console.log('\nP3  Inventory（顶层载荷）');
   check('钉住的必需字段全部已声明，且没有多出的字段',
     // 集合已逐名相等（下面 missing/extra 两项）⇒ 长度相等是冗余合取项：本条只保留
     // 两项 missing/extra 与 `a.parsed`；"钉住的每条都真的在 .d.ts 里"由前面那条
-    // 按名字逐一钉名的判据（约 203-205 行）负责，两处分工不重复。
+    // 按名字逐一钉名的判据负责，两处分工不重复。
     a.parsed && a.missingDeclared.length === 0 && a.extraDeclared.length === 0,
     a.parsed
       ? 'missing=[' + a.missingDeclared.join(', ') + '] extra=[' + a.extraDeclared.join(', ') + ']'

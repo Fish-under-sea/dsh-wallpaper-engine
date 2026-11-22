@@ -31,6 +31,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-slideshow-client.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-component-visibility.mjs",
           "args": [],
           "tier": "hard",
@@ -193,6 +201,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-market-sticky.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-glass-compat.mjs",
           "args": [],
           "tier": "hard",
@@ -242,6 +258,14 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-deployment.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-release-set.mjs",
           "args": [],
           "tier": "hard",
           "probe": false
@@ -321,6 +345,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-token-domain.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-cache-dir.mjs",
           "args": [],
           "tier": "hard",
@@ -346,6 +378,22 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-wallpaper-scan.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-slides.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-we-folders.mjs",
           "args": [],
           "tier": "hard",
           "probe": false
@@ -529,6 +577,30 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-url-source.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-url-import-route.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-media-size.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-video-preview.mjs",
           "args": [],
           "tier": "hard",
@@ -601,6 +673,62 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-layer-ownership.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-occlusion-debounce.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-tolerant-register.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-resume-repaint.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-lazy-engine-dir.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-cache-keys.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-titlebar-anchor.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-pet-package.mjs",
           "args": [],
           "tier": "hard",
@@ -634,6 +762,14 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-pet-tuner.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-pet-link.mjs",
           "args": [],
           "tier": "hard",
           "probe": false
@@ -693,6 +829,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-perf-metrics.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-guard-chain.mjs",
           "args": [],
           "tier": "hard",
@@ -718,6 +862,22 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-ci-routing.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-notice-routing.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-issue-claim-policy.mjs",
           "args": [],
           "tier": "hard",
           "probe": false
@@ -868,6 +1028,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-slideshow-client.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-component-visibility.mjs",
           "args": [],
           "tier": "hard",
@@ -1030,6 +1198,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-market-sticky.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-glass-compat.mjs",
           "args": [],
           "tier": "hard",
@@ -1079,6 +1255,14 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-deployment.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-release-set.mjs",
           "args": [],
           "tier": "hard",
           "probe": false
@@ -1158,6 +1342,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-token-domain.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-cache-dir.mjs",
           "args": [],
           "tier": "hard",
@@ -1183,6 +1375,22 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-wallpaper-scan.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-slides.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-we-folders.mjs",
           "args": [],
           "tier": "hard",
           "probe": false
@@ -1366,6 +1574,30 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-url-source.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-url-import-route.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-media-size.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-video-preview.mjs",
           "args": [],
           "tier": "hard",
@@ -1438,6 +1670,62 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-layer-ownership.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-occlusion-debounce.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-tolerant-register.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-resume-repaint.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-lazy-engine-dir.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-cache-keys.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-titlebar-anchor.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-pet-package.mjs",
           "args": [],
           "tier": "hard",
@@ -1471,6 +1759,14 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-pet-tuner.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-pet-link.mjs",
           "args": [],
           "tier": "hard",
           "probe": false
@@ -1530,6 +1826,14 @@
         {
           "kind": "guard",
           "npm": null,
+          "file": "test/verify-perf-metrics.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
           "file": "test/verify-guard-chain.mjs",
           "args": [],
           "tier": "hard",
@@ -1555,6 +1859,22 @@
           "kind": "guard",
           "npm": null,
           "file": "test/verify-ci-routing.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-notice-routing.mjs",
+          "args": [],
+          "tier": "hard",
+          "probe": false
+        },
+        {
+          "kind": "guard",
+          "npm": null,
+          "file": "test/verify-issue-claim-policy.mjs",
           "args": [],
           "tier": "hard",
           "probe": false

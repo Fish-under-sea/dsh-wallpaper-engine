@@ -2,7 +2,7 @@
 /** 执行真实几何解析：已知侧栏网格与根平移不能令展开中的玻璃消失。 */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-const source = readFileSync(new URL('../src/glass-surfaces.js', import.meta.url), 'utf8').replace(/export\s*\{[^}]+\};?\s*$/, '');
+const source = readFileSync(new URL('../packages/glass/src/glass-surfaces.js', import.meta.url), 'utf8').replace(/export\s*\{[^}]+\};?\s*$/, '');
 const { geometry, refresh } = new Function(source + '\nreturn {geometry:weSurfaceGeometry,refresh:state=>{weSurfaceRuntime=state;weSurfaceRefresh(state);}};')();
 const plain = { display: 'block', visibility: 'visible', opacity: '1', backdropFilter: 'none', webkitBackdropFilter: 'none',
   transform: 'none', perspective: 'none', filter: 'none', isolation: 'auto', mixBlendMode: 'normal', contain: 'none',

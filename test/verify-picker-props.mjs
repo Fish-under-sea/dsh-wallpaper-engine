@@ -237,6 +237,13 @@ function makeEl(tag) {
 }
 
 const bodyEl = makeEl('body');
+// emit 的可观察出口：`applyEffects` 是 emit 的订阅者，每被调一次都会往 body 写一批样式
+// 变量 —— 「拖动中有没有 emit」因此可以从这里数出来。替身里的面板树不会自己重渲染，
+// 只看树是看不出"每格都 emit"的；而全量 applyEffects（字体样式表 / 场景音频 / 强制同步
+// 样式计算）正是拖动发涩的那一半代价。
+const effectWrites = { n: 0 };
+const bodySetProperty = bodyEl.style.setProperty.bind(bodyEl.style);
+bodyEl.style.setProperty = (k, v) => { effectWrites.n++; bodySetProperty(k, v); };
 const document = {
   createElement: (t) => {
     const el = makeEl(t);
@@ -386,6 +393,25 @@ const requireMock = (spec) => {
   throw new Error('unexpected require: ' + spec);
 };
 const exportsObj = factory(requireMock);
+// P-D S3c：「壁纸库」页签四节已全部搬进 packages/media-bridge 的浏览器半边 ⇒ 抽屉里的
+// 「选择壁纸」/壁纸属性/播放控制等节点只在该产物登记 library 节之后才出现。与真实
+// loader 同形，在 apply() **之前**求值该产物（它的 factory 用主 bundle 的显式键集登记四节）。
+{
+  const wallpaperArtifact = readFileSync(
+    new URL('../packages/media-bridge/lib/client.media-bridge.js', import.meta.url), 'utf8');
+  const subHandoffs = [];
+  const savedLoader = sandbox.window.__ModuleLoader__;
+  sandbox.window.__ModuleLoader__ = { load: (h) => { subHandoffs.push(h); } };
+  new vm.Script(wallpaperArtifact, { filename: 'client.media-bridge.js' }).runInContext(sandbox);
+  sandbox.window.__ModuleLoader__ = savedLoader;
+  if (subHandoffs.length !== 1) {
+    throw new Error('wallpaper 浏览器半边必须恰好注册一份 bundle（实际 ' + subHandoffs.length + ' 份）');
+  }
+  const wallpaperExports = subHandoffs[0].factory((spec) => (
+    spec === 'dsh-plugin-wallpaper-engine' ? exportsObj : requireMock(spec)
+  ));
+  if (typeof wallpaperExports.apply !== 'function') throw new Error('wallpaper 浏览器半边必须导出 apply');
+}
 
 const pickerRenders = [];
 const slots = {
@@ -459,6 +485,20 @@ const flushPersist = () => {
 };
 const persisted = () => JSON.parse(localStorage._store[SELECTION_KEY] || '{}');
 const persistedUserProps = () => persisted().userProps || {};
+
+/**
+ * 「壁纸属性」拖动期的尾部提交窗口（`src/client.js` 的 `USER_PROPS_COMMIT_MS`）。
+ * 绝对值锚点：React 的 onChange 对 range/color 是逐格触发的 input 事件，真实的
+ * "抬手"由这个尾部定时器表达 —— 它一旦被改掉，下面的"拖动中不 emit / 停手后 emit 一次"
+ * 就不再成立（守卫必须因此变红，而不是静默通过）。
+ */
+const PROPS_COMMIT_MS = 180;
+/** 拖动期**还挂着**的尾部提交定时器（每格重排 ⇒ 至多一个）。 */
+const liveCommitTimers = () => sandboxTimers.filter((t) => !t.cleared && !t.fired && t.ms === PROPS_COMMIT_MS);
+/** 模拟"拖动停下"：跑掉那个尾部提交（不是 flushPersist —— 那是 200ms 的落盘去抖）。 */
+const firePropsCommit = () => {
+  for (const t of liveCommitTimers()) { t.fired = true; t.fn(); }
+};
 
 /** 打开库视图（「选择壁纸」入口）。 */
 function openModal(root) {
@@ -600,6 +640,11 @@ console.log('\n3. 每个 ptype 出对得上的控件（renderUserPropRow 的各�
   const textInput = controlIn(rowByLabel(tree, '备注'), 'we-picker__props-text');
   check('兜底分支（textinput）⇒ 文本输入，默认值是宿主给的值',
     !!textInput && textInput.props.type === 'text' && textInput.props.defaultValue === 'hi');
+  // 文本输入的"输入完成"同样不能是 React 的 onChange（逐键触发 = 每敲一下 emit 一次）：
+  // 明确的提交点只有失焦与回车。
+  check('文本行没有逐键 onChange（每敲一下跑一遍属性处理太重）', !!textInput && textInput.props.onChange === undefined);
+  check('文本行的提交点是失焦 / 回车（onBlur + onKeyDown）',
+    !!textInput && typeof textInput.props.onBlur === 'function' && typeof textInput.props.onKeyDown === 'function');
   // 负对照：把变异输入（换成别的行）喂进同一条「控件在不在这一行」判据
   check('负对照：颜色行里没有 checkbox（同一条控件判据对别的行判为 null）',
     controlIn(rowByLabel(tree, '背景颜色'), 'we-picker__props-check') === null);
@@ -645,24 +690,70 @@ console.log('\n5. 改动落地：写进设置（按 token 存）+ 拖动中不�
   flushPersist();
   check('file 改动回写相对路径', persistedUserProps()[PROPS_TOKEN].customImage === 'b.jpg');
 
-  const colorInput = controlIn(rowByLabel(tree, '背景颜色'), 'we-picker__props-color');
-  colorInput.props.onChange({ target: { value: '#ff0000' } });
-  tree = render();
+  // 文本输入：失焦 / 回车才提交 —— 与拖动类不同，它们是**离散**提交，应当立即 emit
+  const noteInput = controlIn(rowByLabel(tree, '备注'), 'we-picker__props-text');
+  const writesBeforeNote = effectWrites.n;
+  noteInput.props.onBlur({ target: { value: 'bye' } });
   flushPersist();
-  check('color 改动回写成 WE 的 "r g b" 浮点串',
-    persistedUserProps()[PROPS_TOKEN].bgcolor === '1 0 0', String(persistedUserProps()[PROPS_TOKEN].bgcolor));
+  check('文本失焦 ⇒ 写进设置（逐键不落盘的那条判据的另一半）',
+    persistedUserProps()[PROPS_TOKEN].note === 'bye', String(persistedUserProps()[PROPS_TOKEN].note));
+  check('文本失焦 ⇒ 立即 emit（不走拖动期那 180ms 尾部窗口）', effectWrites.n > writesBeforeNote);
+  noteInput.props.onKeyDown({ key: 'Enter', target: { value: 'bye2' } });
+  flushPersist();
+  check('文本回车 ⇒ 同样提交（不必先失焦）',
+    persistedUserProps()[PROPS_TOKEN].note === 'bye2', String(persistedUserProps()[PROPS_TOKEN].note));
 
-  // 滑块：拖动（input，silent）只写设置、不重渲染；change 才刷新数值回显
+  // ── 颜色：React 对 <input type=color> 的 onChange 是**逐格**的 input 事件，拖动期
+  //    只能 silent 热更新；一次 emit 都不该发生。抬手由尾部提交定时器表达 ──
+  const colorInput = controlIn(rowByLabel(tree, '背景颜色'), 'we-picker__props-color');
+  check('color 行保留受控输入所需的 onChange（不写它 React 会把控件判成只读）',
+    typeof colorInput.props.onChange === 'function');
+  const writesBeforeColor = effectWrites.n;
+  for (let i = 0; i < 20; i++) {
+    // React 实际会**同时**派发 onInput 与 onChange（同一个 input 事件），两路都得喂
+    const hex = '#' + (16 + i).toString(16).padStart(2, '0') + '0000';
+    colorInput.props.onInput({ target: { value: hex } });
+    colorInput.props.onChange({ target: { value: hex } });
+  }
+  check('颜色拖动 20 格：两路处理器都 silent ⇒ emit 订阅者（applyEffects）零调用',
+    effectWrites.n === writesBeforeColor, (effectWrites.n - writesBeforeColor) + ' 次');
+  check('颜色拖动 20 格后只挂**一个**尾部提交定时器（每格重排，不是每格一个）',
+    liveCommitTimers().length === 1, liveCommitTimers().length + ' 个');
+  colorInput.props.onInput({ target: { value: '#ff0000' } });
+  flushPersist();
+  check('color 改动回写成 WE 的 "r g b" 浮点串（silent 也照常落盘）',
+    persistedUserProps()[PROPS_TOKEN].bgcolor === '1 0 0', String(persistedUserProps()[PROPS_TOKEN].bgcolor));
+  const writesBeforeCommit = effectWrites.n;
+  firePropsCommit();
+  check('停手 ⇒ 尾部提交 emit 一次：applyEffects 这才被调用（拖动中那 20 格没白省）',
+    effectWrites.n > writesBeforeCommit, (effectWrites.n - writesBeforeCommit) + ' 次');
+  tree = render();
+  check('停手后重渲染 ⇒ 颜色行带上「已改」圆点（面板回显与落盘一致）',
+    overriddenRows(tree) >= 1);
+  // 负对照：同一个计数在**离散**提交（bool）上会增长 —— 上面那些"零调用"不是计数器坏了
+  const writesBeforeBool = effectWrites.n;
+  controlIn(rowByLabel(tree, '发光'), 'we-picker__props-check').props.onChange({ target: { checked: true } });
+  check('负对照：离散提交（bool）会让同一个计数增长，判据不是恒真',
+    effectWrites.n > writesBeforeBool, (effectWrites.n - writesBeforeBool) + ' 次');
+  tree = render();
+  controlIn(rowByLabel(tree, '发光'), 'we-picker__props-check').props.onChange({ target: { checked: false } });
+  tree = render();
+
+  // ── 滑块：同一个口径（拖动中零 emit，停手后一次）──
   const sliderInput = controlIn(rowByLabel(tree, '速度'), 'we-picker__slider');
+  const writesBeforeSlider = effectWrites.n;
   sliderInput.props.onInput({ target: { value: '3' } });
+  sliderInput.props.onChange({ target: { value: '3' } }); // React 同格会再派发一次 onChange
   flushPersist();
   check('滑块拖动（silent）⇒ 设置里已是新值',
     Number(persistedUserProps()[PROPS_TOKEN].speed) === 3);
+  check('滑块拖动（silent）⇒ 拖动中零 emit（旧实现是每格一次）',
+    effectWrites.n === writesBeforeSlider, (effectWrites.n - writesBeforeSlider) + ' 次');
   check('滑块拖动（silent）⇒ 旧渲染树里的回显**没变**（拖动中不 emit）',
     textUnder(findByClass(rowByLabel(tree, '速度'), 'we-picker__props-value')) === '1.5');
-  controlIn(rowByLabel(tree, '速度'), 'we-picker__slider').props.onChange({ target: { value: '3' } });
+  firePropsCommit();
   tree = render();
-  check('滑块 change ⇒ 重渲染后回显跟上（precision=1 ⇒ "3.0"）',
+  check('滑块停手 ⇒ 尾部提交后回显跟上（precision=1 ⇒ "3.0"）',
     textUnder(findByClass(rowByLabel(tree, '速度'), 'we-picker__props-value')) === '3.0');
 
   // 恢复默认：清掉该 token 的全部覆盖，回显回默认值
@@ -813,7 +904,77 @@ console.log('\n8. 说明句按**成因**自陈（空表的三种成因必须能�
     propRows(tree).length + ' 行');
 }
 
-console.log('\n9. 清掉壁纸 ⇒ 面板收起（不留一个挂在开关上的空面板）');
+console.log('\n9. WE 当前值只读导入（issue #341）');
+{
+  // 上一节把选中项切到了网页壁纸 B —— 导入要落在 A（tokA）上，先切回来。
+  openModal(tree); tree = render();
+  pickCard(tree, '网页壁纸 A');
+  tree = render();
+  closeModal(tree); tree = render();
+
+  const toggle = () => { propsEntry(tree).props.onClick(); tree = render(); };
+  const importButton = (t) => {
+    const head = findByClass(t, 'we-picker__props-head');
+    return head
+      ? findNode(head, (n) => n.type === 'button' && String(textUnder(n)).indexOf('从 WE 导入') === 0)
+      : null;
+  };
+  // 本节的属性表用新对象：前面几节会就地改 `def.value`（同一份 PROPS_DEFS 被复用），
+  // 拿它算「与 WE 的差异数」会随执行顺序漂移。
+  const IMPORT_DEFS = [
+    { name: 'bgcolor', ptype: 'color', text: '背景颜色', order: 0, value: '0.1 0.2 0.3', default: '0 0 0', overridden: false },
+    { name: 'speed', ptype: 'slider', text: '速度', order: 1, value: 1.5, default: 1, overridden: false, min: 0, max: 4, step: 0.1, precision: 1 },
+    { name: 'glow', ptype: 'bool', text: '发光', order: 2, value: false, default: false, overridden: false },
+    { name: 'mode', ptype: 'combo', text: '模式', order: 3, value: 2, default: 1, overridden: false,
+      options: [{ label: '慢', value: 1 }, { label: '快', value: 2 }] },
+    { name: 'hiddenInternal', ptype: 'slider', text: '内部量', order: 4, value: 1, default: 1, overridden: false, hidden: true },
+  ];
+  propsBody = {
+    ok: true, token: PROPS_TOKEN, props: IMPORT_DEFS, overrides: {}, hasProject: true,
+    // hiddenInternal 的 WE 值是 9（与面板值 1 不同）：它不得计入按钮的 N，也不得落盘 ——
+    // 面板看不见的项写进 userProps 后用户无法单独撤销（Fish-under-sea 审阅指出的漏做）。
+    we: { ok: true, values: { bgcolor: '0 0 1', speed: '2.5', glow: 'false', mode: 1, hiddenInternal: 9 }, monitor: 'Monitor0', profile: 'fixture' },
+  };
+  toggle(); toggle();   // 关再开 = 强制重拉
+  await sleep(0);
+  tree = render();
+  check('`hidden` 项不画在面板里（但它确实在回包里）',
+    propRows(tree).length === 4 && !rowByLabel(tree, '内部量'),
+    propRows(tree).length + ' 行');
+  const btn = importButton(tree);
+  check('WE 有差异时出现「从 WE 导入（N）」，N = 与面板当前值不同的项数（3：bgcolor/speed/mode）',
+    Boolean(btn) && textUnder(btn) === '从 WE 导入（3）', btn ? textUnder(btn) : 'missing');
+  if (btn) btn.props.onClick();
+  flushPersist();
+  tree = render();
+  const saved = (persistedUserProps()[PROPS_TOKEN] || {});
+  check('导入后落盘：偏离默认的值写进 userProps（slider 字符串→数字），与默认同值的不写（combo=1 是默认）',
+    saved.bgcolor === '0 0 1' && saved.speed === 2.5 && !('mode' in saved) && !('glow' in saved),
+    JSON.stringify(saved));
+  check('导入不碰 hidden 项（按钮说 3 项就只落 3 项；hiddenInternal 在面板不可见、无法单独撤销）',
+    !('hiddenInternal' in saved), JSON.stringify(saved));
+  check('导入后按钮消失（已无差异），可见行数不变',
+    !importButton(tree) && propRows(tree).length === 4);
+
+  // 负对照：WE 值与面板完全一致 ⇒ 不得出现按钮（判据不是"有 we 就出按钮"）
+  const SAME_DEFS = [
+    { name: 'bgcolor', ptype: 'color', text: '背景颜色', order: 0, value: '0.1 0.2 0.3', default: '0 0 0', overridden: false },
+    { name: 'speed', ptype: 'slider', text: '速度', order: 1, value: 1.5, default: 1, overridden: false, min: 0, max: 4, step: 0.1, precision: 1 },
+    { name: 'glow', ptype: 'bool', text: '发光', order: 2, value: false, default: false, overridden: false },
+    { name: 'mode', ptype: 'combo', text: '模式', order: 3, value: 2, default: 1, overridden: false,
+      options: [{ label: '慢', value: 1 }, { label: '快', value: 2 }] },
+  ];
+  propsBody = {
+    ok: true, token: PROPS_TOKEN, props: SAME_DEFS, overrides: {}, hasProject: true,
+    we: { ok: true, values: { bgcolor: '0.1 0.2 0.3', speed: '1.5', glow: 'false', mode: 2 }, monitor: 'Monitor0', profile: 'fixture' },
+  };
+  toggle(); toggle();
+  await sleep(0);
+  tree = render();
+  check('负对照：WE 值与面板一致 ⇒ 不出按钮', !importButton(tree));
+}
+
+console.log('\n10. 清掉壁纸 ⇒ 面板收起（不留一个挂在开关上的空面板）');
 {
   // 内联设计下的对应不变量：清掉当前壁纸后，`sel.propsUrl` 随之消失 —— 面板必须跟着
   // 收起来，而不是"开关还是 true、面板却画不出来"（那正是侧栏那次"空白"的同源形态）。

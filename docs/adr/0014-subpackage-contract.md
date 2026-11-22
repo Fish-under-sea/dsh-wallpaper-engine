@@ -32,7 +32,7 @@
    开发期与发布期的两种依赖形态（`file:` ↔ 同号精确版本）都只写在注释与计划里。
 
 > **2026-10-16 修订（P-F 组件行统一）**：上面问题 1 与问题 2 的**形态**已消解 —— 三条组件行
-> （`about-notice` / `mascot-avatar` / `media-bridge`）全部出户到 `packages/<pkg>/`（ADR-0013 D6/D8 的终态），
+> （`about-notice` / `mascot-avatar` / `media-bridge`；第三格于 P-D 阶段1（2026-10-18）补齐壁纸域宿主/浏览器半边，包名维持 `media-bridge`）全部出户到 `packages/<pkg>/`（ADR-0013 D6/D8 的终态），
 > 主包 patch 那一行改真名、`id` 不变，`lib/components/` 目录已删除；D3② 的可见面声明真源 `visibility.js`
 > 移到 `lib/component-visibility.js`（内容与 `lib/index.js` 的再导出位置不变）。本 ADR 的问题清单与 S1.1
 > 措辞**保留原样**，作为「为什么会有两种行」的历史记录。
@@ -85,7 +85,7 @@
 
 ### D4 —— 依赖图是人工维护的 Mermaid 文档
 
-树形依赖图落 `docs/SUBPACKAGE-GRAPH.md`：两张平面的 Mermaid 图 + 边表（允许性）+ **登记点矩阵**
+树形依赖图落 `docs/CODE-STRUCTURE.md` §11：两张平面的 Mermaid 图 + 边表（允许性）+ **登记点矩阵**
 （每个包 × 每个登记点）。它**没有判据**；文档头必须写明这是**人工维护快照**并给复算命令，
 腐化由人发现、人修（用户口径）。
 
@@ -136,6 +136,10 @@
 - **S3.4 [机器判：同上]** `exports['./client']` 存在 **⟺** `dsh.client` 存在，且 `./client` 目标在盘。
   两者都没有是**合法**的 host-only 形态。**禁止**为了"看起来统一"给 host-only 包补一个空的
   `./client`：那会让"声明了 `dsh.client` 就必须有浏览器半边"这条判据失去意义。
+  **子包额外一条（#281，2026-10-27）**：子包浏览器半边的工厂体在**求值期**就
+  `require('<主包名>')` 取主包键集，而宿主 client-modules 按 `dsh.client.inject` 排装载序 ⇒
+  `dsh.client.inject` **必须**包含主包名（主包自己不需要自依赖）。缺这条 = 冷启动时子包工厂
+  可能先于主包 materialize，报 `require(...) missed the module table`，整组客户端入口不激活。
 - **S3.5 [机器判：同上]** `peerDependencies` 的每个包名都在主包 `peerDependencies` 里；
   `@deepseek-ai/*` 的范围与主包**逐字相等**（范围不一致会让宿主的整次安装被拒并回滚）。
   `dependencies` / `peerDependencies` 里**不得**出现主包名或任何子包名 —— 子包之间、子包与主包之间
@@ -180,11 +184,22 @@
     **不属**跨包通道 —— 它是门面按组件名加载实现的**宿主装载面**；跨包通道只有
     `ctx.wallpaperEngineHost`（S5.1 / S5.2）。该边规格两态承接：开发期 = 根 `devDependencies` 的
     `file:packages/<pkg>`（S8.1），发布期 = 主包 `dependencies` 的**同号精确版**（S8.2）。
-    依赖图 `docs/SUBPACKAGE-GRAPH.md` 的登记点"边 5"据此标为**已落例外**（不是禁止边）。
-- **S5.4 [机器判：verify-subpackage-boot.mjs / verify-inject-contracts.mjs]** 服务面形状固定：
-  服务名 `wallpaperEngineHost`，值 = `createSubpackageHost()` 的**冻结六键**
-  `ids / keyNames / keys / handOff / schema / http`；键集与该包在
+    依赖图 `docs/CODE-STRUCTURE.md` §11 的登记点"边 5"据此标为**已落例外**（不是禁止边）。
+- **S5.4 [机器判：verify-subpackage-boot.mjs / verify-inject-contracts.mjs / verify-token-domain.mjs]** 服务面形状固定：
+  服务名 `wallpaperEngineHost`，值 = `createSubpackageHost()` 的**冻结七键**
+  `ids / keyNames / keys / handOff / schema / http / apply`；`keys` 的键集与该包在
   `lib/subpackage-boot.js` 的 `SUBPACKAGE_KEY_TABLE` 里登记的键名**双向对账**（多给、少给都红）。
+  - **第七键 `apply`（2026-10-18 P-D S5c 起）**：`createSubpackageHost({ applyView })` 收一个**惰性访问器**，
+    服务值上的 `apply` = "**每次 apply** 的实例 / 引用视图"（主包门面 `APPLY_VIEW`，15 键：`mediaMap` /
+    `tokenFor` / `serveFile` / `serveLayout` / `faststartVariant` / `pinnedFaststartVariant` / `trackStream` /
+    `handleSceneFiles` / `mediaOriginInfo` / `payloadProgress` / `transcodeCached` / `SCENE_VIDEO_INFLIGHT` /
+    `buildInventory` / `componentsProbe` / `mediaOriginApi`）。**为什么必须惰性**：`provide` 是本仓 `apply()` 的
+    第一步（早于 `createHostSession()`），实例视图在会话建好之后才有值 —— 传值会永远拿到 `null`。
+    **为什么必须同实例**：`mediaMap`（token → 绝对路径）是每个 apply 会话各一张 `new Map()`，铸造面
+    （清单构建 / `upload`）与消费面（bytes / frame / props 等族）必须是**同一个对象**，否则 token 全部查不到
+    （判据 = `test/verify-token-domain.mjs`：③ 单一实例 + 包入口不得覆盖那 5 个共享实例键 + 门面 `applyView`
+    恰好 15 键且来自同一次会话，带四条负对照）。**纯符号不进这一面**：走 `schema` / `http` 视图
+    （`SCHEMA_VIEW` / `HTTP_VIEW`），两类契约不混。
 
 ### S6 生命周期
 
@@ -228,7 +243,7 @@
 ### S10 新增一个独立子包的登记点
 
 登记点清单是**矩阵**（每个包 × 每一格），完整矩阵与当前状态见
-[`docs/SUBPACKAGE-GRAPH.md`](../SUBPACKAGE-GRAPH.md)。其中两条有判据：
+[`docs/CODE-STRUCTURE.md`](../CODE-STRUCTURE.md) §11。其中两条有判据：
 
 - **S10.1 [机器判：verify-subpackage-manifests]** 每个子包在 `lib/subpackage-boot.js` 的
   `SUBPACKAGE_KEY_TABLE` 里恰好一项（键 = 子包 id），无多余项。
@@ -241,7 +256,7 @@
   守卫的**数据驱动发现面**（无需手改：`test/tools/host-route-index.mjs` 按 `packages/*` 清单枚举）、
   生成物重算（`docs/ROUTE-INDEX.md` 用 `node test/tools/host-route-index.mjs --write`、
   `docs/GUARD-MAP.md` 用 `node test/tools/guard-targets.mjs --write`）、
-  以及**人工更新** `docs/SUBPACKAGE-GRAPH.md`（D4）。
+  以及**人工更新** `docs/CODE-STRUCTURE.md` §11（D4）。
 
 - **判据的覆盖面地板（防恒真）**：`verify-subpackage-manifests.mjs` 在任一次枚举结果为空或明显不足时判红 ——
   `packages/` 目录、主包 patch 的真名行、`SUBPACKAGE_KEY_TABLE` 与**各包配方** `client.build.json`
@@ -255,7 +270,8 @@
 | S3.9 / S9.1 | `packages/**` **已收口**（2026-10-15：改引本 ADR 的 `S*` 或 `ADR-0013 D*`；没有对应条款的**删引用保原意**）。**剩余引用面**（复算：`git grep -nE 'docs/wip\|BUNDLE-SPLIT' -- lib src scripts test cordis.patch.yml`；活 md 用同一模式加 `-- docs` —— 只数条数、不抄行号，行号必漂）。全仓惯例形的 `mNNNNN` 消息引用与阶段号（`P2-7A` 等）**不计入**本条款；2026-10-15 用户裁决 = 阶段号**暂保持现状**，不逐个改 | 剩余面按同一规则改引 `S*`（或删引用保原意）；`docs/wip/` 归档前必须完成 | 不阻塞，但 wip 归档前必须改 |
 | S3.4 | ✅ **已收口（2026-10-16，P-C 第一刀）**：字体包不再是 host-only —— 它现在有浏览器半边（`src/client.js` + 外观页签字体节 + 字体集编辑器，产物 `lib/client.fonts.js`）⇒ 声明 `dsh.client` 且 `exports['./client']` 两向齐。host-only **形态本身仍然合法**（本条只描述现状；"不许用空 `./client` 假装统一"的口径不变） | —— | —— |
 | S8.2 | 发布形态**尚未执行过**（三包都在开发期形态）；执行者 = 发布者的人工步骤（本仓不设发布脚本） | 人工执行 + 离线门只钉**形态自洽**（`verify-package-publish.mjs` ⑨：全有或全无，混态判红） | 已定（人工门） |
-| S3.4 / S10.2 | ✅ **已收口（2026-10-17，用户裁决"收口成一般形态"）**：第四个子包 `packages/pet-link` 补齐了浏览器半边的一般形态 —— 包内配方 `client.build.json`（`entry: src/client.js` → `artifact: lib/client.pet-link.js`）、包内产物 `packages/pet-link/lib/client.pet-link.js`（≈178 KB）、`exports['./client']` + `dsh.client`（与根逐键相同），并从主包 `INLINE_MODULES` 摘出（主包 `lib/client.js` 4,607,984 → 4,433,884 B）。收口前的"第三种形态"（源码在包内、构建归主包，2026-10-16 PR #5 引入）与 `test/verify-module-layout.mjs` 规则③ 的软档冲突随之消失；`FLOORS.clientArtifacts` 4→5。词条表按 fonts 惯例归位到主包 `src/i18n-copy-pet-link.js`（域表，与浏览器半边产物无关）。主包只留门面（`src/client.js` 的 `petLink` / `petLinkWiring` + `registerPetLink` 桥键）：跨包求值顺序不保证 ⇒ 门面缓冲 + 登记到达时补做；缺席语义 = `mascot.tap()` 抛错以保住回落。⚠️ 余一条**与本形态无关**的软档红（浏览器回归脚本引用运行时才创建的 `../.artifacts/**`，PR #5 既有）。详见 [`docs/SUBPACKAGE-GRAPH.md`](../SUBPACKAGE-GRAPH.md) §三/§五/§六 | 已裁决（走 ①）；② 的"扩规则③ 判据面"不再需要 | 已收口（硬档全绿） |
+| S3.4 / S10.2 | ✅ **已收口（2026-10-17，用户裁决"收口成一般形态"）**：第四个子包 `packages/pet-link` 补齐了浏览器半边的一般形态 —— 包内配方 `client.build.json`（`entry: src/client.js` → `artifact: lib/client.pet-link.js`）、包内产物 `packages/pet-link/lib/client.pet-link.js`（≈178 KB）、`exports['./client']` + `dsh.client`（与根逐键相同），并从主包 `INLINE_MODULES` 摘出（主包 `lib/client.js` 4,607,984 → 4,433,884 B）。收口前的"第三种形态"（源码在包内、构建归主包，2026-10-16 PR #5 引入）与 `test/verify-module-layout.mjs` 规则③ 的软档冲突随之消失；`FLOORS.clientArtifacts` 4→5。词条表按 fonts 惯例归位到主包 `src/i18n/i18n-copy-pet-link.js`（域表，与浏览器半边产物无关）。主包只留门面（`src/client.js` 的 `petLink` / `petLinkWiring` + `registerPetLink` 桥键）：跨包求值顺序不保证 ⇒ 门面缓冲 + 登记到达时补做；缺席语义 = `mascot.tap()` 抛错以保住回落。⚠️ 余一条**与本形态无关**的软档红（浏览器回归脚本引用运行时才创建的 `../.artifacts/**`，PR #5 既有）。详见本文 §11 | 已裁决（走 ①）；② 的"扩规则③ 判据面"不再需要 | 已收口（硬档全绿） |
+| S5.4 | ✅ **已落（2026-10-18，P-D S5a–S5e）**：服务面 `ids` / `keyNames` / `keys` / `handOff` / `schema` / `http` / `apply` **七键**冻结；`apply` = 惰性 **per-apply 实例视图**（`APPLY_VIEW` 15 键）。键表 `wallpaper` 一格 8 → **79** 键（8 既有源 + 47 `kernel:` + 15 `apply:` + 8 `schema:` + 1 `log`），`SCHEMA_VIEW` 5 → **13**。宿主半边路由：主包路由族 **15 → 4**（`settings` / `presets` / `diag` / `cache-dir`），壁纸包 **1 → 12**（`now-playing` + `we-assets` + token 整簇 9 族 + `occlusion`）；路由总数 **44 条不变**（只换归属，`docs/ROUTE-INDEX.md` 重算）。提交链 `a0c5b758`（刀1 `we-assets`）→ `3af568f7`（刀2 token 整簇 9 族 21 路由 + 新判据）→ `4551d677`（刀3 `occlusion` + 省电语义，`ROUTE_FLOOR` 9→8）；判据 = `verify-subpackage-boot.mjs`（七键冻结）/ `verify-inject-contracts.mjs`（声明面双向对账）/ `verify-token-domain.mjs`（单实例）。**未执行面仍是 S8.2**（发布形态） | —— | —— |
 
 ## Consequences
 
@@ -280,6 +296,6 @@
 （`INLINE_MODULES` 内联进 `lib/client.js`），既非 host-only 也非 host+client；✅ **已定案并收口
 （2026-10-17）**：选"收口成一般形态"，该形态**只此一例且已消失**（pet-link 现有包内 `client.build.json` +
 产物 + `exports['./client']` + `dsh.client`），本条触发线随之关闭；处置与实测见 §现状偏差的 `S3.4 / S10.2` 行
-与 `docs/SUBPACKAGE-GRAPH.md` §三/§五/§六；
+与 `docs/CODE-STRUCTURE.md` §11；
 ② 跨包通道不再是 Cordis Service；③ `packages/<pkg>` 不再是同仓目录（例如改多仓）；
 ④ 有判据开始断言 markdown（D3 的边界被打破）。

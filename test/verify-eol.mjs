@@ -25,8 +25,8 @@
  * ## 负对照怎么带牙
  * 判据主体是纯函数 `textEntries` / `crlfOffenders`，负对照把**内存里的** CRLF / 裸 CR / LF /
  * 白名单扩展名 / 含 NUL 的字节喂给**同一个**函数（不碰共享工作树里的真文件 —— 负对照写临时文件
- * 在 Windows 上是并跑守卫之间的共享状态）。断言逻辑不另开 `test/tools/*.mjs`：那会让
- * `test/verify-module-layout.mjs` ⑧ 要求新工具在 `docs/DEV-GUIDE.md` 里点名；单文件守卫没有这个面。
+ * 在 Windows 上是并跑守卫之间的共享状态）。断言逻辑不另开 `test/tools/*.mjs`：单文件守卫没有这个面
+ *（旧 `verify-module-layout` ⑧ 的文档名册要求已按 ADR-0017 撤除；这里只是保持单文件自洽）。
  *
  * Usage: node test/verify-eol.mjs
  */
@@ -40,8 +40,8 @@ import { createCheck } from './tools/assert-harness.mjs';
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const { check, stats } = createCheck();
 
-/** 覆盖面地板（实测 2026-10-16 = 452 个入库文件，其中 binary 白名单面 29 个）。只许抬高。 */
-const FILE_FLOOR = 400;
+/** 覆盖面地板（实测入库文件 = 585）。只许抬高。 */
+const FILE_FLOOR = 500;
 
 /** `.gitattributes` 里的 `binary` 白名单：`*.png binary` 这一形态。 */
 const BINARY_LINE_RE = /^\*\.(\w+)[ \t]+binary[ \t]*$/;

@@ -230,10 +230,10 @@ section('③ 轮询：拿到即停 / 超时放弃 / 不炸');
     replayDead(judgeStop) === false && replayDead(judgeGiveUp) === false);
 
   // ── 腿 3：取消（`ctx.effect` 拆除时 `cancel()` 必须收回在途定时器且此后零回调）────
-  // 产品行为（读自实现，不猜）：`src/font/color-roles.js:139` 的返回值是
+  // 产品行为（读自实现，不猜）：`src/font/color-roles.js` 的返回值是
   //   `() => { cancelled = true; if (handle !== null && clearT) clearT(handle); }`；
-  // 调用方 `src/client.js:5110` 拿它当 `cancelPoll`，并在 `ctx.effect` 的清理函数
-  // （`src/client.js:5153-5155`：`try { if (cancelPoll) cancelPoll(); }`）里调用。
+  // 调用方 `src/client.js` 的 `pollThemeService` 拿它当 `cancelPoll`，并在 `ctx.effect` 的清理函数
+  // （`try { if (cancelPoll) cancelPoll(); }`）里调用。
   // 取消后必须：① 把**那个在途句柄**交回 `clearTimeoutFn`（句柄身份要对，不是随便清一个）；
   // ② 在途回调不再跑 —— 不再查服务、不再 onReady/onGiveUp、不再排新定时器（否则 effect
   // 已拆还继续轮询 = 泄漏）；③ 因此"本来会发生的状态变更"不再发生。

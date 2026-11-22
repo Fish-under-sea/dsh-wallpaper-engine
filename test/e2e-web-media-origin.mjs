@@ -10,6 +10,8 @@
  *   loopback 源提供（见 lib/index.js 的 ensureMediaOrigin）。
  *
  * 做法：迷你 host（node:http 实现 DSH 的 webServer 契约：exact / prefix 路由）
+ *   + **按真宿主姿势装载两个插件入口**（主包 `lib/index.js` + `packages/media-bridge`
+ *     子包宿主半边 —— 后者才是 `/inventory`、`/media`、`/scene-*` 等 29 条路由的注册点）
  *   + 合成蒸汽库里的一个网页壁纸 + 真实 Chromium 系浏览器加载渲染页。
  *   所有判据都由**页面自己**经 `/diag` 信标回传（无需 CDP）：
  *     ran=1        壁纸文档里的脚本真的执行了
@@ -26,7 +28,7 @@ import { mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from 'node
 import { spawn } from 'node:child_process';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { styleText, cssBodyOf, panelText } from './tools/src-scope.mjs';
+import { styleText, cssBodyOf } from './tools/src-scope.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const TEST_ROOT = join(root, '.test-cache', 'e2e-media-origin');
@@ -80,7 +82,28 @@ const host = hostMod.default || hostMod;
 // （**实测**：只改产物不改断言时，跑的是新产物、断言还钉着上一个版本号 ⇒ 假红）。
 const { MEDIA_BRIDGE_TAG } = await import(pathToFileURL(join(root, 'packages', 'media-bridge', 'lib', 'provision.js')).href);
 const WANT_BRIDGE_VERSION = MEDIA_BRIDGE_TAG.replace(/^v/, '');
-const dispose = (host.apply || host.inject)(ctx);
+const disposeMain = (host.apply || host.inject)(ctx);
+// PR#289 的 S5c 刀2 + S5d 刀3 把 29 条宿主路由（`/inventory`、`/media`、`/media-status`、
+// `/now-playing*`、`/scene-*`、`/props`、`/upload`、`/occlusion` …）从主包 `lib/index.js`
+// 搬进了 `packages/media-bridge` 的**子包宿主半边**，真宿主按 `cordis.patch.yml` 里那一行把它
+// 当独立 plugin 装载。夹具若只 apply 主包，这些路由一条都不在路由表里 ⇒
+// `GET /wallpaper-engine/inventory` 只拿到迷你 host 的 `no route` 404，紧接着
+// `await res.json()` 抛 `SyntaxError: Unexpected token 'o'`（渲染页根本没机会起来）。
+// 修法：按**宿主同一姿势**再 apply 一次子包入口 —— 它声明的
+// `inject = ['webServer', 'wallpaperEngineHost']` 两个依赖此刻都已就绪：webServer 就是本夹具的
+// 迷你实现，宿主服务则由主包 apply 的 `provideSubpackageHost()` 在"没有 ctx.provide 的直调夹具"
+// 上退回挂成 `ctx.wallpaperEngineHost` 属性（见 `lib/subpackage-boot.js`）。于是子包自己按
+// 冻结键表取依赖、自己登记路由，夹具不需要手搓任何依赖面（也就不可能与生产的装载姿势漂移）。
+// 收尾：子包 apply 返回它自己的 teardown，和主包的合成一个 `dispose`（先撤子包路由、再撤主包
+// 的服务与媒体源 loopback），下游调用点（`:294`/`:627`/`:829`）保持不变。
+const subHostMod = await import(pathToFileURL(join(root, 'packages', 'media-bridge', 'lib', 'index.js')).href);
+const subHost = subHostMod.default || subHostMod;
+const disposeSub = (subHost.apply || subHost.inject)(ctx);
+const dispose = () => {
+  for (const fn of [disposeSub, disposeMain]) {
+    try { if (typeof fn === 'function') fn(); } catch { /* ignore */ }
+  }
+};
 
 const matchRoute = (pathname) => routes.find((r) => (
   r.kind === 'exact' ? r.path === pathname : (pathname === r.path || pathname.startsWith(r.path + '/'))
@@ -90,14 +113,14 @@ const matchRoute = (pathname) => routes.find((r) => (
 let wrapperHtml = '';
 // 插件真实 CSS（样式族的域模板拼成的一份样式表）——布局断言必须在真 CSS 上做，
 // 否则「抽屉里按钮上下排列、间距 8px」这种要求测了等于没测。
-// ⚠️ 样式拆段后（`src/styles-*.js` 域模板 + `src/styles.js` 组装点）取文必须走**族**：
+// ⚠️ 样式拆段后（`src/styles/*.js` 域模板 + `src/styles.js` 组装点）取文必须走**族**：
 //    `styleText()` 按 `INLINE_MODULES` 顺序拼同族全文，`cssBodyOf()` 抽出全部域模板体。
 //    原先的 `match(/const CSS = `…`/) ? m[1] : ''` 在拆段后恒得空串，下游只印一句
 //    "布局断言会跳过"就放过 ⇒ 判据静默降级。**取不到一律判红**（不是 warn）。
 let pluginCss = '';
 let cssError = '';
 try {
-  pluginCss = cssBodyOf(styleText());
+  pluginCss = cssBodyOf(styleText() + readFileSync(new URL('../packages/glass/lib/client.glass.js', import.meta.url), 'utf8')); // ADR-0016
 } catch (err) {
   cssError = err instanceof Error ? err.message : String(err);
 }
@@ -396,11 +419,14 @@ function productPrimaryActions(src, scope, element = 'button') {
   }
   return n;
 }
-// 产品里真正画这张卡片的是 src/panel-tabs.js:79 的 `we-picker__current-actions`（抽屉/弹窗两种
-// 形态共用），主操作区里就一枚「选择壁纸」。镜像 DOM 只是把这枚按钮照抄了一份，所以判据必须
-// 落在产品源码上，别落在镜像的字面量上。
+// 产品里真正画这张卡片的是 `packages/media-bridge/src/wallpaper-current-section.js` 的
+// `we-picker__current-actions`（抽屉/弹窗两种形态共用），主操作区里就一枚「选择壁纸」。
+// ⚠️ 来源要跟着搬：PR#289 的 `d8420aa7`「P-D S3c『当前壁纸』节搬入子包浏览器半边」把这节从
+// `src/panel-tabs.js` 迁进了 `packages/media-bridge`。仍读 `panelText()`（页签族并集）时那份文本里
+// 一个 `we-picker__current-actions` 都搜不到 ⇒ 判据恒 `null`（假红），与产品行为无关。镜像 DOM 只是
+// 把这枚按钮照抄了一份，所以判据必须落在产品源码上，别落在镜像的字面量上。
 const PRODUCT_DRAWER_ACTIONS_SCOPE = 'className: "we-picker__current-actions"';
-const productDrawerPanelSrc = panelText();
+const productDrawerPanelSrc = readFileSync(join(root, 'packages', 'media-bridge', 'src', 'wallpaper-current-section.js'), 'utf8');
 const productDrawerActions = (expected) => productPrimaryActions(productDrawerPanelSrc, PRODUCT_DRAWER_ACTIONS_SCOPE) === expected;
 // 对照用的另一个真来源：快捷面板的**播放控制行**也叫 actions（`we-qp__current-actions`，
 // 里面是暂停 / 刷新 / 清除三枚 `<button>`；该行不放求星入口，见 src/quick-panel.js 的不变量）
@@ -418,11 +444,10 @@ wrapperHtml = `<!doctype html><html><head><meta charset="utf-8"><title>e2e host<
   + `try{st=wp&&wp.getState?wp.getState():null;}catch(e){}`
   + `if(st&&st.iframeLoaded){clearInterval(timer);`
   + `var pushErr='';`
-  // 推的字段对齐 client 的真实 wire：albumArtist + 歌词（[[秒,文本]]）+ 进度。
-  // 歌词放在 0s 与 8s 两行、position=5（渲染页只认这种元组，自己按 position 取当前行）。
+  // 推的字段对齐 client 的真实 wire：albumArtist + 进度（歌词字段已随透传整条移除）。
   + `try{wp.setMedia({hasMedia:true,title:'E2E Song',artist:'E2E Artist',album:'E2E Album',`
   + `albumArtist:'E2E AlbumArtist',playing:true,state:1,position:5,duration:100,`
-  + `lyrics:[[0,'line1'],[8,'line2']],thumbnail:${JSON.stringify(THUMB_DATA_URL)}});}catch(e){pushErr=String(e&&e.message||e);}`
+  + `thumbnail:${JSON.stringify(THUMB_DATA_URL)}});}catch(e){pushErr=String(e&&e.message||e);}`
   + `(function(){var im=new Image();im.src='${APP}/wallpaper-engine/diag?msg='+encodeURIComponent('${MARKER} SETMEDIA push='+(pushErr?('err:'+pushErr):'ok')+' hasFn='+(typeof wp.setMedia)+' type='+(st.type||''));})();`
   + `setTimeout(function(){try{wp.updateWebProps({color0:{value:'0 1 0'}});}catch(e){}},1200);return;}`
   + `if(tries>60)clearInterval(timer);},250);`
@@ -485,7 +510,7 @@ wrapperHtml = `<!doctype html><html><head><meta charset="utf-8"><title>e2e host<
 //    几何与真 CSS 一致"，不再兼任"按钮个数"的唯一来源）。
 check('产品源码：抽屉「当前壁纸」卡片主操作区只剩 1 个按钮',
   productDrawerActions(1),
-  'panel-tabs.js 卡片主操作按钮 = ' + productPrimaryActions(productDrawerPanelSrc, PRODUCT_DRAWER_ACTIONS_SCOPE)
+  'media-bridge/src/wallpaper-current-section.js 卡片主操作按钮 = ' + productPrimaryActions(productDrawerPanelSrc, PRODUCT_DRAWER_ACTIONS_SCOPE)
     + '（期望 1），quick-panel.js 播放控制行 = ' + productPrimaryActions(productQuickPanelSrc, PRODUCT_QP_ACTIONS_SCOPE)
     + '（期望 3，证明计数器按 scope 生效）；镜像 DOM 里的 acSingle 只作几何对照');
 // ② 对照（同一具名判据、合成输入）：计数必须对**结构**敏感，而不是"能读出 1 就恒真"。

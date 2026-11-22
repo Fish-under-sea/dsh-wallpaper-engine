@@ -433,6 +433,33 @@ function themeFollowOnFrameImage(url) {
 }
 
 /**
+ * 把主题偏好写成指定值（**预设携带深浅**用）。
+ *
+ * 与「主题随壁纸」共用同一个服务句柄，但**语义不同**：
+ *   · 随壁纸：带让位标记、退场会放回、跟壁纸走；
+ *   · 这里是**用户显式动作**（套用一份声明了深浅的预设）⇒ 不设让位、不放回。
+ *
+ * 不变量：
+ *   · 服务没拿到（启动早期 / 低版本宿主）⇒ 返回 `false`，**不抛**：套用预设是一整批操作，
+ *     主题这一腿失败不该把已经落好的设置段也回滚。
+ *   · 已经是目标值 ⇒ 仍返回 `true`（"现在确实是这个主题"），但不重复写。
+ *   · **不碰** `themeFollowWritten` / `themeFollowBefore`：那是随壁纸的让位记账，
+ *     混用会让"退场放回"把用户刚套用的主题还回去。
+ *
+ * @param {"dark"|"light"} preference
+ * @returns {boolean} 是否确认已生效（服务缺席 ⇒ false）
+ */
+function themeFollowApplyPreference(preference) {
+  const pref = String(preference || "").trim();
+  if (pref !== "dark" && pref !== "light") return false;
+  if (!themeFollowService || typeof themeFollowService.setTheme !== "function") return false;
+  try {
+    if (themeFollowCurrentPreference() !== pref) themeFollowService.setTheme(pref);
+    return true;
+  } catch { return false; }
+}
+
+/**
  * 主题服务就绪时接上（src/client.js 的主题层 onReady 调，同一处轮询拿到的句柄）。
  * 订阅 `theme/change`：只要变化不是我们写的那次，就判定"用户/别的插件接管了"，
  * 本张壁纸不再插手 —— 不跟用户抢控制权。接上后立刻对当前壁纸补评一次
@@ -458,4 +485,5 @@ export {
   themeFollowParseColor, themeFollowLuminance, themeFollowVerdict, themeFollowModeColorOf,
   themeFollowIsUnfilledSchemeColor, themeFollowSchemeColorOf, themeFollowOnWallpaper, themeFollowAttach,
   themeFollowAcceptImageVerdict, themeFollowOnFrameCanvas, themeFollowOnFrameImage, themeFollowRelease,
+  themeFollowApplyPreference,
 };

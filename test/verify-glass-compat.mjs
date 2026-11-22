@@ -11,7 +11,7 @@ assert.ok(JSON.stringify(PROFILE_PRESET_KEYS).includes('glassSurfacePolicy'), '�
 assert.ok(sanitizePresetValues, '使用已有整机预设内核');
 assert.deepEqual(sanitizeFromSchema({ glassSurfacePolicy: [] }).glassSurfacePolicy, {});
 assert.deepEqual(sanitizeFromSchema({ glassSurfacePolicy: JSON.parse('{"__proto__":"native","constructor":"native","content":"native"}') }).glassSurfacePolicy, { content: 'native' });
-const panel = await import('../src/glass-panel.js');
+const panel = await import('../packages/glass/src/glass-panel.js');
 assert.equal(typeof panel.renderGlassSurfaceControls, 'function', '兼容策略控件可独立渲染');
 const previousReact = globalThis.React, previousT = globalThis.weT;
 try {

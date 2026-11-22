@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * verify-subpackage-toggle-roundtrip.mjs -- BUNDLE-SPLIT 7.6(4) 开关往返（对 patch 里的每一行）
+ * verify-subpackage-toggle-roundtrip.mjs -- ADR-0014 S3/S5 开关往返（对 patch 里的每一行）
  *
  * 7.6(4) 要求对**每一行**做 关 -> 开 -> 再关，每步满足：
  *   1. 该行路由整族在场/缺席与声明一致（声明面 = tools/host-route-index.mjs 的 buildIndex().routes.length）；
  *   2. 可见面按状态面渲染 -- 浏览器面按**包声明**数据驱动：只有声明了 dsh.client 的包才有浏览器半边
- *      （P-A 里 fonts 是宿主半边行、fx/parallax 才是浏览器包），渲染面的双向对账由既有守卫
+ *      （P-A 之后字体 / fx / parallax / media-bridge / glass 均按包声明自出浏览器产物），渲染面的双向对账由既有守卫
  *      test/verify-component-visibility.mjs 承担，本文件只查"声明了浏览器面的包其产物在不在"；
  *   3. 停用后零残留（本文件用 mock webServer 表 + 定时器/进程监听/活动句柄探针量出来）；
  *   4. 这一关**只**动它自己那一行（其余行的路由账逐条不变）。
@@ -122,23 +122,30 @@ const makeFiber = (webServer) => {
     resources.add(value);
     return () => resources.delete(value);
   };
+  const ctx = {
+    webServer,
+    commands: { register: registerResource },
+    on(event, callback) { return registerResource({ event, callback }); },
+    // 跨包服务面（§5.1 ①）：子包宿主半边只经 ctx.<服务名> 取面，这里给**真值**
+    // （主包 createSubpackageHost() / 一次真主包 apply 捕获的 provide 值）——手搓 stub 等于把
+    // "服务面名字/键集"从本判据里挖掉，那一面由 test/verify-subpackage-boot.mjs 逐键对账，
+    // 这里只保证"取得到、能用"。
+    [HOST_SERVICE_NAME]: HOST_SERVICE,
+    // 真宿主的 provide：主包 apply() 第一件事就是 provideSubpackageHost(ctx)（服务随 fiber 撤销、
+    // 子包 inject 级联的物理基础）。真 cordis 里 provide 之后 ctx.<服务名> 就解析到该值 —— mock 也
+    // 把 provided 值写回 ctx（并记成后续 fiber 的默认面），否则「主包先 provide、子包后 inject」这条腿
+    // 在 mock 里永远走不到：S5c 刀2 起壁纸组件行的 apply 视图（`apply:` 源型）只存在于这个值上。
+    provide(name, value) {
+      provided.push([name, value]);
+      if (name === HOST_SERVICE_NAME) { ctx[HOST_SERVICE_NAME] = value; HOST_SERVICE = value; }
+    },
+    effect(cb) { handoffs++; const d = cb(); if (typeof d === 'function') collected.push(d); return d; },
+  };
   return {
     resources,
     // handoffs = 该行**交给 fiber 的 teardown 数目**（§7.6④ 的第二个观测面：路由之外唯一能看出
     // "拆卸有没有真交接"的量；纯浏览器空壳行宿主侧零路由，只有这一面能分辨真源码与变异体）。
-    ctx: {
-      webServer,
-      commands: { register: registerResource },
-      on(event, callback) { return registerResource({ event, callback }); },
-      // 跨包服务面（§5.1 ①）：子包宿主半边只经 ctx.<服务名> 取面，这里给**真值**
-      // （主包 createSubpackageHost()）——手搓 stub 等于把"服务面名字/键集"从本判据里挖掉，
-      // 那一面由 test/verify-subpackage-boot.mjs 逐键对账，这里只保证"取得到、能用"。
-      [HOST_SERVICE_NAME]: HOST_SERVICE,
-      // 真宿主的 provide：主包 apply() 第一件事就是 provideSubpackageHost(ctx)（服务随 fiber 撤销、
-      // 子包 inject 级联的物理基础）。mock 里也放上，免得主包/子包将来走 provide 分支时静默失效。
-      provide(name, value) { provided.push([name, value]); },
-      effect(cb) { handoffs++; const d = cb(); if (typeof d === 'function') collected.push(d); return d; },
-    },
+    ctx,
     unload() { while (collected.length) collected.pop()(); },
     handoffs: () => handoffs,
     provided: () => provided,
@@ -392,10 +399,15 @@ check('所有行入口都装载成功', plugins.length === rows.filter((r) => r.
     const prov = fR.provided();
     const gotName = prov.length === 1 ? prov[0][0] : null;
     const gotVal = prov.length === 1 ? prov[0][1] : null;
-    check('主包行 apply() 通过 ctx.provide 挂出服务面（名字=' + HOST_SERVICE_NAME + '、6 键冻结、真宿主腿 = 子包 inject 级联成立）',
+    // S5c 刀2：服务面六键 -> 七键（+`apply` 视图）。键集逐键对账由 verify-subpackage-boot.mjs
+    // 承担；这里只判「主包真 provide 了、七键都在、apply 视图随 apply 建好」。
+    const faceKeys = gotVal && typeof gotVal === 'object' ? Object.keys(gotVal) : [];
+    check('主包行 apply() 通过 ctx.provide 挂出服务面（名字=' + HOST_SERVICE_NAME + '、7 键冻结、真宿主腿 = 子包 inject 级联成立）',
       provErr === null && gotName === HOST_SERVICE_NAME && gotVal !== null && typeof gotVal === 'object'
         && typeof gotVal.keys === 'function' && typeof gotVal.handOff === 'function'
-        && (gotVal.schema && gotVal.http ? true : false) && Object.isFrozen(gotVal),
+        && (gotVal.schema && gotVal.http ? true : false) && Object.isFrozen(gotVal)
+        && faceKeys.length === 7 && faceKeys.indexOf('apply') >= 0
+        && gotVal.apply !== null && typeof gotVal.apply === 'object' && Object.isFrozen(gotVal.apply),
       (provErr ? '装载抛错：' + String(provErr.message || provErr).split('\n')[0] + ' · ' : '')
         + 'ctx.provide 记录 ' + JSON.stringify(prov.map((x) => [x[0], x[1] ? Object.keys(x[1]).join(',') : String(x[1])])));
     fR.unload();
@@ -758,7 +770,7 @@ function fontsSectionOwnershipProblems(t) {
     bad.push('主包客户端产物读不到（' + (t.rootArtifactRel || 'lib/client.js') + '）—— "主包没有内联这一节"对它是真空为真');
   }
   if (typeof t.rootAppearanceSrc !== 'string' || t.rootAppearanceSrc.length === 0) {
-    bad.push('外观页签源码读不到（src/panel-tabs-appearance.js）—— 同上，"没有内联注册"是真空为真');
+    bad.push('外观页签源码读不到（src/panel-tabs/appearance.js）—— 同上，"没有内联注册"是真空为真');
   }
   for (const [label, text] of [['主包客户端产物', t.rootArtifact], ['外观页签源码', t.rootAppearanceSrc]]) {
     if (typeof text === 'string' && FONTS_REG_RE.test(stripComments(text))) {
@@ -903,12 +915,12 @@ function fontsSectionOwnershipProblems(t) {
       : '';
     const fontsArtifactAbs = fontsPkg && fontsArtifactRel ? fontsPkg.dir + '/' + fontsArtifactRel : '';
     const rootClientRel = (exportTarget(rootPkg.exports && rootPkg.exports['./client']) || './lib/client.js').replace(/^\.\//, '');
-    const panelSrcRels = ['src/panel-tabs-appearance.js', 'src/panel-tabs.js', 'src/client.js'].filter((rel) => isFile(join(ROOT, rel)));
+    const panelSrcRels = ['src/panel-tabs/appearance.js', 'src/panel-tabs.js', 'src/client.js'].filter((rel) => isFile(join(ROOT, rel)));
     const owned = {
       fontsArtifactRel: fontsArtifactAbs || '(清单里没有 exports["./client"])',
       fontsArtifact: fontsArtifactAbs && isFile(join(ROOT, fontsArtifactAbs)) ? read(fontsArtifactAbs) : '',
       rootArtifact: isFile(join(ROOT, rootClientRel)) ? read(rootClientRel) : '',
-      rootAppearanceSrc: isFile(join(ROOT, 'src/panel-tabs-appearance.js')) ? read('src/panel-tabs-appearance.js') : '',
+      rootAppearanceSrc: isFile(join(ROOT, 'src/panel-tabs/appearance.js')) ? read('src/panel-tabs/appearance.js') : '',
       panelSrcs: panelSrcRels.map((rel) => [rel, read(rel)]),
       rootArtifactRel: rootClientRel,
     };

@@ -4,7 +4,7 @@
   "inline": [
     {
       "file": "src/appearance-font-section.js",
-      "why": "外观页签第六节「全局字体」的渲染器（原 src/panel-tabs-appearance.js:54-420，逐字搬来）；入口的 registerPanelSection 把它的 render 登记进面板节注册表",
+      "why": "外观页签第六节「全局字体」的渲染器（ADR-0013/ADR-0014 子包出户）；入口的 registerPanelSection 把它的 render 登记进面板节注册表",
       "markers": [
         "function familyOptions(sel, opts) {",
         "function renderAppearanceFontSection(ctx) {"
@@ -12,7 +12,7 @@
     },
     {
       "file": "src/fontset-editor.js",
-      "why": "「字体集」编辑器面板（原 src/fontset-editor.js，整文件逐字搬来）：纯渲染 + 意图回调，由字体节的 renderFontSet(fontSet) 调用",
+      "why": "「字体集」编辑器面板（ADR-0013/ADR-0014 子包出户）：纯渲染 + 意图回调，由字体节的 renderFontSet(fontSet) 调用",
       "markers": [
         "function deleteLabel(row) {",
         "function renderFontSetEditor(ctx) {"

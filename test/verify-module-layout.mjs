@@ -26,16 +26,17 @@
  *      共享内核必须显式改它，于是"多一个共享模块"永远会留下一次可见的改动。
  *      不变量：登记表中非 `src/` 的项 == 白名单；白名单每一项都真的在册（不许空转）。
  *
- *   ⑥ `src/` 子目录的**准入条件（门槛①）** —— 成员数达 `SRC_DIR_MIN_MEMBERS`。
+ *   ⑥ `src/` 子目录的**准入条件** —— 成员数达 `SRC_DIR_MIN_MEMBERS`。
  *      为什么：`src/` 模块之间没有 `import`、构建期被拍平 ⇒ 目录在这一侧**不承载机器含义**，
  *      唯一用处是"让人一眼看出这几块是一伙的"。1–2 个文件的目录做不到这件事（只多一层路径
  *      与一次搬动）。
- *      门槛① 写在 CODE-STRUCTURE §4 第 1 条；样本只有 `src/font/`（其权威文档是 FONT-SYSTEM.md）。
+ *      写在 CODE-STRUCTURE §4 第 1 条；样本只有 `src/font/`（其权威文档是 CODE-STRUCTURE §3.3）。
  *      不变量：`thin == 0`。
- *      ⚠️ **门槛②（"被一份常青文档的一级标题点名"）已撤除**，不在本守卫内 —— 它守的是标题
- *      措辞，且空壳文档（标题对、正文空）照样通过 ⇒ 守形式不守实质。门槛② 改由约定承担，
- *      撤除理由见 `docs/adr/0007-machine-checks-target-code-not-prose.md`（正文 §⑥ 同记）。
- *      本行曾误写"不变量 `thin == 0` 且 `unnamed == 0`"，与正文自相矛盾 —— 已更正。
+ *      本节**只有这一条判据**。另外两条曾挂在这里的判据都已按 ADR-0007 撤除，改由约定承担：
+ *      · "子目录被一份常青文档的一级标题点名" —— 守标题措辞，空壳文档照样通过（守形式不守实质）；
+ *      · "`src/` 顶层 `.js` 数量上限"（`SRC_TOP_LEVEL_MAX`，软档）—— 它每次新增顶层模块都要
+ *        回填数字并写理由，失败动作是"改数字"，不是可机械执行的动作。撤除后本节只把顶层计数
+ *        **现算打印**出来，数字既不进代码也不进文档。
  *
  * 每条规则都配**负对照**：把合成输入喂给**同一个判据函数**，断言它给出"坏"的裁决。
  * 只断言"今天干净"是不够的 —— 解析器一旦静默返回空表，正断言会恒绿。
@@ -124,30 +125,10 @@ function scanEdges(code) {
  * 开发面（`scripts/` / `test/`）的说明符抽取：只认**语句位置**的 import/export，外加
  * `new URL('…', import.meta.url)`。守卫与冒烟的负对照里大量存在**合成字符串**
  *（如 `"import a from '../../src/a.js';"`），全量正则会把它们当成真依赖（实测 16 条假阳性）。
- *
- * 第三类字段 `createsDir`：`new URL('…/', import.meta.url)` 常常是**准备写给本文件创建**的输出
- * 目录（`.artifacts/pet-tuner/` 一类），此刻还不存在是正常的 —— 判据按"本文件会不会 mkdir 它"
- * 识别，而不是要求目录先存在（下面 ④ 的 `resolvesDirOk` 仍要求其余目录真实存在）。
- * 口径**收紧**在两点：① 只认同一行里直接 `mkdirSync(…)`，或 `const X = new URL(…)` 后文
- * 有 `mkdirSync(X`（名字必须对上，不按"文件里出现过 mkdirSync"就放行）；② 条目数在判据侧
- * 记分母，全部命中反而说明豁免被写宽了。
  */
-/**
- * `new URL('…', import.meta.url)` 出现的那一行，是不是**本文件自己创建**这个目录？
- * 两种形态：同行直接 `mkdirSync(…)`，或 `const X = new URL(…)` 之后出现 `mkdirSync(X`。
- * 名字必须对上 —— 不按"文件里出现过 mkdirSync"就放行（那会把整类变成免检）。
- */
-function createsDirOf(line, code) {
-  if (line.includes('mkdirSync(')) return true;
-  const bind = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*new URL\(\s*['"][^'"]+['"]\s*,\s*import\.meta\.url\s*\)/.exec(line);
-  return !!bind && code.includes('mkdirSync(' + bind[1]);
-}
-
 function devSpecifiers(text) {
   const out = [];
-  const code = stripComments(text);
-  const lines = code.split('\n');
-  for (const line of lines) {
+  for (const line of stripComments(text).split('\n')) {
     // 合成夹具一律以引号开头（`"import a from '…';",`）—— 跳过，否则负对照会被算成真依赖。
     if (/^\s*['"`]/.test(line)) continue;
     const m = /^\s*(?:import|export)\b[^;'"]*?\bfrom\s*['"]([^'"]+)['"]/.exec(line)
@@ -155,7 +136,7 @@ function devSpecifiers(text) {
     if (m) out.push({ form: '语句位置 import/export', spec: m[1] });
     for (const u of line.matchAll(/new URL\(\s*['"]([^'"]+)['"]\s*,\s*import\.meta\.url\s*\)/g)) {
       // `new URL('..', import.meta.url)` 指的是**目录**（仓库根），所以这一类允许目录命中。
-      out.push({ form: 'new URL(…, import.meta.url)', spec: u[1], allowDir: true, createsDir: createsDirOf(line, code) });
+      out.push({ form: 'new URL(…, import.meta.url)', spec: u[1], allowDir: true });
     }
   }
   return out;
@@ -346,12 +327,35 @@ console.log('\n③ 共享内核白名单：INLINE_MODULES 里非 src/ 的项只�
     '注入后越界=[' + injected.join(', ') + ']');
 }
 
+/**
+ * 规则 ④ 的**窄豁免**判定：开发面（`scripts/` / `test/`）里解析到仓库根 `.artifacts/` 下的相对路径。
+ * 这些路径指向**测试运行后才 `mkdirSync`** 的截图/临时目录（`.artifacts/` 在 `.gitignore` 里），
+ * 静态检查时不存在是正常状态；若不放行，这条判据的结果会取决于"本机上次跑没跑过那几个浏览器冒烟"
+ * —— 同一份代码在不同工作区忽红忽绿。豁免面刻意压到最窄：
+ *   · 只放行**开发面**（`lib/` 的运行期依赖边不豁免：宿主代码不许依赖测试产物）；
+ *   · 只放行仓库根 `.artifacts`（该目录自身或其下路径；`artifacts/`、`.artifacts-other/` 照旧判红）；
+ *   · 只认**解析后的根相对路径**（不按说明符字面量匹配 ⇒ 换个写法也绕不过去）。
+ * 反方向由本节负对照 4 钉住：普通缺失路径、以及 `lib/` 指向 `.artifacts/` 的边仍判红。
+ */
+const RUNTIME_ARTIFACTS_DIR = '.artifacts';
+function isRuntimeArtifactSpec(fromRel, resolved) {
+  const devSurface = fromRel.startsWith('scripts/') || fromRel.startsWith('test/');
+  return devSurface
+    && (resolved === RUNTIME_ARTIFACTS_DIR || resolved.startsWith(RUNTIME_ARTIFACTS_DIR + '/'));
+}
+
 // ═══ ④ 相对说明符必须解析到真实文件（移动代码 ⇒ 相对路径必须重解析）════════════
 // 为什么需要：把一段代码从 `lib/index.js` 搬进 `lib/routes/` 时，块里的相对说明符会**按新位置
 // 重新解析**。静态 import 走这一步会在加载期直接抛（响亮、易查），而**动态 `import()` 的拒绝是
 // 运行期、且常被 try/catch 吞成业务错误** —— 实测：scene 帧提取的那句
 // `await import('./pkg-read.js')` 搬进 `lib/routes/` 后指向一个不存在的文件，最终表现是
 // 《无可用纹理》的 422，看起来像数据问题而不是路径问题。所以判据按"说明符必须解析到真实文件"。
+//
+// 边界（唯一窄豁免）：开发面（`scripts/` / `test/`）里解析到**仓库根 `.artifacts/`** 下的路径
+// 放行 —— 那些目录由浏览器冒烟**运行时 `mkdirSync`**（`.artifacts/` 在 `.gitignore` 里），
+// 静态不存在是正常状态；否则同一份代码会因为"本机上次跑没跑过 pet 浏览器测试"忽红忽绿。
+// 豁免只到这一层：`lib/` 的运行期依赖边不豁免（宿主代码不许依赖测试产物），其它缺失路径照旧判红
+// （由本节最后的负对照 4 钉住）。判定见 `isRuntimeArtifactSpec`。
 console.log('\n④ 相对说明符必须解析到真实文件');
 {
   // Node 式解析：说明符可以省略扩展名（`require('./lib/encoder')` ⇒ `./lib/encoder.js`），
@@ -378,24 +382,25 @@ console.log('\n④ 相对说明符必须解析到真实文件');
   const specsOf = (rel, text) => (rel.startsWith('lib/') ? scanEdges(stripComments(text)) : devSpecifiers(text));
   // 目录也算命中（`new URL('..', import.meta.url)` 指的就是目录；模块说明符另有 index 探测）。
   const resolvesDirOk = (rel) => resolves(rel) || (() => { try { return existsSync(join(ROOT, rel)) && statSync(join(ROOT, rel)).isDirectory(); } catch { return false; } })();
-  // `new URL(…, import.meta.url)` 的第三种合法形态：那是**本文件将要创建**的输出目录
-  //（`.artifacts/pet-tuner/` 一类，跑起来才 mkdir）。它此刻不存在是正常的，判据看的是
-  // "本文件确实会创建它"（`createsDir`，见 `devSpecifiers` 的口径），而不是"目录先存在"。
-  // ⚠️ 豁免必须**可对账**：下面同时记 `specs.length`，并断言"豁免严格少于全部 `new URL` 条目"——
-  //    否则一处写宽就会把所有 `new URL` 都变成免检（那等于删掉这条判据）。
-  const dirSpecs = allSources.flatMap(({ rel, text }) => specsOf(rel, text)
-    .filter((s) => s.allowDir).map((s) => ({ rel, ...s })));
-  const missing = [];
-  const exempted = [];
-  for (const { rel, text } of allSources) {
-    for (const { form, spec, allowDir, createsDir } of specsOf(rel, text)) {
-      const resolved = resolveRelative(spec, rel);
-      if (!resolved) continue; // node: 内置 / 裸包名：不由本判据负责
-      if (createsDir && !resolvesDirOk(resolved)) { exempted.push({ rel, spec }); continue; }
-      const ok = allowDir ? resolvesDirOk(resolved) : resolves(resolved);
-      if (!ok) missing.push(`${rel} → ${spec}（${form}）`);
+  // 判据本体（生产扫描与负对照**共用同一份**，避免"负对照测的是另一个实现"）：
+  // 坏 = 解析不到**且**不在运行时产物窄豁免里。返回两桶，负对照要能分别看到。
+  const collectMissing = (sources) => {
+    const bad = [];
+    const exemptRuntime = [];
+    for (const { rel, text } of sources) {
+      for (const { form, spec, allowDir } of specsOf(rel, text)) {
+        const resolved = resolveRelative(spec, rel);
+        if (!resolved) continue; // node: 内置 / 裸包名：不由本判据负责
+        const ok = allowDir ? resolvesDirOk(resolved) : resolves(resolved);
+        if (ok) continue;
+        const tag = `${rel} → ${spec}（${form}）`;
+        if (isRuntimeArtifactSpec(rel, resolved)) exemptRuntime.push(tag);
+        else bad.push(tag);
+      }
     }
-  }
+    return { bad, exemptRuntime };
+  };
+  const { bad: missing, exemptRuntime } = collectMissing(allSources);
   // 覆盖面：扫描集非空且至少扫出一条相对边，否则这条断言是空对空
   const relativeEdges = allSources.flatMap(({ rel, text }) => specsOf(rel, text)
     .map(({ spec }) => resolveRelative(spec, rel)).filter(Boolean));
@@ -404,15 +409,12 @@ console.log('\n④ 相对说明符必须解析到真实文件');
   check('覆盖面：开发面也被扫到（scripts/ + test/ 至少 30 个 .mjs）', devSources.length >= 30,
     devSources.length + ' 个开发面 .mjs');
   check('lib/ 与开发面的每条相对路径都指向存在的文件', missing.length === 0,
-    missing.length ? missing.join('; ')
+    missing.length
+      ? missing.join('; ')
       : relativeEdges.length + ' 条全部可解析'
-        + (exempted.length ? '（其中 ' + exempted.length + ' 条是"本文件自己 mkdir 的输出目录"）' : ''));
-  // 豁免面可对账：① 只放行**确实会 mkdir** 的那几条；② 绝不等于全部 `new URL` 条目
-  //（全等说明一处写宽就把整类变成免检 —— 那等于删掉这条判据）。
-  check('覆盖面：豁免（"自己 mkdir 的输出目录"）严格少于全部 new URL 条目',
-    exempted.length < dirSpecs.length,
-    '豁免 ' + exempted.length + ' / new URL 条目 ' + dirSpecs.length
-      + (exempted.length ? '：' + exempted.map((e) => e.rel + ' → ' + e.spec).join('; ') : ''));
+        + (exemptRuntime.length
+          ? '；另 ' + exemptRuntime.length + ' 条是运行时才创建的产物目录（窄豁免）: ' + exemptRuntime.join('; ')
+          : ''));
   // 负对照：同一条判据喂给一条指向不存在文件的相对边，必须报出来
   const probe = scanEdges("const m = await import('./does-not-exist.js');")
     .map(({ spec }) => resolveRelative(spec, 'lib/routes/probe.js'))
@@ -427,17 +429,39 @@ console.log('\n④ 相对说明符必须解析到真实文件');
   check('负对照：守卫负对照里的合成 import 字符串不会被误判',
     devSpecifiers('    "import a from \'../../src/a.js\';",').length === 0
       && devSpecifiers("import { x } from './real.js';").length === 1);
-  // 负对照 4：`createsDir` 的口径 —— **只有**"本文件真的 mkdir 它"才免检。
-  // 这是"豁免不写宽"的关键对照：同一行 `new URL` 换个用法就必须照旧被判缺失。
-  const dirOf = (text) => devSpecifiers(text).find((s) => s.allowDir) || {};
-  check('negative control: 同行直接 mkdirSync ⇒ 认作"自己创建的输出目录"',
-    dirOf("const d=new URL('../.artifacts/x/',import.meta.url);mkdirSync(d,{recursive:true});").createsDir === true);
-  check('negative control: 具名绑定后 mkdirSync(同名) 也算',
-    dirOf("const art = new URL('../.artifacts/x/', import.meta.url);\nif (x) mkdirSync(art, { recursive: true });").createsDir === true);
-  check('negative control: 只读不建（无 mkdirSync）⇒ 不豁免',
-    dirOf("const art = new URL('../.artifacts/x/', import.meta.url);\nreadFileSync(new URL('a.png', art));").createsDir === false);
-  check('negative control: mkdir 的是别的名字 ⇒ 不豁免（名字必须对上）',
-    dirOf("const art = new URL('../.artifacts/x/', import.meta.url);\nmkdirSync(otherDir, { recursive: true });").createsDir === false);
+  // 负对照 4：运行时目录窄豁免（`isRuntimeArtifactSpec` / `collectMissing`）必须**只**放宽
+  // "开发面 + 仓库根 `.artifacts/`"这一种情况。分两层证明：
+  //   (a) 判定表：开发面 + `.artifacts/`、`.artifacts` 放行；`lib/`、`artifacts/`、
+  //       `.artifacts-other/`、普通路径一律不放行（`.artifacts-other/` 专门防"前缀匹配放宽成任意前缀"）；
+  //   (b) 同一条 `collectMissing` 喂合成源：两个 `.artifacts/` 引用一个豁免、一个（lib 侧）判红，
+  //       外加一条开发面的普通断链判红 —— 豁免不会把"整个开发面"洗白。
+  const controlDir = '.artifacts/__never-created-control__';
+  check('负对照：运行时目录豁免的判定表只认「开发面 + 仓库根 .artifacts/」',
+    isRuntimeArtifactSpec('test/a.mjs', controlDir) === true
+      && isRuntimeArtifactSpec('scripts/a.mjs', RUNTIME_ARTIFACTS_DIR) === true
+      && isRuntimeArtifactSpec('lib/a.js', controlDir) === false
+      && isRuntimeArtifactSpec('test/a.mjs', 'artifacts/__never-created-control__') === false
+      && isRuntimeArtifactSpec('test/a.mjs', '.artifacts-other/pet-tuner') === false
+      && isRuntimeArtifactSpec('test/a.mjs', 'test/no-such-dir') === false
+      && isRuntimeArtifactSpec('test/a.mjs', 'src/no-such.js') === false);
+  const rtProbe = collectMissing([
+    {
+      rel: 'test/__synthetic-runtime__.mjs',
+      text: 'const a = new URL(\'../.artifacts/__never-created-control__/\', import.meta.url);\n'
+        + 'const b = new URL(\'./no-such-helper.mjs\', import.meta.url);',
+    },
+    {
+      rel: 'lib/__synthetic-runtime__.js',
+      text: 'import x from \'../.artifacts/__never-created-control__.js\';',
+    },
+  ]);
+  check('负对照：普通缺失路径仍判红（含 lib 侧指向 .artifacts/ 的边）',
+    rtProbe.exemptRuntime.length === 1
+      && rtProbe.exemptRuntime[0].includes('__never-created-control__')
+      && rtProbe.bad.length === 2
+      && rtProbe.bad.some((tag) => tag.includes('./no-such-helper.mjs'))
+      && rtProbe.bad.some((tag) => tag.includes('../.artifacts/__never-created-control__.js')),
+    'bad=[' + rtProbe.bad.join('; ') + '] 豁免=[' + rtProbe.exemptRuntime.join('; ') + ']');
 
   // `test/tools/` 比 `scripts/`、`test/` **深一层** ⇒ 用 `import.meta.url` 推仓库根必须退**两层**。
   // 这是搬迁最容易漏的一处，且症状离奇：退一层会把 ROOT 解析成 `test/`，于是 buildIndex 读
@@ -532,7 +556,7 @@ console.log('\n⑤ 路由模块必须自己 import 用到的库函数（不得�
 // 它按 [`docs/adr/0006`](../docs/adr/0006-comment-discipline-as-written-convention.md) **撤除**了：
 // 判据在守"作者怎么措辞"，而且它的失效方式正是它想防的那种 —— 句子一改写，判据就从
 // "复算数字"退化成"守住那两句话"，于是它开始拦的是编辑而不是腐化。
-// 边界依 ADR-0006：**读代码的守卫照留（①②③⑤⑥⑦⑧），读散文的守卫不加。**
+// 边界依 ADR-0017 / ADR-0007：**读代码的守卫照留（①②③⑤⑥⑦），读散文/文档名册的守卫不加。**
 //
 // 数值腐化改由**符号引用**承担：文档不再写"共 N 个内联模块"，而是指向
 // `scripts/build-client.mjs` 的 `INLINE_MODULES`（唯一真源）。
@@ -549,7 +573,7 @@ console.log('');
 //    它守的是"某份文档的标题怎么写、放在哪里"，而且**一份空壳文档（标题对、正文空）照样
 //    通过** ⇒ 守的是形式而非实质。"建 `src/` 子目录时同时建一份以它为标题的常青文档"
 //    改由约定承担（与 `docs/README.md` §写作纪律 3「能写在代码旁的规则不单写文档」同源）。
-console.log('⑥ `src/` 子目录成员数 ≥3');
+console.log('⑥ `src/` 子目录成员数 ≥3（顶层计数只打印，无上限）');
 {
   const srcDirs = readdirSync(join(ROOT, 'src'), { withFileTypes: true })
     .filter((e) => e.isDirectory()).map((e) => e.name).sort();
@@ -564,6 +588,12 @@ console.log('⑥ `src/` 子目录成员数 ≥3');
     thin.length === 0,
     thin.length ? '不足：' + thin.map((d) => d + '(' + counts[d] + ')').join(' ')
       : srcDirs.map((d) => d + '(' + counts[d] + ')').join(' '));
+
+  // 顶层计数**只打印、不设上限**（原 `SRC_TOP_LEVEL_MAX` 已按 ADR-0007 撤除，见文件头 ⑥）：
+  // 现算的计数让人看到"族有没有被摊开"，但不产生"必须回填数字"的动作，也没有可漂的常量。
+  const topLevel = readdirSync(join(ROOT, 'src'), { withFileTypes: true })
+    .filter((e) => e.isFile() && e.name.endsWith('.js')).length;
+  console.log('  · 顶层 .js 计数（现算，无上限）— ' + topLevel + ' 个顶层模块 / ' + srcDirs.length + ' 个族目录');
 
   // 负对照：把合成输入喂给**同一个**判据函数，断言它给出"坏"的裁决。
   check('负对照：成员 2 个的合成目录会被判出',
@@ -612,42 +642,9 @@ console.log('⑥ `src/` 子目录成员数 ≥3');
     !judge('// 见 ' + NEEDLE + 'g'));
 }
 
-// ═══ ⑧ 手动工具与适配层必须在 docs/DEV-GUIDE.md 里点名（不许有"没人知道的工具"）══════════════
-// 回答的边界问题：「`test/tools/` 里那些没有 CI 消费者的脚本，读的人找得到吗」。
-// 实测过的形状：9 个工具里只有 1 个被文档点名 —— 其余等于只对作者可见（别人不知道该跑哪个、怎么跑）。
-// `test/compat-*.mjs` 同理：它们是 CI 调的，但人也要能手动跑（文档里写的是不带扩展名的名字）。
-//
-// ⚠️ **中英两份都要点名**（实测过的失效形状）：本判据原来只读中文 `docs/DEV-GUIDE.md`，
-//    于是英文版的 `test/tools/` 清单少了 2 项（`i18n-scan.mjs` / `weT-shim.mjs`）而**无人发现** ——
-//    中文那份是权威版，但英文读者照着 §4.6 找不到这两个工具。两份都据同一份磁盘清单对账。
-//    这是"读文件清单"而不是"读散文"：判据对的是**枚举面完整性**，措辞仍由写作约定承担。
-{
-  // ⚠️ 只对账**磁盘上真实存在**的那几份：`docs/en/DEV-GUIDE.md` 已按
-  //    `docs/README.md` §语言结构「维护者向文档只留中文」撤除。硬读一个已删的路径
-  //    会让本守卫**整条崩掉**（ENOENT ⇒ 后面所有规则都不再被判定）—— 实测过一次。
-  //    中文那份是**权威版**，必须在册（下面的覆盖面断言钉住这点）。
-  const docs = [
-    { label: 'zh', path: join(ROOT, 'docs', 'DEV-GUIDE.md') },
-    { label: 'en', path: join(ROOT, 'docs', 'en', 'DEV-GUIDE.md') },
-  ].filter((d) => existsSync(d.path)).map((d) => ({ ...d, text: readFileSync(d.path, 'utf8') }));
-  const tools = readdirSync(join(ROOT, 'test', 'tools')).filter((f) => f.endsWith('.mjs')).sort();
-  const compat = readdirSync(join(ROOT, 'test')).filter((f) => /^compat-.*\.mjs$/.test(f)).sort();
-  // 按**不带扩展名的文件名**判（文档里工具写成 `x.mjs`、compat 写成 `x`，两种都算点名）
-  const judge = (doc, files) => files.filter((f) => !doc.includes(f.replace(/\.mjs$/, '')));
-  check('覆盖面：⑧ 扫到 ≥8 个工具 + ≥3 个 compat（防扫描面为空而恒真）',
-    tools.length >= 8 && compat.length >= 3, tools.length + ' 工具 / ' + compat.length + ' compat');
-  check('覆盖面：⑧ 在册文档非空且含权威版 zh（防"文件被删 ⇒ 判据静默空转"）',
-    docs.length >= 1 && docs.some((d) => d.label === 'zh'), docs.map((d) => d.label).join(',') || '（一份都没有）');
-  for (const d of docs) {
-    const undocumented = judge(d.text, [...tools, ...compat]);
-    check(`每个 test/tools/*.mjs 与 test/compat-*.mjs 都在 ${d.label} 的 DEV-GUIDE 里点名`,
-      undocumented.length === 0,
-      undocumented.length ? '未点名：' + undocumented.join(', ') : (tools.length + compat.length) + ' 个都被点名');
-  }
-  check('negative control: 合成一个没被点名的工具会被判出',
-    docs.every((d) => judge(d.text, ['zzz-合成未点名.mjs']).join() === 'zzz-合成未点名.mjs'));
-  check('positive control: 已点名的工具不算（判据不是恒真）', judge(docs[0].text, [tools[0]]).length === 0, tools[0]);
-}
+// ⑧（"手动工具必须被 docs/DEV-GUIDE 点名"）已按 ADR-0017 / ADR-0007 撤除：
+// 它判的是文档名册是否被同步编辑，与代码正确性无关，且新增工具会强制改文档。
+// 工具的可发现性改由目录本身（test/tools/）与 `test/tools/` 的 README/清单式脚本说明承担。
 
 console.log('');
 if (failed) {

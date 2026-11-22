@@ -359,7 +359,7 @@ check('E2 负对照：变异体把"覆盖"兑成"合并" ⇒ E1 判据判红',
   (await settingsSectionSemantics(mergeSettings, dir('e2'))) === false);
 
 const kitNames = Object.keys(realKit(join(ISO, 'surface', 'config.json'))).sort();
-// 真源的导出面 = **内核实际解构的那些**（`lib/kernel/host-kernel.js:169-175` 逐字解构这 15 个），
+// 真源的导出面 = **内核实际解构的那些**（`lib/kernel/host-kernel.js` 逐字解构这 15 个），
 // 内部状态（`atomicTmpSeq` / `configWriteQueue` / `SETTINGS_FIELD` 常量）一律不外泄 ——
 // 断言仍是"键集逐字相等"，外泄一个名字或多一个名字都判红。
 check('E3 导出面恰好 = 内核消费面（15 个名字；队列/序号/字段名常量等内部状态不外泄）',

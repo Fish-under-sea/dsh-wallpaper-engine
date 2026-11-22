@@ -178,7 +178,7 @@ function inlineJsonHelpers(src) {
 
 /**
  * 叶子具名视图（`lib/subpackage-boot.js` 的 `httpView`）—— 子包路由族取 `sendJson` 的**唯一**正当来路。
- * 跨包不许直接 import 另一包的模块级导出（BUNDLE-SPLIT §5.2 四条反模式），只许走这一个裸子路径。
+ * 跨包不许直接 import 另一包的模块级导出（ADR-0014 S5.2 四条反模式），只许走这一个裸子路径。
  */
 const LEAF_REL = 'lib/subpackage-boot.js';
 

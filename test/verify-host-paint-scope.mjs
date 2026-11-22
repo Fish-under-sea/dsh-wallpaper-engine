@@ -21,6 +21,8 @@ import { fileURLToPath } from 'node:url';
 import { cssBodyOf } from './tools/src-scope.mjs';
 // 剥 CSS 注释走共享实现（此前这里是一行朴素正则 —— 模块布局守卫规则 ⑦ 的针眼）。
 import { stripCssComments } from './tools/css-text.mjs';
+// 可读性下限常量（ADR-0016 第四刀起随玻璃 CSS 出户）的唯一读法：match 失败即 throw，不返回 NaN。
+import { readabilityFloors } from './tools/readability-floors.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // 读**构建产物**（与 verify-readability 同源）：它才是实际注入浏览器的字符串。
@@ -34,16 +36,17 @@ function check(name, ok, detail) {
 }
 
 // 注入的样式表：与 verify-readability 同法求值（选择器本身不含插值，但保持同一来源）。
-// ⚠️ 锚点**锚在行首且容忍缩进**（产物把内联模块整段缩进过）：否则注释/散文里出现同样的
-//    声明字面量会把锚点带偏，取出的"模板"会从注释一直吃到文件尾。
 // （刀3）：样式表拆成 8 个域模板 + 组装点 ⇒ 取文改走 cssBodyOf（按声明顺序拼回
 // 一份 CSS 体，与旧单模板取文逐字节相同）；取不到任何模板会抛错，不再静默拿空串当"通过"。
-const CSS_BODY = cssBodyOf(SRC);
-const num = (re) => Number((SRC.match(re) || [])[1]);
+const GLASS_BUNDLE = readFileSync(new URL('../packages/glass/lib/client.glass.js', import.meta.url), 'utf8');
+const CSS_BODY = cssBodyOf(SRC + GLASS_BUNDLE);
+// 可读性下限常量随玻璃 CSS 出户（ADR-0016 第四刀）⇒ 从玻璃包源读；旧写法从主产物 SRC 取
+// ⇒ undefined ⇒ NaN 被插进求值后的样式表（P1 修复前的实害）。
+const FLOOR = readabilityFloors();
 let CSS = '';
 try {
   CSS = new Function('READABILITY_FLOOR', 'READABILITY_FLOOR_DARK', 'return `' + CSS_BODY + '`;')(
-    num(/const READABILITY_FLOOR = ([\d.]+);/), num(/const READABILITY_FLOOR_DARK = ([\d.]+);/));
+    FLOOR.light, FLOOR.dark);
 } catch { CSS = CSS_BODY; }
 // 剥注释走共享实现（等长替换 ⇒ 这里按下标切片的口径不变；未配对即抛，不静默留半份样式）。
 CSS = stripCssComments(CSS);
@@ -89,7 +92,7 @@ const qualified = sels.filter((s) => s.includes(GATE));
   // 取文口径从"单个模板"换成"族内全部模板按构建序拼接"—— 判据（长度上下限）一字未改。
   // 取不到任何域模板时给空串 ⇒ 下面的 length 判据必红（不是静默通过）。
   let region;
-  try { region = cssBodyOf(SRC); } catch { region = ''; }
+  try { region = cssBodyOf(SRC + GLASS_BUNDLE); } catch { region = ''; }
   // ⚠️ 这里**不许**断言"提取到的模板里没有裸反引号"：抽取正则本身就是 `[^`]*`，该断言对
   // 任何输入恒真（数学恒等式）；"注入一个反引号后被抓到 1/1"也只是拿测试自己刚写下的串跟同一段
   // 正则比（C3）。真正会失真的量是**抽取长度**，两个方向都要红：
@@ -231,6 +234,39 @@ console.log('INFO | H2 其它被上色的宿主容器（需各自核对"关闭�
       && !safeHostBody(hostBodies[0] + 'backdrop-filter: blur(9px);')
       && !safeHostBody(hostBodies[0] + 'z-index: 0;'),
     `宿主规则 ${hostBodies.length} 条 · 种回滤镜及z围栏均被拒绝`);
+}
+
+// ── H5：右栏全屏时底层对话列必须不可见（设计口径是「不可见」，不是模糊/半透明）──────
+// 宿主全屏面板 `[data-sidebar-right-panel="fullscreen"]` 覆盖整个工作区，但宿主**不**给
+// 面板加不透明底、也**不**隐藏底下的对话列；本插件的装饰叶是 z-index:-1 的固定层、只采样
+// 壁纸层 ⇒ 面板只剩自己那层 12%~ 的着色底时（低「玻璃保真度」下就是这个值），对话文字会
+// 透出来与侧栏文字叠印。判据：对话列容器 `[data-slot="main.conversation"]` 在「全屏 + 展开」
+// 时必须 `visibility: hidden !important`，且该规则不依赖本插件门控属性（玻璃行关掉也要成立）、
+// 收起/push 态不得命中。两条负对照：删掉规则 / 把 fullscreen 改成 push 都必须判红。
+{
+  const SCOPE = /body:has\(\[data-sidebar-right-panel="fullscreen"\]\[data-sidebar-right-open\]\)/;
+  const ruleRe = /([^{}]*\[data-slot="main\.conversation"\][^{}]*)\{([^}]*)\}/g;
+  const collect = (css) => {
+    const out = [];
+    let m;
+    ruleRe.lastIndex = 0;
+    while ((m = ruleRe.exec(css))) {
+      const sel = NORM(m[1]);
+      if (!SCOPE.test(sel)) continue;
+      if (/data-we-glass-page/.test(sel)) continue; // 与本插件开关无关
+      if (!/visibility\s*:\s*hidden\s*!important/.test(m[2])) continue;
+      out.push({ sel, raw: m[0] });
+    }
+    return out;
+  };
+  const found = collect(CSS);
+  const stripped = found.length === 1 ? collect(CSS.replace(found[0].raw, '')) : [];
+  const asPush = found.length === 1
+    ? collect(CSS.replace(found[0].raw, found[0].raw.replace('"fullscreen"', '"push"')))
+    : [];
+  check('H5 右栏全屏时底层对话列不可见（visibility:hidden，收起/push 态不受影响）',
+    found.length === 1 && stripped.length === 0 && asPush.length === 0,
+    `命中 ${found.length} 条 · 负对照 删规则后抓 ${stripped.length}/1 · 改成 push 后抓 ${asPush.length}/1`);
 }
 
 console.log(failed === 0 ? '\nverify-host-paint-scope: OK' : `\n${failed} CHECK(S) FAILED`);

@@ -2,7 +2,7 @@
  * dsh-wallpaper-engine — host half type surface.
  *
  * The host plugin contributes no public Cordis services and registers no model
- * tool. It serves 45 same-origin HTTP routes through `ctx.webServer` and unwinds
+ * tool. It serves 52 same-origin HTTP routes through `ctx.webServer` and unwinds
  * them on unload; `docs/ROUTE-INDEX.md` is the generated table of those routes
  * and stays authoritative for their paths and handlers.
  *
@@ -20,6 +20,24 @@
 
 import type { Context } from '@deepseek-ai/cordis';
 
+/** URL-source bookkeeping for an imported image wallpaper (`up-*` single-file upload). */
+export interface WallpaperUrlSource {
+  /** `bing` = built-in daily source; `url` = user-pasted direct image URL. */
+  kind: 'bing' | 'url';
+  /** Original URL for `url`; today's image URL for `bing`. */
+  url: string;
+  /** Bing market (`zh-CN`, ...); empty for plain URLs. */
+  market: string;
+  /** Last successful fetch (ISO 8601), or empty. */
+  lastFetchedAt: string;
+  /** Last attempt, successful or not (ISO 8601), or empty. */
+  lastAttemptAt: string;
+  /** Last failure reason kept for the panel; empty on success. */
+  lastError: string;
+  /** Bing copyright / attribution text; empty for plain URLs. */
+  attribution: string;
+}
+
 /** One normalized Wallpaper Engine project (or upload) as served in the inventory. */
 export interface WallpaperDescriptor {
   /** Entry id: Workshop id, project folder name, or `up-*` / `up-dir-*` for uploads. */
@@ -27,11 +45,21 @@ export interface WallpaperDescriptor {
   /** Display title: project.json title, uploads/.meta.json title, or the id as fallback. */
   title: string;
   /** Kind assigned by the enumerator: 'scene' | 'video' | 'web' | 'application',
-   *  plus 'image' for a single-file upload. */
+   *  plus 'image' for a single-file upload or a WE picture / slideshow project. */
   type: string;
   /** Wallpaper Engine content rating from project.json (or uploads/.meta.json), or null. */
   contentrating: string | null;
-  /** Whether the entry has playable media (video/web, or any single-file upload). */
+  /** Image URL import record (Bing daily / user-pasted URL), or null for local entries.
+   *  The image itself is a regular custom upload; this record only drives the badge,
+   *  manual refresh and the once-a-day Bing refresh. */
+  urlSource: WallpaperUrlSource | null;
+  /** Real pixel width for image / video entries (read from the file header / MP4
+   *  tkhd), or null when the format has no fixed size (scene / web) or the probe
+   *  failed. The orientation filter compares width with height. */
+  width: number | null;
+  /** Real pixel height for image / video entries, or null (see width). */
+  height: number | null;
+  /** Whether the entry has playable media (video/web/image, or any single-file upload). */
   playable: boolean;
   /** Served media URL (`/wallpaper-engine/media/<token>`), or null. */
   media: string | null;
@@ -40,6 +68,16 @@ export interface WallpaperDescriptor {
    *  "the browser can play this natively" decision (skip the frame-rate-cap re-encode)
    *  has no other way to know the container. */
   mediaExt: string | null;
+  /** Number of images in a picture project's slideshow (0 for every other kind, and for a
+   *  single-image project). The client only builds the crossfade layer when this is ≥ 2. */
+  slideCount: number;
+  /** Served slideshow manifest URL (`/wallpaper-engine/slides/<token>`, token = the cover
+   *  image's media token), or null when the entry is not a multi-image picture project.
+   *  The response lists every image in the project directory in natural sort order. */
+  slidesUrl: string | null;
+  /** Slideshow interval declared by the project (`project.preset.imageswitchtimes`), in
+   *  milliseconds, or null. The user setting `pictureSlideSeconds` (0 = follow this) wins. */
+  slideIntervalMs: number | null;
   /** Served preview URL (`/wallpaper-engine/preview/<token>`; uploads without a
    *  preview image fall back to `/wallpaper-engine/video-preview/<token>`), or null. */
   preview: string | null;
@@ -92,6 +130,30 @@ export interface PlaylistDescriptor {
   unresolvedCount: number;
 }
 
+/** One folder from Wallpaper Engine's own "Installed" tree (`config.json` `general.browser.folders`). */
+export interface WallpaperFolderDescriptor {
+  /** Stable identifier derived from the Steam profile and the folder's name trail. */
+  id: string;
+  /** Folder title as shown in Wallpaper Engine. */
+  name: string;
+  /** Inventory ids that belong directly to this folder. */
+  wallpaperIds: string[];
+  /** Number of resolved entries in the folder. */
+  total: number;
+  /** Number of entries WE still lists but the inventory could not resolve (uninstalled / unsubscribed). */
+  unresolvedCount: number;
+  /**
+   * Resolved ids of this folder **including every subfolder** (deduped). Selecting a parent
+   * folder in the picker filters by this union: Wallpaper Engine's tree is "parent contains
+   * children", so a parent that only holds subfolders must not come out empty.
+   */
+  deepWallpaperIds: string[];
+  /** Unresolved entries of this folder **plus every subfolder**. */
+  deepUnresolvedCount: number;
+  /** Nested folders (Wallpaper Engine allows subfolders). */
+  subfolders: WallpaperFolderDescriptor[];
+}
+
 /** Shape returned by GET /wallpaper-engine/inventory. */
 export interface Inventory {
   /**
@@ -130,6 +192,11 @@ export interface Inventory {
   wallpapers: WallpaperDescriptor[];
   /** Saved Wallpaper Engine playlists available for scoped rotation. */
   playlists: PlaylistDescriptor[];
+  /**
+   * Wallpaper Engine's own "Installed" folders (read-only mirror of `config.json`
+   * `general.browser.folders`). Empty array when the user never created a folder.
+   */
+  folders: WallpaperFolderDescriptor[];
 }
 
 /** The host plugin hard-depends on the webserver service (`webServer`). */
@@ -163,7 +230,8 @@ export interface ComponentVisibilitySite {
  * Component row name → the browser-side render sites that must disappear when the row
  * is disabled (`ADR-0013 D3②`). The host half owns this declaration; the browser half
  * holds only the gate (`COMPONENT_GATE`), and `test/verify-component-visibility.mjs`
- * reconciles the two sides. `media-bridge` is deliberately absent (no browser surface).
+ * reconciles the two sides. `wallpaper` (P-D phase 1; formerly `media-bridge`) is deliberately
+ * absent (no browser surface).
  */
 export declare const COMPONENT_VISIBILITY: Record<string, ComponentVisibilitySite[]>;
 
@@ -173,7 +241,7 @@ export declare const COMPONENT_GATE: { file: string; symbol: string };
 /**
  * "Load by component" entry point (the component rows in `cordis.patch.yml` reach the
  * same implementations through their own `apply`). `component` is the sub-path segment
- * of the row name (`'about-notice'` / `'mascot-avatar'` / `'media-bridge'`); unknown
+ * of the row name (`'about-notice'` / `'mascot-avatar'` / `'wallpaper'`); unknown
  * names throw. Returns the implementation's disposer.
  */
 export declare function applyComponent(

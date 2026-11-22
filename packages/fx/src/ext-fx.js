@@ -4,7 +4,7 @@
  * ══ 它是什么 ══════════════════════════════════════════════════════════════════
  * 一个**模块描述符**（形状 `{ id, title, desc?, render? }`，契约写在 src/panel-tabs.js 的
  * `extensionModules()` 上方）：panel-tabs 只负责把它排在「扩展」页签里，具体的控件与文案
- * 全在本文件。光效本体在 `src/fx-layer.js`（画布层），设置项的真源在
+ * 全在本文件。光效本体在 `packages/fx/src/fx-layer.js`（画布层），设置项的真源在
  * `lib/settings-schema.js` 的 14 个 `fx*` 键。
  *
  * 契约：
@@ -145,7 +145,7 @@ const FX_EXTENSION_MODULE = {
   // 屏上位置（与 avatar=1 / parallax=3 对齐）：三份 bundle 的求值顺序不保证，
   // 「扩展」页签由 panel-tabs 的注册表按 (order, 注册序) 排序，不能靠注册先后。
   order: 2,
-  // 模块级重置的分组名（issue #192）：键集住在 lib/settings-schema.js 的 RESET_GROUPS。
+  // 模块级重置的分组名（issue #192）：键集住在 lib/settings-schema.js 的 RESET_MODULES。
   resetGroup: 'fx',
   get title() { return weT("点击效果与拖尾效果"); },
   get desc() { return weT("在壁纸之上叠加随光标响应的点击与拖尾效果：整层在界面之后，不会挡到任何控件"); },

@@ -52,7 +52,7 @@ export const UPSTREAM_SOURCES = Object.freeze({
  *   · `resources`      该包必须自带的资源面（名字前缀 → 期望数量），供资源就绪判据复算
  */
 export const UPSTREAM_FORKS = Object.freeze([
-  // ── 当前为空：内置桌宠副本已解耦（2026-10-20）────────────────────────────────
+  // ── 当前为空：内置桌宠副本已解耦────────────────────────────────
   // `packages/pet`（`dsh-we-pet-builtin`）与它的 `wallpaper-engine-pet` 行已从本包移除：
   // 它把 `electron`（optional）带进安装树，而 electron 42+ 缺 `dist/` 时会在
   // `require('electron')` 里**同步**下载约 140MB 二进制 ⇒ 宿主启动被堵到 60 秒超时，

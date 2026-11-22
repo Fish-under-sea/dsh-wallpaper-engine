@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Liquid Glass",
+    "description": "Liquid glass surfaces for the wallpaper engine: settings-window / chat / sidebar glaze, the surface manager, and the Glass section of the Appearance tab. Disabling this row returns the host UI to its native theme."
+  }
+}

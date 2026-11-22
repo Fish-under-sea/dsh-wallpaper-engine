@@ -27,11 +27,11 @@ export const CHAIN_KEYS = { verify: 'verify', docs: 'verify:docs', smoke: 'smoke
  * 与 `test/verify-package-files.mjs` 的 P5 同源（那边也按同一组数字设地板）。
  * 只数 `tier === 'hard'`；软档不计（软档改档位不该触发地板变化）。
  *
- * 口径：`verify` / `smoke` 是**硬档组**，地板与 P5 一致（24 / 5）；`docs` 整组是软档
+ * 口径：`verify` / `smoke` 是**硬档组**（实测硬档 verify 99 / smoke 6 / all 105）；`docs` 整组是软档
  * ⇒ 地板 **0**（对它设 1 会把"整组软档"这个**设计**判成违规）；`all` 的地板是前两者之和
  * （`build` 那一步是 npm 步骤，不落 `file`，不计）。
  */
-export const TIER_FLOOR = { verify: 24, docs: 0, smoke: 5, all: 29 };
+export const TIER_FLOOR = { verify: 95, docs: 0, smoke: 6, all: 100 };
 
 /** 读某一组的 `--list-json`。runner 起不来 / 输出不是 JSON ⇒ 抛（调用方转成判据失败）。 */
 export function readChain(group) {
@@ -136,21 +136,32 @@ export function compositionDiff(chains) {
  * 判据见 `test/verify-guard-chain.mjs` ⑤（正判据与负对照走 `offChainDiff` 同一个函数）。
  */
 export const OFF_CHAIN_WHY = {
-  'verify-pet-link.mjs': '快捷汇总入口 npm run verify:pet-link；其离线用例已逐项接入默认 verify 链，不重复运行汇总器。',
   'verify-pet-hotplug-integration.mjs': '真实 Cordis 正式桥接生命周期入口；需要宿主 peer 模块，独立运行，不下载或修改官方 pet。',
   'verify-pet-sidebar-glass-browser-case.mjs': '用例模块由链上的 verify-glass-runtime-browser.mjs 导入并执行，使用其 CDP 会话，不是独立命令。',
+  'verify-composer-fixed-browser-case.mjs': '输入卡 fixed 浮层用例由链上的 verify-glass-runtime-browser.mjs 导入并执行，复用其 CDP 会话和构建产物，不是独立命令。',
   'verify-pet-tuner-browser.mjs': '真实面板几何和动效验收，需要独立 Edge；默认链保留无外部依赖的面板 DOM 回归。',
   'compat-harness-live.mjs': '真跑**活** harness 页面（需要宿主实际启动）：本地/CI 都按需手动跑，由 .github/workflows/harness-compat.yml 单独触发；verify 链要求零外部环境依赖。',
   'compat-harness-pages.mjs': '同族：活 harness 的页面面普查，断言依赖真实宿主实例，不进链。',
   'compat-harness-surfaces.mjs': '同族：活 harness 的界面面普查，断言依赖真实宿主实例，不进链。',
   'e2e-web-media-origin.mjs': '端到端媒体源判据（`npm run verify:e2e` 的手动入口）：要真宿主 + 真渲染路径，本地按需跑。',
   'verify-bridge-ci.mjs': '`npm run verify:bridge` 的**判词入口**（要下载产物并真跑中间件）⇒ 独立 CI 步骤，不进 verify 链（链上零下载、零外部进程）。',
-  'verify-bundle-rows.mjs': '有意脱链：链尾有一条**真 cordis 往返**（按路径拼接动态 `import` 宿主 peer 包 `@deepseek-ai/cordis`，见本文件 `cordisPath` / `pathToFileURL` 那处），而 CI 是 `npm ci --omit=peer` ⇒ 挂链只会让它永久"出声 SKIP"（P5 的字面量扫描看不到路径拼接的说明符，所以挂链并不会被 P5 判红 —— 但"链上恒跳过"比脱链更坏）；故留在链外 + 每次改行/包必须手跑一次（BUNDLE-SPLIT §10.1 #2）。',
+  'verify-bundle-rows.mjs': '有意脱链：链尾有一条**真 cordis 往返**（按路径拼接动态 `import` 宿主 peer 包 `@deepseek-ai/cordis`，见本文件 `cordisPath` / `pathToFileURL` 那处），而 CI 是 `npm ci --omit=peer` ⇒ 挂链只会让它永久"出声 SKIP"（P5 的字面量扫描看不到路径拼接的说明符，所以挂链并不会被 P5 判红 —— 但"链上恒跳过"比脱链更坏）；故留在链外 + 每次改行/包必须手跑一次（ADR-0014 S8）。',
   'verify-static.mjs': '静态棘轮入口（ESLint / tsc 都是 devDependencies）⇒ CI 独立步骤 `npm run verify:static`；链上零裸依赖容不下它。',
+  'verify-pet-install.mjs': '桌宠下载器拆除验收夹具（6 段：实现已删 / 只读 state-probe 在场 / 只留 state 路由 / 无下载器引用 / state 返回官方入口 / 包名兼容），`npm run verify:pet-install` 独立入口；不进默认 verify 链。',
+  // ↓ 六件 pet-link 离线夹具：由链上的汇总守卫 `test/verify-pet-link.mjs` 逐一子进程执行
+  //   （该步在 VERIFY_STEPS 的 pet 区块、verify-pet-tuner 之后），所以判据在 PR 门禁上真跑，
+  //   只是文件本身不是链上的直接命令 —— 与 verify-pet-sidebar-glass-browser-case.mjs 同一口径。
+  'verify-pet-linked.mjs': 'linked provider 四分区排播离线夹具（performer-rebuild）：由链上的 verify-pet-link.mjs 汇总执行，不是独立命令。',
+  'verify-pet-mascot.mjs': '抓绳/绳子缓动/脱手下落离线夹具（performer-rebuild T2）：由链上的 verify-pet-link.mjs 汇总执行，不是独立命令。',
+  'verify-pet-egg.mjs': 'egg1/egg2 彩蛋排播离线夹具：由链上的 verify-pet-link.mjs 汇总执行，不是独立命令。',
+  'verify-pet-panel.mjs': '浮层操控面板离线夹具：由链上的 verify-pet-link.mjs 汇总执行，不是独立命令。',
+  'verify-pet-extension-card.mjs': '设置页扩展卡片离线夹具：由链上的 verify-pet-link.mjs 汇总执行，不是独立命令。',
+  'verify-pet-optional-probe.mjs': '可选依赖口径离线夹具（t14）：由链上的 verify-pet-link.mjs 汇总执行，不是独立命令。',
+  'verify-pet-tuner-coverage.mjs': '「面板旋钮必须真消费」判据（performer-rebuild T4）：由链上的 verify-pet-link.mjs 汇总执行，不是独立命令。',
 };
 
-/** 守卫面地板（防"面变空 ⇒ 脱链判据永真"）。实测 2026-10-16 = 88。 */
-export const OFF_CHAIN_FLOOR = 80;
+/** 守卫面地板（防"面变空 ⇒ 脱链判据永真"）。实测 120。 */
+export const OFF_CHAIN_FLOOR = 110;
 
 /**
  * 判据：守卫面上每个文件「要么在链上、要么有非空脱链理由」，且豁免表里没有过期/悬空条目。

@@ -1,0 +1,32 @@
+name: housekeeping
+
+# 仓库内务（原 `verify:docs` 软档）：模块布局 / 可达性 / 退役线 / 死声明 / 未定义引用 / 守卫映射。
+# 它不是文档检查（文档检查是 verify.yml 的 docs 快通道），也不该为每个代码 PR 增加 6 条软步骤；
+# 按 ADR-0017「代码即真相 / 不做文档类门禁」，这里改为每周定时 + 手动触发，不再参与 PR 必过门禁。
+on:
+  schedule:
+    - cron: '23 4 * * 1' # 每周一 04:23 UTC（北京时间 12:23）
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: housekeeping
+  cancel-in-progress: false
+
+jobs:
+  housekeeping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      # 内务守卫零裸依赖：不安装依赖，避免给定时任务新增网络失败面（与 docs 快通道同口径）。
+      - name: verify:docs（仓库内务，软档）
+        run: npm run verify:docs

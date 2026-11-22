@@ -16,7 +16,9 @@
  * 于是判据可以写"缺锚即红"，而不是"找不到就用默认值兜底"。
  *
  * ══ 扫描面 ════════════════════════════════════════════════════════════════════
- * `moduleFace()` = `lib/**` + `src/**` 的 `.js`（符号只在**代码**里定位；`docs/**` 的散文不算）。
+ * `moduleFace()` = `lib/**` + `src/**` + `packages/<pkg>/{lib,src}/**` 的 `.js`（符号只在**代码**里
+ * 定位；`docs/**` 的散文不算）。出户子包的宿主半边同样是真源（S5b 起逐刀出户），不含它会让
+ * 搬进包的锚点静默"零处"。
  * 三条硬口径：
  *   ① **先剥注释**（共享 `js-text.mjs` 的字符串感知实现）⇒ 散文里提到符号不算声明，
  *      也不会把 `// const BASE = ...` 的示例算成第二份真源。
@@ -97,9 +99,24 @@ export function isGeneratedBundle(text) {
   return BUNDLE_MARKERS.some((re) => re.test(head));
 }
 
-/** 符号真源面：`lib/**` + `src/**` 的 `.js`（**含**生成物；是否排除由 `index()` 定，口径 ③）。 */
+/**
+ * 符号真源面：`lib/**` + `src/**` + 出户子包的 `packages/<pkg>/{lib,src}/**`（`.js/.mjs/.cjs`；
+ * **含**生成物，是否排除由 `index()` 定，口径 ③）。
+ *
+ * 为什么含 `packages/`（S5b，）：路由族 / 后端实现按 §4.6 逐刀出户后，它们仍然是
+ * **真源**；只扫 `lib/**` 会让"实现搬了家"的失配从"判红"退化成"零处声明"以外的静默形态 ——
+ * 守卫拿 `--in lib` 收窄时不受影响，不收窄的锚点一旦搬进包就再也定位不到。
+ * 生成物（包内 `client*.js` 内联产物）仍由口径 ③ 排除，不会造成"每个符号两处"的假红。
+ */
 export function moduleFace(root = ROOT) {
   const all = [...walkFiles(root, join(root, 'lib')), ...walkFiles(root, join(root, 'src'))];
+  let dirs = [];
+  try { dirs = readdirSync(join(root, 'packages'), { withFileTypes: true }); } catch { /* 无 packages 面 */ }
+  for (const d of dirs) {
+    if (!d.isDirectory()) continue;
+    all.push(...walkFiles(root, join(root, 'packages', d.name, 'lib')));
+    all.push(...walkFiles(root, join(root, 'packages', d.name, 'src')));
+  }
   return all.filter((rel) => /\.(js|mjs|cjs)$/.test(rel)).sort();
 }
 

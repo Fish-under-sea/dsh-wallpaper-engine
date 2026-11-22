@@ -4,7 +4,7 @@
 - **Status**: Accepted
 - **Deciders**: 插件维护者
 
-> English: 术语与中文逐条对应；本文的**决定**是三条 D1–D3，README 与 `docs/FONT-SYSTEM.md` 只回声结论。
+> English: 术语与中文逐条对应；本文的**决定**是三条 D1–D3，README 与 `docs/CODE-STRUCTURE.md` §3.3 只回声结论。
 
 ## Context
 

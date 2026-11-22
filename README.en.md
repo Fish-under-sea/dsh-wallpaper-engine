@@ -1,170 +1,166 @@
-# DSH Wallpaper Engine
+<div align="center">
 
-[中文](README.md) · **English** · [Beginner guide](README.beginner.md#english)
+<p>
+  <a href="README.md"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/key-lang-zh-dark.png"><img src="assets/readme/key-lang-zh-light.png" alt="中文" height="48"></picture></a>
+  <a href="README.en.md"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/key-lang-en-dark.png"><img src="assets/readme/key-lang-en-light.png" alt="English" height="60"></picture></a>
+  <a href="README.beginner.md"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/key-lang-start-dark.png"><img src="assets/readme/key-lang-start-light.png" alt="Beginner guide" height="48"></picture></a>
+</p>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/readme/hero-dark.png">
-  <img src="assets/readme/hero-light.png" alt="DSH Wallpaper Engine: your wallpapers, your glass, your workspace" width="1440">
-</picture>
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/hero-dark.png">
+    <img src="assets/readme/hero-light.png" alt="DSH Wallpaper Engine" width="1440">
+  </picture>
+</h1>
 
-[![Node.js](https://img.shields.io/badge/Node.js-22.12%2B-8fd6a0?style=flat-square)](https://nodejs.org) [![License](https://img.shields.io/badge/License-MIT-8fd6a0?style=flat-square)](LICENSE) [![Upstream Stars](https://img.shields.io/github/stars/elysia395/dsh-wallpaper-engine?style=flat-square&label=Upstream%20Stars)](https://github.com/elysia395/dsh-wallpaper-engine/stargazers) [![Upstream Forks](https://img.shields.io/github/forks/elysia395/dsh-wallpaper-engine?style=flat-square&label=Upstream%20Forks)](https://github.com/elysia395/dsh-wallpaper-engine/forks) [![Upstream Contributors](https://img.shields.io/github/contributors/elysia395/dsh-wallpaper-engine?style=flat-square&label=Upstream%20Contributors)](https://github.com/elysia395/dsh-wallpaper-engine/graphs/contributors) [![Upstream Release](https://img.shields.io/github/v/release/elysia395/dsh-wallpaper-engine?style=flat-square&label=Upstream%20Release)](https://github.com/elysia395/dsh-wallpaper-engine/releases) [![npm](https://img.shields.io/npm/v/dsh-plugin-wallpaper-engine?style=flat-square)](https://www.npmjs.com/package/dsh-plugin-wallpaper-engine) [![npm Downloads](https://img.shields.io/npm/dm/dsh-plugin-wallpaper-engine?style=flat-square)](https://www.npmjs.com/package/dsh-plugin-wallpaper-engine) [![dsh-pet integration](https://img.shields.io/badge/dsh--pet-Public%20API-8fd6a0?style=flat-square)](https://github.com/PC2005-cloud/dsh-pet/issues/122)
+[![npm Version](https://img.shields.io/npm/v/dsh-plugin-wallpaper-engine?style=flat-square&logo=npm&label=npm&color=8fd6a0&labelColor=5a544a)](https://www.npmjs.com/package/dsh-plugin-wallpaper-engine) [![Upstream Stars](https://img.shields.io/github/stars/elysia395/dsh-wallpaper-engine?style=flat-square&label=Upstream%20Stars&color=ffd84a)](https://github.com/elysia395/dsh-wallpaper-engine/stargazers) [![Upstream Release](https://img.shields.io/github/v/release/elysia395/dsh-wallpaper-engine?style=flat-square&label=Upstream%20Release&color=8fd6a0)](https://github.com/elysia395/dsh-wallpaper-engine/releases) [![npm Downloads](https://img.shields.io/npm/dm/dsh-plugin-wallpaper-engine?style=flat-square&label=npm%20Downloads&color=8fd6a0)](https://www.npmjs.com/package/dsh-plugin-wallpaper-engine)
+<p>
+  <a href="https://trendshift.io/repositories/170341" target="_blank"><img src="https://raw.githubusercontent.com/elysia395/dsh-wallpaper-engine/badges/trendshift-daily.svg" alt="Trendshift · JavaScript daily best rank" width="250" height="55"></a>
+  <a href="https://trendshift.io/repositories/170341" target="_blank"><img src="https://raw.githubusercontent.com/elysia395/dsh-wallpaper-engine/badges/trendshift-weekly.svg" alt="Trendshift · JavaScript weekly best rank" width="250" height="55"></a>
+</p>
 
-Bring local **Wallpaper Engine Scene, Web and Video wallpapers** into the DSH chat interface, with liquid glass, typography, configuration presets, mascot artwork and optional official dsh-pet integration. The plugin registers no agent tools or prompt text, so it adds no model token overhead.
+<p>
+  <a href="#quick-start"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/key-get-dark.png"><img src="assets/readme/key-get-light.png" alt="Install GET" height="48"></picture></a>
+  <a href="README.beginner.md"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/key-setup-dark.png"><img src="assets/readme/key-setup-light.png" alt="Setup guide SETUP" height="48"></picture></a>
+  <a href="docs/README.md"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/key-docs-dark.png"><img src="assets/readme/key-docs-light.png" alt="Docs DOCS" height="48"></picture></a>
+  <a href="https://github.com/elysia395/dsh-wallpaper-engine/releases"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/key-release-dark.png"><img src="assets/readme/key-release-light.png" alt="Release RELEASE" height="48"></picture></a>
+</p>
 
-> **This page describes the unpublished [Fish-under-sea source branch](https://github.com/Fish-under-sea/dsh-wallpaper-engine).** Stars, forks, contributors, releases, npm downloads and Star History refer to the official [elysia395/dsh-wallpaper-engine repository](https://github.com/elysia395/dsh-wallpaper-engine) or its npm package. Cached badges do not mean these branch changes have been merged or published. Identical package version numbers do not guarantee identical source trees.
+</div>
 
-## Contents
+<h2 id="intro">Intro</h2>
 
-[Features](#features) · [Install](#install) · [Usage](#usage) · [Official dsh-pet integration](#official-dsh-pet-integration) · [Configuration and privacy](#configuration-and-privacy) · [Limitations](#limitations) · [Development](#development) · [Credits](#credits) · [Star History](#star-history)
+Bring local **Wallpaper Engine** Scene, Web and Video wallpapers into DSH, with liquid glass, typography, mascots and shareable appearance presets. The plugin registers no agent tools or prompt text, so it adds no model token overhead.
 
-## Features
+<a id="preview" href="https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/main-interface.gif">
+  <img src="https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/main-interface.gif" alt="Wallpaper, liquid glass and mascots in the DSH interface" width="960">
+</a>
 
-| Area | Current capabilities |
-|---|---|
-| Wallpapers | WebWallGL live Scene / Web rendering, video playback, local image / video uploads, wallpaper properties and playlist rotation |
-| Appearance | Liquid glass, accent and surface colors, transparency, blur, borders and independent sidebar controls |
-| Presets | Whole-configuration snapshots, optional font / mascot / avatar assets, JSON import and export |
-| Typography | System fonts, per-role and per-component controls, terminal fonts, font sets and caret color |
-| Mascots | Ten built-in artworks, a 3D ring selector, custom imports and a pull-cord library drawer |
-| Extensions | Optional conversation avatars, click / pointer-trail effects and parallax |
-| Playback | Speed, flip, framing, transitions, cached fps-cap transcodes and occlusion pause |
-| Media | System-output audio spectrum, Now Playing metadata / artwork and opt-in online lyrics |
-| Pet integration | Sidebar pull, mascot grab, native knockback and hiss routines using official dsh-pet APIs |
+<p align="center"><sub>Real interface demo; historical captures may differ slightly from the installed build.</sub></p>
 
-Scene and Web compatibility depends on the project, WebGL support and browser capabilities. Rendering failures degrade rather than guaranteeing parity with every Wallpaper Engine workshop item. **Application wallpapers are not supported**: this plugin does not launch third-party executables. Custom JPG / PNG / MP4 files stay on your machine.
+<h2 id="contents">Contents</h2>
 
-The current suite has **one main package and seven subpackages, eight packages in total**. A local compressed release-set comparison decreased from approximately **84.88 MiB to 25.12 MiB, about 70.4%**, after removing the bundled pet. This excludes the separately installed official pet and is not a memory-use or Git-repository-size measurement.
+<table>
+  <tr>
+    <td width="40%" valign="middle">
+      <ul>
+        <li><a href="#preview">Preview</a> · <a href="#features">Features</a> · <a href="#supported-wallpapers">Supported wallpapers</a></li>
+        <li><a href="#quick-start">Quick start</a> · <a href="#usage">Usage</a> · <a href="#compatibility">Compatibility</a></li>
+        <li><a href="#development">Development</a> · <a href="#special-thanks">Special Thanks</a></li>
+        <li><a href="#support">Support</a> · <a href="#community">Community</a></li>
+      </ul>
+    </td>
+    <td width="30%" align="center" valign="middle">
+      <a href="assets/readme/mascot-eating-rice-1280x1784.jpg">
+        <img src="assets/readme/mascot-eating-rice-1280x1784.jpg" alt="Mascot illustration" width="320">
+      </a>
+    </td>
+    <td id="support" width="30%" align="center" valign="middle">
+      <a href="assets/about/sponsor-fish.png"><img src="assets/about/sponsor-fish.png" alt="Sponsor QR code" width="260" height="260"></a>
+      <br><strong>Sponsor QR code</strong>
+      <br><sub>The project is open source; donations are entirely optional and never affect installation, usage or issue support.</sub>
+    </td>
+  </tr>
+</table>
 
-## Install
+<h2 id="features">Features</h2>
 
-### Current test branch: use the complete source installer
+- **Wallpapers**: live Scene / Web rendering, video playback, local image / video uploads and WE project directories.
+- **Appearance**: liquid glass for settings, conversation and sidebar; colors, transparency, blur, borders and fonts.
+- **Glass subpackage**: liquid glass is a standalone subpackage row, `wallpaper-engine-glass`, which can be disabled on its own in the plugin manager; with it disabled the host — except for the wallpaper shown in the content area — returns to its native look, while wallpapers, fonts and mascots keep working.
+- **Extensions**: mascots, conversation avatars, click / pointer-trail effects, 3D parallax and optional desktop-pet integration with [dsh-pet-dshwe](https://github.com/Fish-under-sea/dsh-pet-dshwe) (a full fork of dsh-pet), installable in one click from the settings card and falling back to the native mascot when it is missing, disabled or too old.
+- **Library**: filters, hide / restore, rotation lists and whole-configuration preset import / export.
 
-Requirements: **Node.js >=22.12.0, a DSH 0.2 kernel (including 0.2.0-rc.1/rc.2), pnpm and the target host's DSH CLI**. The desktop application's external version number is not its kernel version. Optional pet integration needs a separate official pet installation.
+<h2 id="supported-wallpapers">Supported wallpapers</h2>
 
-1. Download and extract the complete [review branch `official-pet-bridge-20261020`](https://github.com/Fish-under-sea/dsh-wallpaper-engine/tree/official-pet-bridge-20261020), or clone that branch, not the fork's default branch. Open a terminal in the folder containing `package.json`.
-2. Completely close the target DSH host. Confirm its actual data directory and profile.
-3. Inspect the plan, then run the installer:
+| Type | How it works in DSH | Support |
+|---|---|---|
+| **Scene** | Built-in WebWallGL live rendering, with fallback chain | Supported; no WE process required |
+| **Web** | Web page mounting, WE API shim and sandboxing | Supported; depends on the page and browser |
+| **Video** | Browser playback with transcoding, fps cap and pause control | Supported |
+| **Picture** | Reads the image folder of a WE `preset` project and crossfades locally at the interval set in WE | Supported; images are never uploaded |
+| **Custom image / video** | Upload local JPG / PNG / MP4 | Supported; files stay local |
 
-```sh
-node scripts/install-source.mjs --profile web --dsh-home "<target DSH data directory>" --dry-run
-node scripts/install-source.mjs --profile web --dsh-home "<target DSH data directory>" --app-closed
-```
+Application wallpapers require launching third-party executables and are **not supported**; they never enter the library or rotation candidates.
 
-For a desktop profile, use `--profile desktop` **with the desktop carrier CLI**. A standalone npm DSH CLI refuses desktop-profile management; changing the profile name does not bypass that protection. If necessary, pass `--dsh-cli "<path to the target CLI lib/bin.js>"`. Do not guess that every host stores its data in `~/.dsh`.
+<h2 id="quick-start">Quick start</h2>
 
-The installer installs source dependencies, builds clients, registers all eight persistent `link:` dependencies and keeps the main bundle as the owner of the plugin rows. Restart the target host afterward. **Keep the source directory in place.** To update, close DSH, update the complete checkout and run the same installer again. Installing only the main package, using a raw `github:` specifier or relying on temporary junctions is not the source deployment procedure.
+Requires **Node.js >= 22.12.0**, a **DSH 0.2 kernel** (including `0.2.0-rc.1/rc.2`) and **pnpm**. Close DSH completely before installing.
 
-### npm: only after the complete release set is published
-
-The publisher must build the eight-package set with `npm run pack:release`, publish the seven subpackages first and publish the main package last. The release main manifest declares exact subpackage versions. It does not bundle pet or Electron. A plain root `npm pack` is not a substitute for this complete release set.
-
-Only for an already published complete version:
+**npm (recommended)**
 
 ```sh
 dsh plugin --profile web add dsh-plugin-wallpaper-engine
 ```
 
-This command **does not install unpublished branch changes**. Desktop installations still require the desktop carrier CLI and a fully closed host. See the [deployment and publishing guide](https://github.com/Fish-under-sea/dsh-wallpaper-engine/blob/official-pet-bridge-20261020/CONTRIBUTING.md).
+Use `desktop` instead of `web` for the desktop host.
 
-### Rows and platforms
+The repository ships a **multi-package release set**: installing the main package resolves the same-version subpackages (current package/tarball counts and `publishOrder` live in [release procedure](CONTRIBUTING.md#发布流程维护者); per-version changes in [CHANGELOG](docs/CHANGELOG.md)).
 
-The main, about, mascot / avatar, media bridge, pet integration, effects, parallax and fonts rows are independently managed. Row changes require reload or restart. Disabling the pet row does not disable wallpapers. Do not additionally enable every subpackage bundle: the main patch owns the row set. Media bridge does not yet have exactly the same whole-block UI-hiding semantics as the other components.
+**From source**
 
-Windows, macOS and Linux use the same source suite. On platforms without the Wallpaper Engine client, use local image / video uploads or point custom-wallpaper storage at existing WE project directories. Imported project directories are read-only and are not deleted through upload management.
+```sh
+node scripts/install-source.mjs --profile desktop --dsh-home "<DSH data directory>" --app-closed
+```
 
-## Usage
+Keep the source directory in place after installation. See [upgrading](docs/UPGRADING.md) and [contributing](CONTRIBUTING.md); see the [beginner guide](README.beginner.md#english) if you are new to the command line.
 
-Open **Settings → Wallpaper Engine**, or pull the mascot cord to open the library drawer. Select wallpapers in the **in-panel library**, not a separate modal. Changes apply immediately and persist on the host.
+<h2 id="usage">Usage</h2>
 
-![Main interface, historical upstream demo](https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/main-interface.gif)
+1. Open **Settings → Wallpaper Engine → Library**, or pull the mascot cord above the chat.
+2. Pick a thumbnail in the in-panel library and adjust playback / appearance; changes apply immediately and persist on the host.
+3. Pause / play controls only the current playback; clearing the current wallpaper never deletes the source file.
 
-Historical upstream demonstrations may differ from this branch. The six settings tabs are Library, Appearance, Playback, System, Extensions and About.
+<a href="https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/settings-ui.gif">
+  <img src="https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/settings-ui.gif" alt="Settings UI">
+</a>
 
-- **Library**: selection, rating / type filters, soft hiding and restoration, uploads and rotation lists. Hiding never deletes source files. Rotation needs at least two playable candidates and prepares the next item before switching.
-- **Appearance**: presets, theme, glass, sidebar corners, global UI colors and typography. Theme-following is **off by default**; a manual theme choice takes precedence for the current wallpaper.
-- **Playback**: filters, framing, speed, transitions and audio. Fps-cap transcoding starts with the original and swaps when the cache is ready; unavailable ffmpeg or failed encoding falls back gracefully.
-- **System**: mascot selection, adapter target, occlusion pause and cache locations. The default mascot is DeepSeek; Deepseek_Pro and 菲比啾比 are separate artworks, alongside Claude, DeepSeek, Gemini, GPT, GLM, Grok, Kimi and Qwen. The chibi maid is carried by the author preset rather than the built-in carousel.
-- **Extensions**: optional avatars, click / trail effects and parallax. Disabling an extension removes its own decorations without resetting the wallpaper.
+<a href="https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/wallpaper-library.gif">
+  <img src="https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/wallpaper-library.gif" alt="Wallpaper library">
+</a>
 
-Glass ownership uses per-surface `auto` / `native` fallback. Unknown plugin surfaces are not forcibly cleared. Extra frost selectors have strict limits and must meet positioning and decoration-safety checks. There is no universal guarantee of compatibility with every skin or plugin. See [coexistence](https://github.com/Fish-under-sea/dsh-wallpaper-engine/blob/official-pet-bridge-20261020/docs/COEXISTENCE.md).
+<h2 id="compatibility">Compatibility</h2>
 
-System audio capture uses **output loopback, not the microphone**. Online lyrics are off by default and may send track title, artist and album to LRCLIB when enabled. Media runtime support is native per platform: GSMTC / MediaRemote / MPRIS.
+- Windows, macOS and Linux share the same source. macOS has no Wallpaper Engine client: upload images / videos or point custom-wallpaper storage at WE project directories.
+- Scene rendering depends on browser WebGL and drivers; complex workshop projects may differ. Failures degrade gracefully.
+- Occlusion pause, focus-loss pause and audio loopback are platform-adapted.
+- When running with other skins / plugins, read [Coexistence](docs/en/HOW-IT-WORKS.md#coexistence-glass-surfaces-vs-other-ui-plugins) first.
 
-## Official dsh-pet integration
+<a href="https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/better-sidebar-font.png">
+  <img src="https://github.com/elysia395/dsh-wallpaper-engine/releases/download/media-v1/better-sidebar-font.png" alt="Sidebar glass and font adaptation">
+</a>
 
-Wallpaper now integrates with the separately installed official [dsh-pet](https://github.com/PC2005-cloud/dsh-pet) through public APIs. Thank you to [PC2005-cloud](https://github.com/PC2005-cloud) for the interfaces and [cross-plugin discussion #122](https://github.com/PC2005-cloud/dsh-pet/issues/122). This is API integration, **not a bundled fork, a third-party file patch or a joint upstream release claim**.
+<h2 id="development">Development</h2>
 
-1. Install and enable an official pet build exposing same-page `petApi7340.pose/progress` and HTTP config, lock, anim, position and throw APIs. The `0.3.7` version number alone is insufficient to identify these capabilities.
-2. Set the pet to display on the web surface, and set the Wallpaper mascot to official-sidebar mode.
-3. Open **Ctrl+Shift+D**, refresh targets, select the intended petId and try the sidebar, mascot-grab, knockback and hiss routines.
+Bug reports, platform feedback, documentation fixes and feature PRs are welcome. Include host / plugin versions, OS, wallpaper type, reproduction steps and sanitized logs.
 
-| Boundary | Behavior |
-|---|---|
-| Missing pet / hidden target | Integration stops; wallpaper and the original sidebar action still work. No silent switch to another pet |
-| Multiple displays | The same pet's actions follow official shared state across pages / desktop; no instance isolation is promised |
-| Bubbles | Drawn by the bridge only in the initiating page; can outlive action ownership; official bubbles are neither occupied nor cleared |
-| Tuning | Target selection, four routine pages, timing, stop, reset and JSON export; runtime parameter overrides should be exported before refresh |
-| Motion | Uses official position / throw; no pet DOM takeover, private React fields or per-frame HTTP |
-| Verification | Protocol, HTTP, playback scheduling and bridge UI checks passed; complete official React-pet and desktop visual acceptance remains outstanding |
+- [How it works](docs/HOW-IT-WORKS.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Upgrading](docs/UPGRADING.md)
+- [Changelog](docs/CHANGELOG.md) · [Coexistence](docs/en/HOW-IT-WORKS.md#coexistence-glass-surfaces-vs-other-ui-plugins) · [Code structure](docs/CODE-STRUCTURE.md)
+- [Contributing](CONTRIBUTING.md) · [Release process](CONTRIBUTING.md#发布流程维护者)
 
-Native position interpolation uses wall-clock time and is not guaranteed to track buffered video frame by frame. Existing bundled-pet dependencies, bundle selections, data and earlier external patches are **not automatically removed**. Close the host, disable the old bundled row and follow the [migration and integration guide](packages/pet-link/README.md). The official pet's files, configuration and animation pools are not rewritten.
+<h2 id="community">Community</h2>
 
-## Configuration and privacy
+<p align="center">
+  <a href="lib/about/qq-group.png"><img src="lib/about/qq-group.png" alt="QQ group: DSHWE | LLM" width="260" height="259"></a>
+  &nbsp;
+  <a href="lib/about/douyin-group.png"><img src="lib/about/douyin-group.png" alt="Douyin group: dshwe 2" width="260" height="260"></a>
+</p>
 
-Wallpaper settings live in `~/.dsh-wallpaper-engine/config.json`, independent of the browser port. Caches and uploads default to subdirectories under the same data root and can be moved from the UI. Migration moves recognized plugin files, not unrelated files in the target directory. Pet target selection and exported runtime tuning have their separate bridge lifecycle; they are not all part of the host configuration file.
-
-| Variable | Purpose |
-|---|---|
-| `DSH_WE_DATA_DIR` | Override the whole plugin data root |
-| `DSH_WE_CACHE_DIR` / `DSH_WE_UPLOAD_DIR` | Override cache / upload roots |
-| `DSH_WE_STEAM_ROOT` / `DSH_WE_ASSETS_DIR` | Override Steam discovery / official WE resources |
-| `DSH_WE_FFMPEG` / `DSH_WE_FFMPEG_URL` | Explicit ffmpeg executable / download source |
-| `DSH_WE_TRANSCODE_TIMEOUT_MS` | Transcode time budget |
-| `DSH_WE_MEDIA_BRIDGE` / `DSH_WE_MEDIA_BRIDGE_URL` | Explicit media bridge / source |
-| `DSH_WE_MEDIA_BRIDGE_TAG` / `DSH_WE_MEDIA_BRIDGE_SHA256` | Version and required integrity information for custom versions |
-| `DSH_WE_MEDIA_LEGACY` / `DSH_WE_MEDIA_NO_AUDIO` | Built-in fallback / metadata-only mode |
-| `DSH_WE_MEDIA_PROVIDER` | `mock` for development |
-| `DSH_WE_MEDIA_IDLE_MS` / `DSH_WE_MEDIA_DEBUG` | Idle shutdown / diagnostic output |
-
-Wallpaper files stay local. Runtime downloads, GitHub repository statistics and opt-in lyrics access external services; this is not a claim of fully offline operation.
-
-## Limitations
-
-- Application wallpapers are unsupported. Scene compatibility depends on assets, scripts, WebGL and drivers.
-- Three-platform installation does not imply an official Wallpaper Engine client exists on all three platforms.
-- Desktop minimize / restore can still expose a brief shell-side white frame; the plugin cannot fully control the host window base plate.
-- Video and scene occlusion pause differ from externally hosted iframe behavior. Focus-loss pause is exposed only for the appropriate browser adapter.
-- Optional `dsh-better-sidebar` integration has its own surface controls; browsers without backdrop filtering use solid fallback.
-- Pet action synchronization and bridge-only bubbles are intentional interface boundaries, not old private-controller parity.
-
-## Development
-
-See the current [contribution guide](https://github.com/Fish-under-sea/dsh-wallpaper-engine/blob/official-pet-bridge-20261020/CONTRIBUTING.md), [changelog](https://github.com/Fish-under-sea/dsh-wallpaper-engine/blob/official-pet-bridge-20261020/docs/CHANGELOG.md), [upgrade notes](https://github.com/Fish-under-sea/dsh-wallpaper-engine/blob/official-pet-bridge-20261020/docs/UPGRADING.md), [rendering design](https://github.com/Fish-under-sea/dsh-wallpaper-engine/blob/official-pet-bridge-20261020/docs/HOW-IT-WORKS.md) and [troubleshooting](https://github.com/Fish-under-sea/dsh-wallpaper-engine/blob/official-pet-bridge-20261020/docs/TROUBLESHOOTING.md). Generated clients are built from source; do not edit generated bundles by hand. The npm package does not ship `docs/`, so these technical links use repository URLs.
-
-Report branch-specific installation or pet-integration problems to the [current fork](https://github.com/Fish-under-sea/dsh-wallpaper-engine/issues), with versions, platform, reproduction steps and sanitized logs. Shared upstream problems belong in the [official tracker](https://github.com/elysia395/dsh-wallpaper-engine/issues). Never include credentials. Community QR codes are available in the [Chinese README](README.md#联系方式).
-
-## Credits
-
-Contributions are grouped by work, not ranked. See the official [Contributors](https://github.com/elysia395/dsh-wallpaper-engine/graphs/contributors) and [merged PRs](https://github.com/elysia395/dsh-wallpaper-engine/pulls?q=is%3Apr+is%3Amerged) for the maintained history.
-
-- **[elysia395](https://github.com/elysia395)**: project creation, upstream maintenance, releases, presets and community.
-- **[生鱼 / Fish-under-sea](https://github.com/Fish-under-sea)**: current source-branch integration, whole-configuration presets and asset import / export, mascot carousel, source deployment and release closure, official pet bridge, bubble / routine / tuning work and regression documentation. Earlier work: [#173](https://github.com/elysia395/dsh-wallpaper-engine/pull/173), [#180](https://github.com/elysia395/dsh-wallpaper-engine/pull/180), [integration PR #251](https://github.com/elysia395/dsh-wallpaper-engine/pull/251). Some latest source work remains unpublished.
-- **[YV3507](https://github.com/YV3507)**: rendering and frame-pipeline fixes, liquid-glass tokens, architecture, documentation, regression guards and community integration.
-- **[oneincase](https://github.com/oneincase)**: [WebWallGL](https://github.com/oneincase/webwallgl), [media-bridge](https://github.com/oneincase/media-bridge), live rendering, cross-platform media and performance work.
-- **[yuxilao](https://github.com/yuxilao)** and **[Jerry / ruijiaang-lab](https://github.com/ruijiaang-lab)**: Linux scene-rendering exploration, performance / rotation work, and early macOS / WaifuX compatibility and contribution paths.
-- **Community contributors**: WTStarMark, levodoubt, Willhamster, 383891598, SiriLee, libiwolve, 0-007pro, jujubaoj646-star, xiahou001, wilianyichen, hecoococ, ShamSky88, Rekk0, Y1X1n, wwexplorer, jassdingk, w-sli and everyone helping through issues, documentation and device testing. See the [full contribution summary](README.md#致谢).
-- **[PC2005-cloud / dsh-pet](https://github.com/PC2005-cloud/dsh-pet)**: official pet APIs and cross-project integration support.
-- **Bilibili creator [ZipZipPipe](https://space.bilibili.com/4168597)**: thank you for the **AI-girl fan-character designs used as the basis for our new mascots**. These are fan creations, not official model-vendor characters or endorsements. Attribution does not relicense the artwork under MIT.
-
-The README's retro window layout references [MaiBot](https://github.com/Mai-with-u/MaiBot); Jersey 20 uses SIL OFL 1.1. Source artwork and character rights remain with their respective owners. See [asset sources](assets/readme/SOURCES.md). The code's MIT license does not replace character, image or font permissions. Wallpaper Engine and workshop content belong to their respective owners; this is not an official Wallpaper Engine product.
-
-## Star History
-
-Official upstream history, not fork statistics:
+<h2 id="star-history">Star history</h2>
 
 <a href="https://star-history.com/#elysia395/dsh-wallpaper-engine&Date">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=elysia395/dsh-wallpaper-engine&amp;type=Date&amp;theme=dark">
-    <img src="https://api.star-history.com/svg?repos=elysia395/dsh-wallpaper-engine&amp;type=Date" alt="Official upstream Star History" width="960">
+    <img src="https://api.star-history.com/svg?repos=elysia395/dsh-wallpaper-engine&amp;type=Date" alt="Upstream Star History" width="960">
   </picture>
 </a>
+
+<h2 id="special-thanks">Special Thanks</h2>
+
+Special thanks to all contributors for their contributions to this project ❤️
+
+<a href="https://github.com/elysia395/dsh-wallpaper-engine/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=elysia395/dsh-wallpaper-engine" alt="Contributors">
+</a>
+
+<p align="center"><sub>Code is released under the <a href="LICENSE">MIT License</a>. Wallpaper, character and font assets may use different licenses; check <a href="assets/readme/SOURCES.md">asset sources</a> before redistribution or commercial use.</sub></p>

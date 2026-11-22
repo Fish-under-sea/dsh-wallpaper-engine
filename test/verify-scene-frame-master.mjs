@@ -91,7 +91,7 @@ function tolerancePairProblems(hostTol, clientTol) {
 }
 
 /**
- * 客户端的「保留主帧」判定 —— 逐字照 `src/live-layer-watch.js` 的 cover 阈值语义
+ * 客户端的「保留主帧」判定 —— 逐字照 `src/live-layer/watch.js` 的 cover 阈值语义
  * （`主帧面积 ≥ 画布 × (1 − TOL) ⇒ 不抓新帧`）。只用于**后果面**负对照。
  */
 function clientKeepsMainFrame(frameArea, canvasArea, tol) {
@@ -222,13 +222,24 @@ const hostMod = await import(pathToFileURL(join(root, 'lib', 'index.js')).href);
 const host = hostMod.default || hostMod;
 const apply = host.apply || (host.inject && host.apply);
 apply(mockCtx);
+// S5c 刀2：`/scene-frame` 与 `/scene-frame-cache` 归 `wallpaper` 组件行（实现入包、主包不留注册点，
+// 由 verify-route-ownership 的 M10 钉住）⇒ 夹具必须连组件一起 boot，判据判什么没变。
+// 同 verify-scene / verify-scene-live 的既有做法。
+if (typeof hostMod.applyComponent === 'function') {
+  for (const comp of ['media-bridge']) {
+    try { hostMod.applyComponent(mockCtx, {}, comp); } catch (err) {
+      console.log('  · 组件行 boot 失败（' + comp + '）：' + String(err && err.message));
+    }
+  }
+}
 const sceneRoute = routes.find((r) => r.path === '/wallpaper-engine/scene-frame');
 const gpuRoute = routes.find((r) => r.path === '/wallpaper-engine/scene-frame-cache');
 check('scene-frame / scene-frame-cache 路由已注册', Boolean(sceneRoute && gpuRoute));
 // 结构锚：单主帧 + 面积守卫只实现一次，锚在路由源码上，防"实现漂回分桶"——
 // 漂了行为判据会红，这条让红得更早、更可读。
 {
-  const routeSrc = readFileSync(join(root, 'lib', 'routes', 'scene-frame.js'), 'utf8');
+  // S5c 刀2：族文件随包出户 ⇒ 结构锚改读包内路径。
+  const routeSrc = readFileSync(join(root, 'packages', 'media-bridge', 'lib', 'routes', 'scene-frame.js'), 'utf8');
   const indexSrc = readFileSync(join(root, 'lib', 'index.js'), 'utf8');
   check('路由源码带着面积守卫不变量（frame-smaller + 容差常量）',
     routeSrc.includes("'frame-smaller'") && routeSrc.includes('GPU_FRAME_AREA_TOL'));
@@ -336,7 +347,7 @@ if (token) {
   // 把常量从 0.05 弱化到 0.30（强度弱化 6 倍）仍 18/18 全绿。边界两侧各贴一个 ±1% 近邻用例后，
   // 任何"跨过这两个点"的弱化/收紧都会当场红（见 4d/4e）。
   // 容差**从真源现算**：`GPU_FRAME_AREA_TOL` 在 lib 半边唯一声明 —— ⚠️ 客户端半边
-  // `src/live-layer-watch.js` 有自己的同名副本（cover 阈值），所以必须限定 `{ in: 'lib' }`，
+  // `src/live-layer/watch.js` 有自己的同名副本（cover 阈值），所以必须限定 `{ in: 'lib' }`，
   // 否则 source-locator 会（正确地）判"两处声明 ⇒ 谁对不确定"。
   const tolDecl = locate('GPU_FRAME_AREA_TOL', { in: 'lib' });
   const tolMatch = tolDecl.ok

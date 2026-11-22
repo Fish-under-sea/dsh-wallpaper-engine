@@ -72,17 +72,18 @@ console.log('\n② 循环注册：一个 register 字面量产出多条路由时
   const fromMain = routes.filter((r) => r.src === 'lib/index.js').length;
   check('门面里的注册字面量逐条列出（门面已无循环注册）',
     fromMain === literals, `字面量 ${literals} = 路由 ${fromMain}`);
-  const bytesSrc = readFileSync(join(ROOT, 'lib', 'routes', 'media-bytes.js'), 'utf8');
+  // S5c 刀2：族已搬进子包（`packages/media-bridge/lib/routes/`）—— 索引 src 就是包内相对路径。
+  const bytesSrc = readFileSync(join(ROOT, 'packages', 'media-bridge', 'lib', 'routes', 'media-bytes.js'), 'utf8');
   const bytesLiterals = (bytesSrc.match(/webServer\.register\(\{/g) || []).length;
-  const fromBytes = routes.filter((r) => r.src === 'lib/routes/media-bytes.js').length;
+  const fromBytes = routes.filter((r) => r.src === 'packages/media-bridge/lib/routes/media-bytes.js').length;
   check('媒体字节族的循环注册已展开（1 个字面量 ⇒ 2 条路由）',
     bytesLiterals === 1 && fromBytes === bytesLiterals + 1,
     `字面量 ${bytesLiterals} + 1（media/preview 循环）= 路由 ${fromBytes}`);
   // 同一条"按文件对账"纪律的第二例：P0.2-D 把 apply() 里最后一条内联注册（`/inventory`）
   // 搬进了 lib/routes/inventory.js ⇒ 门面字面量归零后，这 1 条路由也在模块里逐条对账。
-  const invSrc = readFileSync(join(ROOT, 'lib', 'routes', 'inventory.js'), 'utf8');
+  const invSrc = readFileSync(join(ROOT, 'packages', 'media-bridge', 'lib', 'routes', 'inventory.js'), 'utf8');
   const invLiterals = (invSrc.match(/webServer\.register\(\{/g) || []).length;
-  const fromInv = routes.filter((r) => r.src === 'lib/routes/inventory.js').length;
+  const fromInv = routes.filter((r) => r.src === 'packages/media-bridge/lib/routes/inventory.js').length;
   check('清单 JSON 路由的内联注册已展开（1 个字面量 ⇒ 1 条路由）',
     invLiterals === 1 && fromInv === invLiterals,
     `字面量 ${invLiterals} = 路由 ${fromInv}`);
@@ -92,7 +93,7 @@ console.log('\n② 循环注册：一个 register 字面量产出多条路由时
 
 console.log('\n③ 路由模块（lib/routes/*.js）不漏进索引');
 {
-  check('索引里有来自路由模块的路由', modules.length > 0 && routes.some((r) => r.src.startsWith('lib/routes/')),
+  check('索引里有来自路由模块的路由', modules.length > 0 && routes.some((r) => r.src.startsWith('lib/routes/') || r.src.startsWith('packages/media-bridge/lib/routes/')),
     modules.map((m) => m.rel + '(' + m.routes.length + ')').join(' ') || '（还没有路由模块）');
   check('没有孤儿模块（文件在、apply 里却没有调用）', orphanModules.length === 0,
     orphanModules.map((m) => m.rel).join(' ') || '全部有调用点');

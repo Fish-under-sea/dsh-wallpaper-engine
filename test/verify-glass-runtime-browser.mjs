@@ -4,16 +4,25 @@ import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, existsSync, openSy
 import { resolve, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { cssBodyOf } from './tools/src-scope.mjs';
+import { readabilityFloors } from './tools/readability-floors.mjs';
 import { createHash } from 'node:crypto';
 import { verifyPetSidebarGlassBrowser } from './verify-pet-sidebar-glass-browser-case.mjs';
+import { verifyComposerFixedBrowser } from './verify-composer-fixed-browser-case.mjs';
 
 const bundle = readFileSync(resolve('lib/client.js'), 'utf8');
-const css = new Function('READABILITY_FLOOR', 'READABILITY_FLOOR_DARK', 'return `' + cssBodyOf(bundle) + '`;')(0.45, 0.59);
+// ADR-0016 第三刀：玻璃运行时（glass-surfaces / glass-extra）随玻璃包出产物 ⇒
+// 模块提取面改读**玻璃包产物**（主 bundle 的 officialPull 等主包段仍读主产物）。
+const glassBundle = readFileSync(resolve('packages/glass/lib/client.glass.js'), 'utf8');
+// 可读性下限常量随玻璃 CSS 出户（ADR-0016 第四刀）⇒ 唯一读法在 test/tools/readability-floors.mjs
+// （旧写法在这里硬编码 0.45 / 0.59：常量一改就静默对不上真注入的样式）。
+const FLOOR = readabilityFloors();
+const css = new Function('READABILITY_FLOOR', 'READABILITY_FLOOR_DARK', 'return `' + cssBodyOf(bundle + glassBundle) + '`;')(FLOOR.light, FLOOR.dark);
 function moduleText(name) {
-  const start = bundle.indexOf('// ── 内联模块：src/' + name + '.js');
+  // 子包产物的内联 marker 带**全路径**（packages/glass/src/<name>.js），与主 bundle 的 src/<name>.js 不同。
+  const start = glassBundle.indexOf('// ── 内联模块：packages/glass/src/' + name + '.js');
   if (start < 0) return '';
-  const end = bundle.indexOf('// ── 内联模块：', start + 10);
-  return bundle.slice(bundle.indexOf('\n', start), end < 0 ? bundle.length : end);
+  const end = glassBundle.indexOf('// ── 内联模块：', start + 10);
+  return glassBundle.slice(glassBundle.indexOf('\n', start), end < 0 ? glassBundle.length : end);
 }
 const runtime = moduleText('glass-surfaces');
 const extra = moduleText('glass-extra');
@@ -26,25 +35,83 @@ const browsers = process.platform === 'win32'
     : ['/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser'];
 const browser = process.env.WE_TEST_BROWSER || browsers.find(existsSync);
 assert.ok(browser && existsSync(browser), '缺少 Chromium 浏览器；请用 WE_TEST_BROWSER 指定可执行文件，浏览器回归不会跳过。');
-const profile = mkdtempSync(join(out, 'profile-'));
-const browserLogPath = join(profile, 'browser-stderr.log');
-const browserLog = openSync(browserLogPath, 'w');
-const child = spawn(browser, [
-  '--headless=new', '--no-first-run', '--remote-debugging-port=0', '--user-data-dir=' + profile,
-  ...(process.env.WE_TEST_BROWSER_LOG ? ['--enable-logging=stderr', '--log-level=0'] : []), 'about:blank',
-], { stdio: process.env.WE_TEST_BROWSER_LOG ? 'inherit' : ['ignore', 'ignore', browserLog] });
-closeSync(browserLog);
-const launchDetails = () => JSON.stringify({ browser, exitCode: child.exitCode, signal: child.signalCode,
-  stderr: readFileSync(browserLogPath, 'utf8').slice(-16384) });
-let socket, launchError, counter = 0;
-const pending = new Map(), failures = [], report = [];
-child.on('error', error => { launchError = error; });
+// 用 `--remote-debugging-pipe` 而不是 `--remote-debugging-port=0`：就绪信号是管道收到第一条
+// CDP 回复，不是轮询 `DevToolsActivePort` 文件。2026-11-04 的 ubuntu 腿实测过另一种形态：
+// 浏览器进程活着、20 秒内却没写端口文件，一步就把整条链判红（`[27/103]` 短路）。
+// 管道模式下"没起来"= fd 4 立刻 EOF，不必等满一个超时；没有 TCP 端口也就没有端口冲突一类故障。
+const BROWSER_ARGS = [
+  '--headless=new', '--no-first-run', '--remote-debugging-pipe',
+  // CI 的 /dev/shm 常常只有 64MB：共享内存不足时 Chrome 会卡在很早期（进程活着、CDP 一句话不说）。
+  '--disable-dev-shm-usage',
+  // headless 没有真 GPU，让它在受限容器里探测显卡驱动只会拖长启动。
+  '--disable-gpu',
+  // 启动卡住时 stderr 是唯一能说明"卡在哪一步"的证据 ⇒ 始终开日志（默认写进 profile，不进控制台）。
+  '--enable-logging=stderr', '--log-level=0',
+];
+let child, toBrowser, fromBrowser, launchDetails, launchError;
+let counter = 0, sessionId = null, pipeClosed = false, pending = new Map();
+const failures = [], report = [];
+// 管道先关时写会 EPIPE —— 由 pending 的 reject 表达失败，不额外抛。
+function failPending(error) {
+  for (const [id, item] of pending) { clearTimeout(item.timer); pending.delete(id); item.reject(error); }
+}
+// 起一个浏览器进程并把管道接好。重试时会再调一次，所以连接状态全部就地重置。
+function attachBrowser() {
+  const profile = mkdtempSync(join(out, 'profile-'));
+  const browserLogPath = join(profile, 'browser-stderr.log');
+  const browserLog = openSync(browserLogPath, 'w');
+  pending = new Map(); counter = 0; sessionId = null; pipeClosed = false; launchError = null;
+  try {
+    child = spawn(browser, [...BROWSER_ARGS, '--user-data-dir=' + profile, 'about:blank'],
+      { stdio: ['ignore', 'ignore', process.env.WE_TEST_BROWSER_LOG ? 2 : browserLog, 'pipe', 'pipe'] });
+  } catch (error) {
+    // 路径存在但不是可执行文件（spawn 在 Windows 上同步抛 EFTYPE/ENOEXEC）——按"没起来"报，不崩栈。
+    closeSync(browserLog);
+    assert.fail('浏览器无法启动（' + browser + '）：' + error.message);
+  }
+  closeSync(browserLog);
+  launchDetails = () => JSON.stringify({ browser, exitCode: child.exitCode, signal: child.signalCode,
+    stderr: readFileSync(browserLogPath, 'utf8').slice(-16384) });
+  toBrowser = child.stdio[3]; fromBrowser = child.stdio[4];
+  toBrowser.on('error', () => {});
+  child.on('error', error => { launchError = error; });
+  let buffer = '';
+  fromBrowser.on('data', chunk => {
+    buffer += chunk.toString('utf8');
+    let at;
+    while ((at = buffer.indexOf('\0')) >= 0) {
+      const text = buffer.slice(0, at);
+      buffer = buffer.slice(at + 1);
+      if (!text) continue;
+      const event = JSON.parse(text), item = pending.get(event.id);
+      if (!item) continue;
+      clearTimeout(item.timer); pending.delete(event.id);
+      if (event.error) item.reject(Error(JSON.stringify(event.error))); else item.resolve(event.result);
+    }
+  });
+  fromBrowser.on('end', () => { pipeClosed = true; failPending(Error('浏览器管道已关闭：' + launchDetails())); });
+  child.on('exit', () => failPending(Error('浏览器进程已退出：' + launchDetails())));
+}
+// 重试前必须先把上一次的监听器摘掉：旧进程晚到的 exit/end 不能去 reject 新连接的 pending。
+function discardBrowser() {
+  if (!child) return;
+  child.removeAllListeners('exit'); child.removeAllListeners('error');
+  if (fromBrowser) { fromBrowser.removeAllListeners('end'); fromBrowser.removeAllListeners('data'); }
+  pipeClosed = true;
+  try { child.kill(); } catch { /* 已经退出 */ }
+}
 function send(method, params = {}, timeoutMs = 15000) {
+  if (launchError) return Promise.reject(launchError);
+  if (pipeClosed) return Promise.reject(Error('浏览器管道已关闭：' + launchDetails()));
   return new Promise((resolve, reject) => {
     const id = ++counter;
-    const timer = setTimeout(() => { pending.delete(id); reject(Error('CDP timeout: ' + method)); }, timeoutMs);
+    const timer = setTimeout(() => {
+      pending.delete(id);
+      reject(Error('CDP timeout: ' + method + (sessionId ? '' : '（启动预算 ' + timeoutMs + 'ms 内无回复：' + launchDetails() + '）')));
+    }, timeoutMs);
     pending.set(id, { resolve, reject, timer });
-    socket.send(JSON.stringify({ id, method, params }));
+    // 管道消息以 \0 分隔；attach 之后每条命令都带 sessionId（flat 会话）。
+    toBrowser.write(JSON.stringify(sessionId ? { id, method, params, sessionId } : { id, method, params }) + '\0');
   });
 }
 async function evaluate(expression) {
@@ -73,27 +140,41 @@ async function screenshot(name) {
   return data;
 }
 try {
-  let port;
-  const deadline = Date.now() + 20000;
-  while (!port && Date.now() < deadline) {
-    if (launchError) throw launchError;
-    assert.ok(child.exitCode === null && child.signalCode === null, '浏览器在调试端口就绪前退出：' + launchDetails());
-    try { port = Number(readFileSync(join(profile, 'DevToolsActivePort'), 'utf8').split('\n')[0]); }
-    catch (error) { if (!['ENOENT', 'EBUSY'].includes(error.code)) throw error; }
-    if (!port) await delay(100);
+  // 启动只认"浏览器自己回了第一条协议消息"这个事件，不回 = 没起来（不是判据失败）。
+  // "没起来"的**快**信号是 fd 4 先 EOF（管道关、进程退），不是这个墙钟上限：CI 冷机上
+  // 首条回复实测会超过 3 秒（2026-11-05 ubuntu 腿 3 秒整超时、同一提交另一条腿 0.3 秒），
+  // 所以墙钟只兜"进程活着但永不说话"，放宽到 12 秒，可用 env 覆盖。
+  // 但 12 秒也不是保险：2026-11-05 #321 的合并提交（`78fd3958`）在 ubuntu 腿又碰到一次
+  // 整 12 秒无回复、stderr 为空，而同一内容的下一提交同一步骤 0.3 秒就起来了 —— 冷机偶发。
+  // 所以起一次不成就杀掉换新 profile 重起一次；两次都失败才按"浏览器没连上"判红。
+  const STARTUP_BUDGET = Number(process.env.WE_TEST_BROWSER_STARTUP_MS || 12000);
+  const STARTUP_ATTEMPTS = Math.max(1, Number(process.env.WE_TEST_BROWSER_ATTEMPTS || 2));
+  let startupError = null;
+  for (let attempt = 1; attempt <= STARTUP_ATTEMPTS; attempt++) {
+    attachBrowser();
+    try {
+      const { targetInfos } = await send('Target.getTargets', {}, STARTUP_BUDGET);
+      const target = targetInfos.find(item => item.type === 'page');
+      assert.ok(target, '浏览器没有 page target：' + launchDetails());
+      ({ sessionId } = await send('Target.attachToTarget', { targetId: target.targetId, flatten: true }, STARTUP_BUDGET));
+      assert.ok(sessionId, '浏览器未返回会话：' + launchDetails());
+      await send('Page.enable'); await send('Runtime.enable');
+      await send('Emulation.setFocusEmulationEnabled', { enabled: true });
+      startupError = null;
+      break;
+    } catch (error) {
+      startupError = error;
+      discardBrowser();
+      if (attempt < STARTUP_ATTEMPTS) {
+        console.log('… 浏览器第 ' + attempt + ' 次启动未就绪，换新 profile 重起一次：' + String(error.message).split('\n')[0]);
+        await delay(250);
+      }
+    }
   }
-  assert.ok(port, '浏览器调试端口未就绪：' + launchDetails());
-  const pages = await (await fetch('http://127.0.0.1:' + port + '/json/list')).json();
-  socket = new WebSocket(pages.find(page => page.type === 'page').webSocketDebuggerUrl);
-  await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
-  socket.onmessage = ({ data }) => {
-    const event = JSON.parse(data), item = pending.get(event.id);
-    if (!item) return;
-    clearTimeout(item.timer); pending.delete(event.id);
-    if (event.error) item.reject(Error(JSON.stringify(event.error))); else item.resolve(event.result);
-  };
-  await send('Page.enable'); await send('Runtime.enable');
-  await send('Emulation.setFocusEmulationEnabled', { enabled: true });
+  // 启动阶段失败一律转成 AssertionError：它们是"浏览器没连上"，不是判据结论。
+  if (startupError) {
+    assert.fail('浏览器在 ' + STARTUP_ATTEMPTS + ' 次启动内都没建立 CDP 管道（每次预算 ' + STARTUP_BUDGET + 'ms）：' + startupError.message);
+  }
   for (const width of [320, 375, 414, 768, 1280]) for (const dark of [false, true]) {
     await send('Emulation.setDeviceMetricsOverride', { width, height: 820, deviceScaleFactor: 1, mobile: false });
     await send('Page.navigate', { url: 'about:blank' });
@@ -102,7 +183,7 @@ try {
       document.documentElement.style.cssText='background:white';
       document.body.innerHTML='<div id="wall"></div><main id="app"><div id="left"><div data-slot="sidebar"><span>Sidebar</span><div id="modal" role="dialog" aria-modal="true"><section id="dialog-panel"><button id="modal-close">Close</button></section></div></div></div><section id="main"><button id="composer">Composer</button></section></main><aside id="right" data-sidebar-right-panel="push" data-sidebar-right-open><div data-dockkit-host="dock">Dock</div></aside><div id="unknown" class="extra"></div>';
       const fixture=document.createElement('style');fixture.textContent=
-        'body{margin:0;font:16px sans-serif;--we-readability-floor:${dark ? '0.59' : '0.45'};--we-surface-tint-light:#8fd0ff;--we-surface-tint-dark:#0d1524;--we-left-sidebar-alpha:.12;--we-left-sidebar-blur:14px;--we-sidebar-blur:14px;--we-sidebar-saturate:1.3;--we-sidebar-color:${dark ? '#151515' : '#ffffff'};--we-sidebar-tint:20%;--we-panel-color:${dark ? '#151515' : '#ffffff'};--we-panel-sheen-a:.1;--we-panel-sheen-b:.03;--we-panel-sheen-c:.05;--we-sidebar-sheen-a:.1;--we-sidebar-sheen-b:.03;--we-sidebar-sheen-c:.05;--we-sidebar-sheen:1;--we-blur:14px}' +
+        'body{margin:0;font:16px sans-serif;--we-readability-floor:${dark ? FLOOR.dark : FLOOR.light};--we-surface-tint-light:#8fd0ff;--we-surface-tint-dark:#0d1524;--we-left-sidebar-alpha:.12;--we-left-sidebar-blur:14px;--we-sidebar-blur:14px;--we-sidebar-saturate:1.3;--we-sidebar-color:${dark ? '#151515' : '#ffffff'};--we-sidebar-tint:20%;--we-panel-color:${dark ? '#151515' : '#ffffff'};--we-panel-sheen-a:.1;--we-panel-sheen-b:.03;--we-panel-sheen-c:.05;--we-sidebar-sheen-a:.1;--we-sidebar-sheen-b:.03;--we-sidebar-sheen-c:.05;--we-sidebar-sheen:1;--we-blur:14px}' +
         '#wall{position:fixed;inset:0;z-index:-2;background:repeating-linear-gradient(90deg,#244f46 0 4px,#e6b929 4px 8px)}#app{display:flex;height:820px}#left{width:30%;height:100%;background:transparent}#main{flex:1;position:relative;z-index:1}#composer{position:fixed;left:38vw;top:150px;width:58vw;height:220px;background:#128a4d;border:0;z-index:10}#modal{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.25)}#dialog-panel{position:fixed;left:38vw;top:150px;width:58vw;height:220px;background:#b32235}#modal-close{position:absolute;left:12px;top:12px;width:90px;height:38px}#right{position:fixed;right:0;bottom:0;width:25%;height:180px}#unknown{position:fixed;left:10px;bottom:10px;width:30px;height:30px;z-index:20;background:#57a0e0}';
       document.head.append(fixture);
       const style=document.createElement('style');style.dataset.testBundle='on';style.textContent=${JSON.stringify(css)};document.head.append(style);
@@ -120,14 +201,14 @@ try {
     })()`);
     await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
     const tag = (dark ? 'dark-' : 'light-') + width;
-    // 两段配方解析器（t9-003 computed 取证）：与 src/glass-extra.js:63-73 / src/styles-panel.js:378-400
+    // 两段配方解析器（t9-003 computed 取证）：与 packages/glass/src/glass-extra.js / src/styles/panel.js
     // 同构 —— base@readability-floor 叠 tint 段@settings-window-alpha×0.9。序列化兼容
     // rgba(...) 与 Chrome 新式 color(srgb r g b / a)。floor/tint 按 loop 的 dark 取值，
     // 与 fixture 注入一致；base 不再硬编码（t30 F1：#151515/#ffffff 与产品真源
-    // src/styles-base.js:554/585 的 tint 链自相矛盾）—— 读解析后的 --we-readability-base，
+    // src/styles/base.js/585 的 tint 链自相矛盾）—— 读解析后的 --we-readability-base，
     // 期望与真实级联同源；解析失败 ⇒ NaN 让 own-four 如实 FAIL（detail 带原始文本）。
     const hex1 = (h) => parseInt(h, 16) / 255;
-    const floor = dark ? 0.59 : 0.45;
+    const floor = dark ? FLOOR.dark : FLOOR.light;
     const baseHex = await evaluate("getComputedStyle(document.body).getPropertyValue('--we-readability-base').trim()");
     const baseMatch = /^#([0-9a-fA-F]{6})$/.exec(baseHex);
     const tintHex = dark ? '0d1524' : '8fd0ff';
@@ -152,6 +233,82 @@ try {
     })()`);
     check(tag + ' 模态命中与fixed包含块', state.hit === 'modal-close' && state.left.z === 'auto' && state.left.blur === 'none' && Math.abs(state.rect.x - (width * .38 + 12)) < 1 && state.focus === 'modal-close', state);
     check(tag + ' 左栏默认关：不认领所有权且仅右栏plate（玻璃开关关=原生外观）', state.plates === 1 && !await evaluate(`document.querySelector('#left').hasAttribute('data-we-surface-runtime')`), state);
+    // 宿主可能同时保留另一份“在布局里但未展开”的右栏面板（fullscreen/push 或旧会话）；
+    // 当前展开的那份仍必须被认领，不能被 rightLive.length !== 1 整体否掉。
+    await evaluate(`(() => {
+      const extra = document.createElement('div');
+      extra.id = 'extra-right-panel';
+      extra.setAttribute('data-sidebar-right-panel', 'push');
+      extra.style.cssText = 'position:fixed;right:0;top:0;width:160px;height:420px;';
+      document.body.append(extra);
+      __glass.sync();
+      return true;
+    })()`);
+    check(tag + ' 可见但未展开的第二份右栏面板不否定当前展开面板', await evaluate(`document.querySelector('#right').getAttribute('data-we-surface-runtime')==='right-sidebar' && !!document.querySelector('[data-we-surface-plate="right-sidebar"]') && !document.querySelector('#extra-right-panel').hasAttribute('data-we-surface-runtime')`));
+    await evaluate("document.querySelector('#extra-right-panel').remove();__glass.sync()");
+    // 负对照：没有 data-we-nudge 的静态 transform 仍须回退原生，豁免不能被放宽成通用后门。
+    await evaluate(`(() => {
+      const p = document.querySelector('#right');
+      p.style.transform = 'translateX(1px)';
+      __glass.sync();
+      return true;
+    })()`);
+    check(tag + ' 无 nudge 标记的静态 transform 仍回退原生', await evaluate(`!document.querySelector('#right').hasAttribute('data-we-surface-runtime') && !document.querySelector('[data-we-surface-plate="right-sidebar"]')`));
+    await evaluate("document.querySelector('#right').style.removeProperty('transform');__glass.sync()");
+    // HMR / 行重挂可能留下另一份模块实例的装饰根与 plate；sync 必须只保留当前根，
+    // 否则多层同几何 backdrop-filter 叠加 = 右栏对应位置壁纸对比度/饱和度爆表。
+    await evaluate(`(() => {
+      for (let i = 0; i < 3; i += 1) {
+        const root = document.createElement('div');
+        root.setAttribute('data-we-surface-root', 'v1');
+        root.style.cssText = 'position:fixed;inset:0;z-index:-1;pointer-events:none';
+        const plate = document.createElement('div');
+        plate.setAttribute('data-we-surface-plate', 'right-sidebar');
+        plate.style.cssText = 'position:absolute;left:0;top:0;width:40px;height:40px';
+        root.append(plate);
+        document.body.append(root);
+      }
+      __glass.sync();
+      return true;
+    })()`);
+    check(tag + ' 孤儿装饰根/plate 被收口为当前唯一一份', await evaluate(`document.querySelectorAll('[data-we-surface-root]').length === 1 && document.querySelectorAll('[data-we-surface-plate="right-sidebar"]').length === 1 && document.querySelector('#right').getAttribute('data-we-surface-runtime')==='right-sidebar'`));
+    // 别的实例/旧清理把当前装饰根摘掉时，marker 仍在；下一次 sync 必须把 root+plate
+    // 一起重建（旧 plate 记录指向断开节点，不能只留 marker 不画玻璃）。
+    await evaluate(`(() => {
+      document.querySelectorAll('[data-we-surface-root]').forEach(x => x.remove());
+      __glass.sync();
+      return true;
+    })()`);
+    check(tag + ' 装饰根被外部摘掉后按 marker 重建 root/plate', await evaluate(`document.querySelectorAll('[data-we-surface-root]').length === 1 && document.querySelectorAll('[data-we-surface-plate="right-sidebar"]').length === 1 && document.querySelector('#right').getAttribute('data-we-surface-runtime')==='right-sidebar'`));
+    // 旧版微推泄漏的 translateZ(0)+will-change（没有 data-we-nudge 归属）要自动清掉，
+    // 否则 safeRoot 会被永远判死、右栏退回纯色。
+    await evaluate(`(() => {
+      const p = document.querySelector('#right');
+      p.style.transform = 'translateZ(0px)';
+      p.style.willChange = 'transform';
+      __glass.sync();
+      return true;
+    })()`);
+    check(tag + ' 旧微推泄漏的内联 translateZ(0) 自动清理并恢复认领', await evaluate(`(() => { const p = document.querySelector('#right'); return !p.style.transform && !p.style.willChange && p.getAttribute('data-we-surface-runtime')==='right-sidebar'; })()`));
+    // 合成微推（nudge）两帧内会给宿主右栏写 translateZ(0)/will-change；带 data-we-nudge
+    // 时只豁免 target 自身，不能因此把右栏判成 unsafe-root 而退回纯色。
+    await evaluate(`(() => {
+      const p = document.querySelector('#right');
+      p.setAttribute('data-we-nudge', 'on');
+      p.style.transform = 'translateZ(0)';
+      p.style.willChange = 'transform';
+      __glass.sync();
+      return true;
+    })()`);
+    check(tag + ' 合成微推两帧内右栏仍可认领（data-we-nudge 只豁免 target 自身）', await evaluate(`document.querySelector('#right').getAttribute('data-we-surface-runtime')==='right-sidebar'`));
+    await evaluate(`(() => {
+      const p = document.querySelector('#right');
+      p.removeAttribute('data-we-nudge');
+      p.style.removeProperty('transform');
+      p.style.removeProperty('will-change');
+      __glass.sync();
+      return true;
+    })()`);
     await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: state.x, y: state.y, button: 'left', clickCount: 1 });
     await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: state.x, y: state.y, button: 'left', clickCount: 1 });
     check(tag + ' 点击未穿透到composer', await evaluate('__clicks.modal===1 && __clicks.composer===0'), await evaluate('__clicks'));
@@ -165,7 +322,27 @@ try {
       await until('document.querySelectorAll("[data-we-surface-plate=left-sidebar]").length===1');
       await evaluate("document.querySelector('#modal').remove();__glass.sync()");
       await until('document.querySelectorAll("[data-we-surface-plate]").length>=1');
-      check(tag + ' 安全侧栏玻璃实际载体存在', await evaluate(`(()=>{const plate=document.querySelector('[data-we-surface-plate="left-sidebar"]');return !!plate && getComputedStyle(plate).backdropFilter.includes('blur(') && plate.children.length===0 && plate.getBoundingClientRect().width>20;})()`));
+      // #272：<1100px 的折叠抽屉里装饰板 backdrop-filter 采样不到（宿主 transform），
+      // 产品政策是「近不透明兜底 + 显式关掉不会生效的模糊」；宽视口仍是 blur 载体。
+      const carrier = await evaluate(`(()=>{
+        const plate=document.querySelector('[data-we-surface-plate="left-sidebar"]');
+        if(!plate) return {ok:false, why:'no-plate'};
+        const w=plate.getBoundingClientRect().width;
+        const cs=getComputedStyle(plate);
+        const narrow=window.matchMedia('(max-width: 1100px)').matches;
+        if(plate.children.length!==0 || w<=20) return {ok:false, why:'geometry', w, kids:plate.children.length};
+        if(!narrow) return {ok:cs.backdropFilter.includes('blur('), why:'wide', bf:cs.backdropFilter};
+        if(cs.backdropFilter!=='none') return {ok:false, why:'narrow-bf', bf:cs.backdropFilter};
+        const seat=document.querySelector('[data-slot="sidebar"]');
+        const col=seat && seat.parentElement;
+        const bg=col && getComputedStyle(col).backgroundColor;
+        const m=/rgba?\\(([^)]+)\\)/.exec(bg||'');
+        const parts=m ? m[1].split(',').map(Number) : [];
+        const slash=/\\/\\s*([0-9.]+)\\s*\\)/.exec(bg||'');
+        const alpha=parts.length===4 ? parts[3] : (parts.length===3 ? 1 : (slash ? Number(slash[1]) : 0));
+        return {ok:alpha>=0.9, why:'narrow', seat:!!seat, bg, alpha};
+      })()`);
+      check(tag + ' 安全侧栏玻璃实际载体存在（宽视口 blur / 窄视口近不透明兜底）', Boolean(carrier && carrier.ok), JSON.stringify(carrier));
       // 宿主（ui-sidebar-right 的 RightbarRoot）给**每个被保留的会话**各渲染一份右栏面板，
       // 非当前会话那份在 `.session[hidden]` 里。旧判据按全文档 NodeList 长度要求"恰好一份"
       // ⇒ 用户开过第二个会话后右栏永远不接管、整块退回原生不透明底。隐藏的兄弟不得参与竞争。
@@ -266,8 +443,8 @@ try {
       await evaluate("document.querySelector('#left').style.width='25%'");
       await until('Math.abs(document.querySelector("[data-we-surface-plate=left-sidebar]").getBoundingClientRect().width-document.querySelector("#left").getBoundingClientRect().width)<1');
       // 多 right 节点（G1 历史栏位）：后台保留节点（无 open 属性）+ 活动节点。
-      // 双 right ⇒ 两条候选都 disabled（weSurfaceCandidates 只认领唯一宿主区域），
-      // 原右栏须撤销所有权；移除后台节点后自动恢复（observer 消费，不手动 sync）。
+      // 可见但未展开的后台节点**不应**否定当前展开面板；两份都展开时按「前景优先」判定
+      // （fullscreen 优先，见下面 #382 段），同模式并存才保守放弃。
       await evaluate(`(() => {
         const dock=document.createElement('aside');
         dock.id='right-bg';dock.setAttribute('data-sidebar-right-panel','push');
@@ -275,11 +452,50 @@ try {
         dock.innerHTML='<div data-dockkit-host="dock">BG</div>';
         document.body.append(dock);return true;
       })()`);
+      await until('!!document.querySelector("[data-we-surface-plate=right-sidebar]")');
+      check(tag + ' 多right：后台保留节点未展开不否定活动右栏', await evaluate(`(()=>{const r=document.querySelector('#right'),p=document.querySelector('#right-bg');return r.getAttribute('data-we-surface-runtime')==='right-sidebar' && !!document.querySelector('[data-we-surface-plate=right-sidebar]') && !p.hasAttribute('data-we-surface-runtime');})()`));
+      await evaluate("document.querySelector('#right-bg').setAttribute('data-sidebar-right-open','')");
       await until('!document.querySelector("[data-we-surface-plate=right-sidebar]") && !document.querySelector("#right").hasAttribute("data-we-surface-runtime")');
-      check(tag + ' 多right：后台保留+活动双节点均不认领', await evaluate(`(()=>{const r=document.querySelector('#right'),p=document.querySelector('#right-bg');return !r.hasAttribute('data-we-surface-runtime') && !p.hasAttribute('data-we-surface-runtime') && !document.querySelector('[data-we-surface-plate=right-sidebar]');})()`));
+      check(tag + ' 多right：两份都展开时保守放弃认领', await evaluate(`(()=>{const r=document.querySelector('#right'),p=document.querySelector('#right-bg');return !r.hasAttribute('data-we-surface-runtime') && !p.hasAttribute('data-we-surface-runtime') && !document.querySelector('[data-we-surface-plate=right-sidebar]');})()`));
+      await evaluate("document.querySelector('#right-bg').removeAttribute('data-sidebar-right-open')");
+      await until('!!document.querySelector("[data-we-surface-plate=right-sidebar]")');
+      check(tag + ' 多right：后台节点收起后唯一展开右栏恢复所有权（observer 自动）', await evaluate(`document.querySelector('#right').getAttribute('data-we-surface-runtime')==='right-sidebar'`));
+      // #382：fullscreen 与 push **同时展开**（宿主 fullscreen 模式会保留 push 面板）。
+      // 旧判据「恰好一份」两份都不认领 ⇒ fullscreen 面板无 plate/runtime、纯透明；
+      // 新判据按 fullscreen 优先认领前景那一份。
+      await evaluate(`(() => {
+        const bg = document.querySelector('#right-bg');
+        bg.setAttribute('data-sidebar-right-panel', 'fullscreen');
+        bg.setAttribute('data-sidebar-right-open', '');
+        __glass.sync(); return true;
+      })()`);
+      await until('document.querySelector("#right-bg").getAttribute("data-we-surface-runtime")==="right-sidebar"');
+      const fullPanel = await evaluate(`(() => {
+        const p = document.querySelector('#right-bg'), r = p.getBoundingClientRect();
+        const plate = document.querySelector('[data-we-surface-plate="right-sidebar"]');
+        const pr = plate && plate.getBoundingClientRect();
+        return { rt: p.getAttribute('data-we-surface-runtime'), back: document.querySelector('#right').getAttribute('data-we-surface-runtime'),
+          plates: document.querySelectorAll('[data-we-surface-plate="right-sidebar"]').length,
+          covers: !!pr && Math.abs(pr.left - r.left) < 1 && Math.abs(pr.top - r.top) < 1
+            && Math.abs(pr.width - r.width) < 1 && Math.abs(pr.height - r.height) < 1 };
+      })()`);
+      check(tag + ' fullscreen 与 push 同时展开：fullscreen 优先认领且底板跟住它',
+        fullPanel.rt === 'right-sidebar' && fullPanel.back === null && fullPanel.plates === 1 && fullPanel.covers, fullPanel);
+      // 负对照：两份**同模式**（都 fullscreen）同时展开 ⇒ 判不出前景，仍保守放弃。
+      await evaluate("document.querySelector('#right').setAttribute('data-sidebar-right-panel','fullscreen')");
+      await until('!document.querySelector("[data-we-surface-plate=right-sidebar]")');
+      check(tag + ' 两份 fullscreen 同时展开：保守放弃认领', await evaluate(`!document.querySelector('#right').hasAttribute('data-we-surface-runtime') && !document.querySelector('#right-bg').hasAttribute('data-we-surface-runtime') && !document.querySelector('[data-we-surface-plate=right-sidebar]')`));
+      // 回到 push：fullscreen 收起后，唯一展开的 push 面板恢复所有权。
+      await evaluate(`(() => {
+        document.querySelector('#right').setAttribute('data-sidebar-right-panel','push');
+        document.querySelector('#right-bg').setAttribute('data-sidebar-right-panel','push');
+        document.querySelector('#right-bg').removeAttribute('data-sidebar-right-open');
+        __glass.sync(); return true;
+      })()`);
+      await until('!!document.querySelector("[data-we-surface-plate=right-sidebar]")');
+      check(tag + ' fullscreen 收起后唯一 push 面板恢复所有权', await evaluate(`document.querySelector('#right').getAttribute('data-we-surface-runtime')==='right-sidebar'`));
       await evaluate("document.querySelector('#right-bg').remove()");
       await until('!!document.querySelector("[data-we-surface-plate=right-sidebar]")');
-      check(tag + ' 多right：移除后台节点后唯一右栏恢复所有权（observer 自动）', await evaluate(`document.querySelector('#right').getAttribute('data-we-surface-runtime')==='right-sidebar'`));
       await evaluate("document.querySelector('#right').removeAttribute('data-sidebar-right-open')");
       await until('!document.querySelector("[data-we-surface-plate=right-sidebar]")');
       check(tag + ' 收起右栏无残板', true);
@@ -324,12 +540,52 @@ try {
       await evaluate('window.__endFrames=__frames;document.body.append(document.createElement("section"))');
       await delay(100);
       check(tag + ' 卸载后无监听残留更新', await evaluate('__frames===__endFrames'));
+      // 行级开关不会重载页面：上一轮若留下装饰根/运行标记，重新同步必须从干净状态开始。
+      await evaluate(`(() => {
+        const orphan = document.createElement('div');
+        orphan.id = 'orphan-surface-root';
+        orphan.setAttribute('data-we-surface-root', 'v1');
+        document.body.append(orphan);
+        document.querySelector('#left').setAttribute('data-we-surface-runtime', 'left-sidebar');
+        return true;
+      })()`);
+      await evaluate('__glass.sync()');
+      check(tag + ' 行开关重启：旧装饰根/标记清掉后只重建一层', await evaluate(`!document.querySelector('#orphan-surface-root') && document.querySelectorAll('[data-we-surface-root]').length<=1`));
+      await evaluate('__glass.dispose()');
+      // 行停用期间右栏被关掉再打开，随后重新启用玻璃：必须仍认领右栏并重建底板。
+      await evaluate("document.querySelector('#right').removeAttribute('data-sidebar-right-open');__glass.dispose()");
+      await evaluate("document.querySelector('#right').setAttribute('data-sidebar-right-open','');__glass.sync()");
+      check(tag + ' 停用期间重开右栏，重新启用仍认领玻璃面', await evaluate(`document.querySelector('#right').getAttribute('data-we-surface-runtime')==='right-sidebar' && !!document.querySelector('[data-we-surface-plate="right-sidebar"]')`));
+      // 更贴近真实行开关：停用期间撤 gates + 玻璃样式表，打开右栏，再回注并重新启用。
+      await evaluate(`(() => {
+        const style = document.querySelector('style[data-test-bundle="on"]');
+        window.__savedGlassStyle = style;
+        document.body.removeAttribute('data-we-glass-page');
+        document.body.removeAttribute('data-we-sidebar-glass');
+        document.body.removeAttribute('data-we-left-sidebar');
+        if (style) style.remove();
+        __glass.dispose();
+        const right = document.querySelector('#right');
+        right.removeAttribute('data-sidebar-right-open');
+        right.setAttribute('data-sidebar-right-open', '');
+        return __glass.status();
+      })()`);
+      const rowCycleStatus = await evaluate(`(() => {
+        document.head.append(window.__savedGlassStyle);
+        document.body.setAttribute('data-we-glass-page', 'on');
+        document.body.setAttribute('data-we-sidebar-glass', 'on');
+        __glass.sync();
+        return __glass.status();
+      })()`);
+      check(tag + ' 完整行开关循环后右栏认领', await evaluate(`document.querySelector('#right').getAttribute('data-we-surface-runtime')==='right-sidebar' && !!document.querySelector('[data-we-surface-plate="right-sidebar"]')`), rowCycleStatus);
+      check(tag + ' 合成微推不把内联 transform/will-change 写进宿主右栏', await evaluate(`(() => { const p = document.querySelector('#right'); return !p.style.transform && !p.style.willChange; })()`), await evaluate(`({ transform: document.querySelector('#right').style.transform, willChange: document.querySelector('#right').style.willChange })`));
+      await evaluate('__glass.dispose()');
     }
     await evaluate(`(() => {
-      document.body.innerHTML='<div id="wall"></div><section id="settings" role="dialog" aria-modal="true"><div data-slot="settings.section" id="settings-layout"><section id="plugin-native"><button id="native-button">Native</button><div id="warning">Warning</div></section><section id="declared" data-we-surface="v1"><div data-we-surface-layout id="layout">Layout<div data-we-surface-preserve id="keep">Preserve<div data-we-surface-layout id="preserve-child">Keep</div></div><section data-we-surface="v1" id="nested"><div data-we-surface-layout id="nested-layout">Nested</div></section></div></section><button id="nested-modal" style="position:fixed;left:10px;top:20px;z-index:1001">Nested</button></div></section><aside data-sidebar-right-panel="push" data-sidebar-right-open id="content-dock"><div class="cm-editor" id="editor"><span id="syntax" style="color:rgb(197,104,228)">Syntax</span><div class="cm-selectionBackground" id="selection"></div></div><div id="preview" data-we-surface="v1"><div data-we-surface-layout>Preview</div></div></aside><div id="own-host"><div class="we-picker" id="own-picker"><div class="we-tabs" id="own-tabs"><button class="we-tabs__tab">Library</button></div><div class="we-picker__current" id="own-current"><span class="we-picker__current-title">Current</span></div><div class="we-picker__uploads" id="own-uploads"><span>Upload</span></div><div class="we-ext" id="own-ext"><div class="we-ext__module" id="own-module"><span class="we-ext__module-title">Module</span></div></div></div><button class="we-rope" id="rope">Rope</button><div class="we-update-notice" id="notice">Notice</div><div class="we-preset-intro" id="intro">Intro</div>';
+      document.body.innerHTML='<div id="wall"></div><section id="settings" role="dialog" aria-modal="true"><div data-slot="settings.section" id="settings-layout"><section id="plugin-native"><button id="native-button">Native</button><div id="warning">Warning</div></section><section id="declared" data-we-surface="v1"><div data-we-surface-layout id="layout">Layout<div data-we-surface-preserve id="keep">Preserve<div data-we-surface-layout id="preserve-child">Keep</div></div><section data-we-surface="v1" id="nested"><div data-we-surface-layout id="nested-layout">Nested</div></section></div></section><button id="nested-modal" style="position:fixed;left:10px;top:20px;z-index:1001">Nested</button></div></section><aside data-sidebar-right-panel="push" data-sidebar-right-open id="content-dock"><div class="cm-editor" id="editor"><span id="syntax" style="color:rgb(197,104,228)">Syntax</span><div class="cm-selectionBackground" id="selection"></div></div><div id="preview" data-we-surface="v1"><div data-we-surface-layout>Preview</div></div></aside><div id="own-host"><div class="we-picker" id="own-picker"><div class="we-tabs" id="own-tabs"><button class="we-tabs__tab">Library</button></div><div class="we-picker__current" id="own-current"><span class="we-picker__current-title">Current</span></div><div class="we-picker__uploads" id="own-uploads"><span>Upload</span></div><div class="we-ext" id="own-ext"><div class="we-ext__module" id="own-module"><span class="we-ext__module-title">Module</span></div></div></div><button class="we-rope" id="rope">Rope</button><div class="we-update-notice" id="notice">Notice</div>';
       const fixture=document.createElement('style');fixture.id='compat-fixture';fixture.textContent=
         'body{--dsw-alias-bg-layer-1:rgb(246,246,246);--dsw-alias-bg-layer-2:rgb(241,242,243);--dsw-alias-bg-layer-3:rgb(225,226,227);--dsw-alias-label-primary:#151515;--we-settings-window-blur:14px;--we-settings-window-alpha:.15;--we-readability-floor:${dark ? '0.59' : '0.45'};--we-surface-tint-light:#8fd0ff;--we-surface-tint-dark:#0d1524}' +
-        '#settings{position:fixed;z-index:1000;left:5vw;top:100px;width:90vw;height:500px;overflow:auto;background:var(--dsw-alias-bg-layer-2)}#settings-layout{background:var(--dsw-alias-bg-layer-1)}#plugin-native{background:#fff}#native-button{background:var(--dsw-alias-label-primary);color:var(--dsw-alias-bg-layer-3)}#warning{background:rgb(244,180,40)}#declared{position:relative;z-index:1;background:white}#layout,#keep,#preserve-child,#nested-layout{background:rgb(222,223,224)}#content-dock{position:fixed;bottom:0;right:0;width:40vw;height:150px}#content-dock[data-sidebar-right-panel="fullscreen"]{--dsh-dockkit-dock-layer:40}#own-host{--dsw-alias-bg-layer-1:rgb(0,0,0);--dsw-alias-bg-layer-2:rgb(0,0,0);--dsw-alias-bg-layer-3:rgb(0,0,0)}#own-current{position:fixed;left:12px;top:40px;width:220px;height:60px;background:var(--dsw-alias-bg-layer-1)}#own-module{position:fixed;left:12px;top:110px;width:220px;height:60px;background:var(--dsw-alias-bg-layer-1)}#editor{background:#fff;height:80px}#selection{background:rgb(60,80,160);height:8px}#rope{left:10px;top:20px}#notice{bottom:30px;left:40px}#intro{bottom:100px;left:10px}';
+        '#settings{position:fixed;z-index:1000;left:5vw;top:100px;width:90vw;height:500px;overflow:auto;background:var(--dsw-alias-bg-layer-2)}#settings-layout{background:var(--dsw-alias-bg-layer-1)}#plugin-native{background:#fff}#native-button{background:var(--dsw-alias-label-primary);color:var(--dsw-alias-bg-layer-3)}#warning{background:rgb(244,180,40)}#declared{position:relative;z-index:1;background:white}#layout,#keep,#preserve-child,#nested-layout{background:rgb(222,223,224)}#content-dock{position:fixed;bottom:0;right:0;width:40vw;height:150px}#content-dock[data-sidebar-right-panel="fullscreen"]{--dsh-dockkit-dock-layer:40}#own-host{--dsw-alias-bg-layer-1:rgb(0,0,0);--dsw-alias-bg-layer-2:rgb(0,0,0);--dsw-alias-bg-layer-3:rgb(0,0,0)}#own-current{position:fixed;left:12px;top:40px;width:220px;height:60px;background:var(--dsw-alias-bg-layer-1)}#own-module{position:fixed;left:12px;top:110px;width:220px;height:60px;background:var(--dsw-alias-bg-layer-1)}#editor{background:#fff;height:80px}#selection{background:rgb(60,80,160);height:8px}#rope{left:10px;top:20px}#notice{bottom:30px;left:40px}';
       document.head.append(fixture);document.body.setAttribute('data-we-glass-window','on');document.body.setAttribute('data-we-glass-floaters','on');
       document.querySelector('#plugin-native').className='thirdparty_root';document.querySelector('#warning').className='thirdparty_frame';
       const host=document.createElement('div');host.id='root';host.innerHTML='<div class="host_frame" id="host-frame"><div class="host_root" id="host-root"></div></div>';document.body.append(host);
@@ -338,7 +594,7 @@ try {
       __selection={sidebarGlass:true};__glass.sync();return true;
     })()`);
     await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
-    const compat = await evaluate(`(()=>{const s=id=>getComputedStyle(document.getElementById(id));const r=document.querySelector('#nested-modal').getBoundingClientRect();return {blur:s('settings').backdropFilter,rect:r.toJSON(),token:s('native-button').color,unknown:s('plugin-native').backgroundColor,warning:s('warning').backgroundColor,mark:document.querySelector('#settings').getAttribute('data-we-surface-runtime'),layout:s('layout').backgroundColor,keep:s('keep').backgroundColor,child:s('preserve-child').backgroundColor,syntax:s('syntax').color,selection:s('selection').backgroundColor,editor:s('editor').backgroundColor,ownTab:s('own-tabs').backgroundColor,ownUploads:s('own-uploads').backgroundColor,ownCurrent:s('own-current').backgroundColor,ownModule:s('own-module').backgroundColor,alias1:s('own-picker').getPropertyValue('--dsw-alias-bg-layer-1').trim(),rope:s('rope').visibility,notice:s('notice').visibility,intro:s('intro').visibility,status:__glass.status()};})()`);
+    const compat = await evaluate(`(()=>{const s=id=>getComputedStyle(document.getElementById(id));const r=document.querySelector('#nested-modal').getBoundingClientRect();return {blur:s('settings').backdropFilter,rect:r.toJSON(),token:s('native-button').color,unknown:s('plugin-native').backgroundColor,warning:s('warning').backgroundColor,mark:document.querySelector('#settings').getAttribute('data-we-surface-runtime'),layout:s('layout').backgroundColor,keep:s('keep').backgroundColor,child:s('preserve-child').backgroundColor,syntax:s('syntax').color,selection:s('selection').backgroundColor,editor:s('editor').backgroundColor,ownTab:s('own-tabs').backgroundColor,ownUploads:s('own-uploads').backgroundColor,ownCurrent:s('own-current').backgroundColor,ownModule:s('own-module').backgroundColor,alias1:s('own-picker').getPropertyValue('--dsw-alias-bg-layer-1').trim(),rope:s('rope').visibility,notice:s('notice').visibility,status:__glass.status()};})()`);
     check(tag+' 设置本体不再建立fixed包含块', compat.blur==='none' && compat.rect.x===10 && compat.rect.y===20, compat);
     // ⚠️ 这个用例的上半截（未知第三方面板的底色 / 状态色不被改写）保持不动；
     //    `token` 那一项**按用户实测反转**：5cabb9e1 把宿主背景令牌映射收窄到聊天流后，
@@ -350,13 +606,41 @@ try {
     check(tag+' 宿主设置窗控件吃玻璃令牌（不是宿主实底）',
       compat.token !== 'rgb(225, 226, 227)', compat.token);
     check(tag+' 壁纸仅清宿主外壳而非任意root和frame',await evaluate(`getComputedStyle(document.querySelector('#host-frame')).backgroundColor==='rgba(0, 0, 0, 0)' && getComputedStyle(document.querySelector('#host-root')).backgroundColor==='rgba(0, 0, 0, 0)'`));
+    // ── 跨插件内联令牌（DS Bot 的 Bot 模式）────────────────────────────────────────
+    // 全界面插件用 DSH 的 ctx.theme.overrideTokens 给宿主上色时，宿主把令牌以**内联
+    // 样式**写在 <body> 上；普通作者声明输给内联声明 ⇒ 页面基色/侧栏填充保持不透明，
+    // 壁纸层被盖死（现场：DS Bot 模式下壁纸完全不可见）。本插件让页面让开的那两条
+    // 必须用作者 !important 压过内联普通声明。判据两个方向都断言：
+    //   · 壁纸在场 ⇒ 消费这两枚令牌的壳层元素 computed 透明；
+    //   · 摘掉壁纸门 ⇒ 内联值原样生效 —— 证明这是**按门的单向接管**，不是把宿主主题
+    //     永久改掉；否则「!important 换成普通声明」或「门被摘掉」任一漂移都可能假绿。
+    const inlineTokens = await evaluate(`(() => {
+      const probe = document.createElement('div');
+      probe.innerHTML = '<div id="dsb-frame" style="background:var(--dsw-alias-bg-base)"><div id="dsb-sidebar" style="background:var(--dsw-specific-sidebar-fill)"></div></div>';
+      document.body.append(probe);
+      document.body.style.setProperty('--dsw-alias-bg-base', 'rgb(20, 20, 20)');
+      document.body.style.setProperty('--dsw-specific-sidebar-fill', 'rgb(27, 27, 27)');
+      const read = () => [getComputedStyle(document.getElementById('dsb-frame')).backgroundColor, getComputedStyle(document.getElementById('dsb-sidebar')).backgroundColor];
+      const withWallpaper = read();
+      document.body.removeAttribute('data-we-wallpaper');
+      const withoutWallpaper = read();
+      document.body.setAttribute('data-we-wallpaper', 'on');
+      document.body.style.removeProperty('--dsw-alias-bg-base');
+      document.body.style.removeProperty('--dsw-specific-sidebar-fill');
+      probe.remove();
+      return { withWallpaper, withoutWallpaper };
+    })()`);
+    check(tag+' 壁纸在场时页面令牌压过宿主内联主题（DS Bot 的 Bot 模式）',
+      inlineTokens.withWallpaper.every((color) => color === 'rgba(0, 0, 0, 0)'), inlineTokens);
+    check(tag+' 壁纸退场后宿主内联令牌原样生效（单向接管，不改宿主主题）',
+      inlineTokens.withoutWallpaper[0] === 'rgb(20, 20, 20)' && inlineTokens.withoutWallpaper[1] === 'rgb(27, 27, 27)', inlineTokens);
     check(tag+' 已知设置面与显式布局接管且preserve优先',compat.mark==='settings-window' && compat.layout==='rgba(0, 0, 0, 0)' && compat.keep==='rgb(222, 223, 224)' && compat.child==='rgb(222, 223, 224)',compat);
     check(tag+' 编辑内容底板受控且语法选区不改',compat.editor!=='rgb(255, 255, 255)' && compat.syntax==='rgb(197, 104, 228)' && compat.selection==='rgb(60, 80, 160)',compat);
     check(tag+' 本插件页签与上传区不继承宿主黑色实底',compat.ownTab!=='rgb(0, 0, 0)' && compat.ownUploads!=='rgb(0, 0, 0)',compat);
     // own 面 computed 精确配方（t8 修复的浏览器级验证）：玻璃页门别名块
-    // （src/styles-panel.js:375-400）在 .we-picker 根上把 --dsw-alias-bg-layer-1 换成
+    // （src/styles/panel.js）在 .we-picker 根上把 --dsw-alias-bg-layer-1 换成
     // 两段 color-mix（tint×alpha×0.9 + floor 地板）；.we-tabs(:249)/.we-picker__current(:208)/
-    // .we-picker__uploads(:258)/.we-ext__module(styles-ext.js:222) 消费同一令牌 ⇒
+    // .we-picker__uploads(:258)/.we-ext__module(src/styles/ext.js) 消费同一令牌 ⇒
     // 四元素 computed 必须等于配方解析值，且不等于宿主黑实底/宿主灰。深浅主题分叉由
     // tint 色相差异体现（light #8fd0ff / dark #0d1524，mixOut 已按主题取值）。
     const ownMix = mixOut(0.15); // phase-two fixture 显式给了 --we-settings-window-alpha:.15
@@ -381,7 +665,7 @@ try {
     // 权重漂移为 1.0 或地板被摘除时本判据必红，即内嵌反事实负控）。
     const floorTxt = dark ? 'calc\\(0\\.59 \\* 1\\)' : '0\\.45';
     check(tag+' own面板别名token=两段color-mix配方（tint×alpha×0.9+地板段）', /color-mix\(in srgb/.test(compat.alias1) && new RegExp('calc\\(' + floorTxt + ' \\* 100%\\)').test(compat.alias1) && /calc\(\.15 \* 0\.9 \* 100%\)/.test(compat.alias1), compat.alias1);
-    check(tag+' 可见外部模态时自有装饰和自动提示让路',compat.rope==='hidden' && compat.notice==='hidden' && compat.intro==='hidden',compat);
+    check(tag+' 可见外部模态时自有装饰和自动提示让路',compat.rope==='hidden' && compat.notice==='hidden',compat);
     // push→fullscreen→push（G1 历史栏位）：宿主布局属性（--dsh-dockkit-dock-layer），
     // 非浏览器 Fullscreen API；回撤后 plate 回 push 几何、所有权保持。
     await evaluate("document.querySelector('#content-dock').setAttribute('data-sidebar-right-panel','fullscreen');__glass.sync()");
@@ -427,11 +711,11 @@ try {
     check(tag+' 内容preserve恢复原生画布',await evaluate("getComputedStyle(document.querySelector('#editor')).backgroundColor==='rgb(255, 255, 255)'"));
     await screenshot(tag+'-settings');
     // extra 端值 × 双主题（t9-003，真实参数合同取证）。真实范围（源码实测，非虚构滑杆）：
-    // --we-settings-window-alpha ∈ [0.10, 0.25]（src/glass.js:103 Math.max(0.10, 0.25-pct/100*0.15)，
-    // 不是自有设置窗 5..42/5..50）；--we-blur ∈ [0,60]px（src/glass-panel.js SliderRow(cn.blur,0,60,1)）。
-    // extra normal 霜读 --we-blur（src/glass-extra.js:59-61），底色两段 color-mix 消费
-    // --we-settings-window-alpha×0.9 + readability-floor 地板（src/glass-extra.js:63-73）；
-    // own-current 走同一配方表（src/styles-panel.js:378）⇒ 同一断言面。phase-two 此处
+    // --we-settings-window-alpha ∈ [0.10, 0.25]（packages/glass/src/glass.js Math.max(0.10, 0.25-pct/100*0.15)，
+    // 不是自有设置窗 5..42/5..50）；--we-blur ∈ [0,60]px（packages/glass/src/glass-panel.js SliderRow(cn.blur,0,60,1)）。
+    // extra normal 霜读 --we-blur（packages/glass/src/glass-extra.js），底色两段 color-mix 消费
+    // --we-settings-window-alpha×0.9 + readability-floor 地板（packages/glass/src/glass-extra.js）；
+    // own-current 走同一配方表（src/styles/panel.js）⇒ 同一断言面。phase-two 此处
     // 已无 #settings（:248 移除），霜载体读 extra 面 ::before 本体。
     await evaluate(`(() => {
       __selection.extraGlassSelectors='.extra';
@@ -459,6 +743,8 @@ try {
     check(tag+' 第二阶段卸载清理',await evaluate('document.querySelectorAll("[data-we-surface-runtime],[data-we-layout-runtime],[data-we-modal-blocked]").length===0'));
   }
   await verifyPetSidebarGlassBrowser({ send, evaluate, until, check, screenshot, css, runtime, bundle });
+  const composerFixed = await verifyComposerFixedBrowser({ send, evaluate, until, check, screenshot, css, bundle,
+    benchmark: process.argv.includes('--composer-benchmark') });
   // computed/身份证据：bundle 与内联模块字节的 sha256 —— 截图与 computed 矩阵对应
   // 的就是这批字节（同一进程内读出，不与盘上其他时点混淆）。
   const sha = (text) => createHash('sha256').update(text).digest('hex');
@@ -468,15 +754,19 @@ try {
     runtimeModuleSha256: sha(runtime),
     extraModuleSha256: sha(extra),
     cssSha256: sha(css),
+    composerFixed,
     report, failures,
   }, null, 2));
   assert.equal(failures.length, 0, failures.join('\n'));
 } finally {
   for (const item of pending.values()) { clearTimeout(item.timer); item.reject(Error('browser closing')); }
   pending.clear();
-  if (socket?.readyState===WebSocket.OPEN) { try { await send('Browser.close'); } catch { /* 关闭连接亦视为结束 */ } }
-  socket?.close();
-  if (child.exitCode===null) {
+  // Browser.close 是浏览器级命令，不带 sessionId；管道已关时不必再写。
+  // `child` 可能在 spawn 就失败（attachBrowser 抛 AssertionError）时不存在。
+  if (child && !pipeClosed && toBrowser && child.exitCode === null) {
+    try { toBrowser.write(JSON.stringify({ id: ++counter, method: 'Browser.close' }) + '\0'); } catch { /* 关闭管道亦视为结束 */ }
+  }
+  if (child && child.exitCode === null) {
     const exit = new Promise(resolve=>{ child.once('exit',resolve); });
     child.kill(); await exit;
   }

@@ -44,6 +44,7 @@ const callsTo = (fn, args, want) => fn(...args) === want;
 
 /** 判据：模型 API 是否齐全（防切出来的段落是空的 ⇒ 下面每条都在空跑）。 */
 const hasModelApi = (M) => ['ratingOf', 'matchesRatingFilter', 'matchesTypeFilter',
+  'matchesOrientationFilter',
   'isPlayableType', 'isRotatableWallpaper', 'keepPlayingWallpaper', 'isHiddenWallpaper',
   'isUploadedWallpaper', 'isDirWallpaper', 'playableWallpapers', 'hiddenWallpapers',
   'pageSlice', 'pickerModel']
@@ -144,8 +145,8 @@ function inlinedSection(bundle, file, markers = SECTION_MARKERS) {
 // 变异测试钩子：默认读构建产物，DSH_MUT_LIB 指向变异副本时读它。
 const code = readFileSync(process.env.DSH_MUT_LIB || new URL('../lib/client.js', import.meta.url), 'utf8');
 
-const MODEL_API_NAMES = '{ ratingOf, matchesRatingFilter, matchesTypeFilter, isPlayableType,'
-  + ' isRotatableWallpaper, keepPlayingWallpaper, isHiddenWallpaper, isUploadedWallpaper,'
+const MODEL_API_NAMES = '{ ratingOf, matchesRatingFilter, matchesTypeFilter, matchesOrientationFilter, isPlayableType,'
+  + ' isRotatableWallpaper, keepPlayingWallpaper, isRotationEligible, isHiddenWallpaper, isUploadedWallpaper,'
   + ' isDirWallpaper, playableWallpapers, hiddenWallpapers, pageSlice, pickerModel,'
   + ' PICKER_PAGE_SIZE }';
 /** 该模块的完整导出清单（与 `src/picker-model.js` 末尾的 `export { … }` 逐字相同）。
@@ -157,8 +158,8 @@ const MODEL_API_NAMES = '{ ratingOf, matchesRatingFilter, matchesTypeFilter, isP
  *    `hiddenWallpapers` 因零跨模块按名引用被移出 `export { … }`，故这里同步移除；
  *    判据形状不变（导出名集合必须与钉住的清单逐字相等，
  *    多一枚少一枚都判红）。 */
-const MODEL_EXPORTS = ['ratingOf', 'matchesRatingFilter', 'matchesTypeFilter', 'isPlayableType',
-  'isRotatableWallpaper', 'keepPlayingWallpaper', 'isHiddenWallpaper', 'isUploadedWallpaper',
+const MODEL_EXPORTS = ['ratingOf', 'matchesRatingFilter', 'matchesTypeFilter', 'matchesOrientationFilter', 'isPlayableType',
+  'isRotatableWallpaper', 'keepPlayingWallpaper', 'isRotationEligible', 'isHiddenWallpaper', 'isUploadedWallpaper',
   'isDirWallpaper', 'playableWallpapers', 'pageSlice', 'pickerModel',
   'PICKER_PAGE_SIZE'];
 
@@ -175,16 +176,16 @@ const M = modelSection ? evaluateModelSection(modelSection) : null;
 // 十张覆盖六种形态的库存：三种分级 + 未分级、有/无 frameUrl 的场景、playable:false、
 // 带/不带分级的自上传、以及 up-dir- 目录项目。
 const W = [
-  { id: 'v1', title: 'Alpha Video', type: 'video', playable: true, contentrating: 'Everyone' },
-  { id: 'v2', title: 'beta video', type: 'video', playable: true, contentrating: 'PG13' },
-  { id: 'v3', title: 'Gamma Video', type: 'video', playable: true, contentrating: 'Mature' },
+  { id: 'v1', title: 'Alpha Video', type: 'video', playable: true, contentrating: 'Everyone', width: 1920, height: 1080 },
+  { id: 'v2', title: 'beta video', type: 'video', playable: true, contentrating: 'PG13', width: 1080, height: 1920 },
+  { id: 'v3', title: 'Gamma Video', type: 'video', playable: true, contentrating: 'Mature', width: 1000, height: 1000 },
   { id: 'w1', title: 'WEB One', type: 'web', playable: true, contentrating: null },
-  { id: 'i1', title: 'Image One', type: 'image', playable: true, contentrating: 'G' },
+  { id: 'i1', title: 'Image One', type: 'image', playable: true, contentrating: 'G', width: 3840, height: 2160 },
   { id: 's1', title: 'Scene With Frame', type: 'scene', playable: false, frameUrl: '/frame/s1', contentrating: 'Everyone' },
   { id: 's2', title: 'Scene No Frame', type: 'scene', playable: false, frameUrl: null, contentrating: 'Everyone' },
   { id: 'v4', title: 'Video Four', type: 'video', playable: false, contentrating: 'Everyone' },
-  { id: 'up-1', title: 'Upload One', type: 'image', playable: true },
-  { id: 'up-dir-2', title: 'Upload Dir', type: 'image', playable: true, contentrating: 'Everyone' },
+  { id: 'up-1', title: 'Upload One', type: 'image', playable: true, width: 720, height: 1280 },
+  { id: 'up-dir-2', title: 'Upload Dir', type: 'image', playable: true, contentrating: 'Everyone', width: 2560, height: 1440 },
 ];
 // 30 张额外的可播放视频：把列表推过一页（24）⇒ 分页与页号 clamp 才有得判。
 const EXTRA = Array.from({ length: 30 }, (_, i) => ({
@@ -193,9 +194,11 @@ const EXTRA = Array.from({ length: 30 }, (_, i) => ({
 const BIG = W.concat(EXTRA);
 const EXTRA_IDS = EXTRA.map((w) => w.id);
 
+const RATING_ALL = ['everyone', 'pg13', 'mature', 'unrated'];
+const TYPE_ALL = ['video', 'web', 'image', 'scene'];
 const modelInput = (over) => Object.assign({
-  wallpapers: W, hiddenIds: [], search: '', ratingFilter: 'all', typeFilter: 'all',
-  page: 0, hiddenPage: 0, editorPage: 0,
+  wallpapers: W, hiddenIds: [], search: '', ratingFilter: RATING_ALL, typeFilter: TYPE_ALL,
+  orientationFilter: 'all', page: 0, hiddenPage: 0, editorPage: 0,
 }, over);
 
 // 投影：只挑模型输出的**一部分**来比 —— 投影函数本身也是正负共用的那一份。
@@ -205,6 +208,7 @@ const P = {
   editorIds: (m) => m.editorList.map((w) => w.id),
   query: (m) => m.query,
   counts: (m) => [m.basePlayable.length, m.ratingCounts, m.typeCounts],
+  orientations: (m) => m.orientationCounts,
   sizes: (m) => [m.playableList.length, m.basePlayable.length, m.editorList.length, m.hiddenList.length],
   layout: (m) => [m.normalPage.items.length, m.normalPage.page, m.normalPage.pages],
   hiddenLayout: (m) => [m.hiddenPageView.items.length, m.hiddenPageView.page, m.hiddenPageView.pages],
@@ -226,30 +230,51 @@ const CASES = [
   { name: '搜索：query 归一化（trim + 小写）随模型出去',
     over: { search: '  Alpha  ' }, project: P.query, want: 'alpha', breakOver: { search: '  Beta ' } },
   { name: '类型过滤：video 只留视频档',
-    over: { typeFilter: 'video' }, project: P.playableIds, want: ['v1', 'v2', 'v3'],
-    breakOver: { typeFilter: 'web' } },
+    over: { typeFilter: ['video'] }, project: P.playableIds, want: ['v1', 'v2', 'v3'],
+    breakOver: { typeFilter: ['web'] } },
   { name: '类型过滤：scene 只留有静态帧的场景（无 frameUrl 的 s2 不算可播放）',
-    over: { typeFilter: 'scene' }, project: P.playableIds, want: ['s1'],
-    breakOver: { typeFilter: 'image' } },
-  { name: '评分过滤：everyone 保留 Everyone/G/宽松分级的自上传',
-    over: { ratingFilter: 'everyone' }, project: P.playableIds,
-    want: ['v1', 'i1', 's1', 'up-1', 'up-dir-2'], breakOver: { ratingFilter: 'pg13' } },
-  { name: '评分过滤：pg13',
-    over: { ratingFilter: 'pg13' }, project: P.playableIds, want: ['v2'],
-    breakOver: { ratingFilter: 'mature' } },
-  { name: '评分过滤：mature',
-    over: { ratingFilter: 'mature' }, project: P.playableIds, want: ['v3'],
-    breakOver: { ratingFilter: 'unrated' } },
-  { name: '评分过滤：unrated（没有 contentrating 的 WE 条目）',
-    over: { ratingFilter: 'unrated' }, project: P.playableIds, want: ['w1'],
-    breakOver: { ratingFilter: 'all' } },
-  { name: '自上传：没写分级 ⇒ 按 Everyone（不会被默认过滤挡掉）',
-    over: { ratingFilter: 'everyone' }, project: (m) => m.playableList.map((w) => w.id).filter((id) => id.startsWith('up-')),
-    want: ['up-1', 'up-dir-2'], breakOver: { ratingFilter: 'unrated' } },
-  { name: '分档计数：与生效中的过滤无关（底数是可播放 ∧ 未隐藏）',
-    over: { ratingFilter: 'mature' }, project: P.counts,
+    over: { typeFilter: ['scene'] }, project: P.playableIds, want: ['s1'],
+    breakOver: { typeFilter: ['image'] } },
+  { name: '分级勾选：只勾全年龄 ⇒ Everyone/G/宽松分级的自上传（最窄组合）',
+    over: { ratingFilter: ['everyone'] }, project: P.playableIds,
+    want: ['v1', 'i1', 's1', 'up-1', 'up-dir-2'],
+    breakOver: { ratingFilter: ['everyone', 'pg13'] } },
+  { name: '分级勾选：全年龄 + PG13 ⇒ 两档都放行（自由组合，不是累积档）',
+    over: { ratingFilter: ['everyone', 'pg13'] }, project: P.playableIds,
+    want: ['v1', 'v2', 'i1', 's1', 'up-1', 'up-dir-2'],
+    breakOver: { ratingFilter: ['everyone'] } },
+  { name: '分级勾选：三档都勾 ⇒ 全年龄 + PG13 + 成人',
+    over: { ratingFilter: ['everyone', 'pg13', 'mature'] }, project: P.playableIds,
+    want: ['v1', 'v2', 'v3', 'i1', 's1', 'up-1', 'up-dir-2'],
+    breakOver: { ratingFilter: ['everyone', 'pg13'] } },
+  { name: '分级勾选：只勾未分级 ⇒ 只剩没有 contentrating 的 WE 条目',
+    over: { ratingFilter: ['unrated'] }, project: P.playableIds, want: ['w1'],
+    breakOver: { ratingFilter: RATING_ALL } },
+  { name: '分级勾选：只勾成人 ⇒ 纯 R18 用法（Everyone/PG13 一律被挡）',
+    over: { ratingFilter: ['mature'] }, project: P.playableIds, want: ['v3'],
+    breakOver: { ratingFilter: ['mature', 'everyone'] } },
+  { name: '自上传：没写分级 ⇒ 按 Everyone（不会被默认勾选挡掉）',
+    over: { ratingFilter: ['everyone'] }, project: (m) => m.playableList.map((w) => w.id).filter((id) => id.startsWith('up-')),
+    want: ['up-1', 'up-dir-2'], breakOver: { ratingFilter: ['unrated'] } },
+  { name: '方向筛选：横屏只留宽 > 高（正方形 / 未知方向不出现）',
+    over: { orientationFilter: 'landscape' }, project: P.playableIds,
+    want: ['v1', 'i1', 'up-dir-2'], breakOver: { orientationFilter: 'portrait' } },
+  { name: '方向筛选：竖屏只留高 > 宽',
+    over: { orientationFilter: 'portrait' }, project: P.playableIds,
+    want: ['v2', 'up-1'], breakOver: { orientationFilter: 'landscape' } },
+  { name: '方向筛选：全部方向不受影响',
+    over: { orientationFilter: 'all' }, project: P.playableIds, want: ALL_PLAYABLE,
+    breakOver: { orientationFilter: 'landscape' } },
+  { name: '方向筛选只筛可见列表：轮换编辑器成员不变',
+    over: { orientationFilter: 'portrait' }, project: P.editorIds, want: ALL_PLAYABLE,
+    breakOver: { orientationFilter: 'portrait', typeFilter: ['image'] } },
+  { name: '方向计数：横 / 竖 / 未知（正方形与无尺寸都算未知）',
+    over: {}, project: P.orientations,
+    want: { landscape: 3, portrait: 2, unknown: 3 }, breakOver: { hiddenIds: ['v1'] } },
+  { name: '分档计数：与勾选组合无关（底数是可播放 ∧ 未隐藏，按精确档分桶）',
+    over: { ratingFilter: RATING_ALL }, project: P.counts,
     want: [8, { everyone: 5, pg13: 1, mature: 1, unrated: 1 }, { video: 3, web: 1, image: 3, scene: 1 }],
-    breakOver: { ratingFilter: 'mature', hiddenIds: ['v1'] } },
+    breakOver: { ratingFilter: RATING_ALL, hiddenIds: ['v1'] } },
   { name: '隐藏排除：隐藏项离开可播放网格（其余保持库存顺序）',
     over: { hiddenIds: ['v1', 's1'] }, project: P.playableIds,
     want: ['v2', 'v3', 'w1', 'i1', 'up-1', 'up-dir-2'], breakOver: { hiddenIds: ['v1'] } },
@@ -388,6 +413,25 @@ const requireMock = (spec) => {
   throw new Error('unexpected require: ' + spec);
 };
 const exportsObj = factory(requireMock);
+// P-D S3c：「壁纸库」页签四节已全部搬进 packages/media-bridge 的浏览器半边 ⇒ 抽屉里的
+// 「选择壁纸」/壁纸属性/播放控制等节点只在该产物登记 library 节之后才出现。与真实
+// loader 同形，在 apply() **之前**求值该产物（它的 factory 用主 bundle 的显式键集登记四节）。
+{
+  const wallpaperArtifact = readFileSync(
+    new URL('../packages/media-bridge/lib/client.media-bridge.js', import.meta.url), 'utf8');
+  const subHandoffs = [];
+  const savedLoader = sandbox.window.__ModuleLoader__;
+  sandbox.window.__ModuleLoader__ = { load: (h) => { subHandoffs.push(h); } };
+  new vm.Script(wallpaperArtifact, { filename: 'client.media-bridge.js' }).runInContext(sandbox);
+  sandbox.window.__ModuleLoader__ = savedLoader;
+  if (subHandoffs.length !== 1) {
+    throw new Error('wallpaper 浏览器半边必须恰好注册一份 bundle（实际 ' + subHandoffs.length + ' 份）');
+  }
+  const wallpaperExports = subHandoffs[0].factory((spec) => (
+    spec === 'dsh-plugin-wallpaper-engine' ? exportsObj : requireMock(spec)
+  ));
+  if (typeof wallpaperExports.apply !== 'function') throw new Error('wallpaper 浏览器半边必须导出 apply');
+}
 
 const pickerRenders = [];
 const slots = {
@@ -401,18 +445,6 @@ exportsObj.apply(ctx);
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
 const render = () => pickerRenders[0]();
 
-/** 渲染树里某个 props 字段等于给定值的节点。 */
-function findByProp(root, name, value) {
-  let hit = null;
-  (function walk(n) {
-    if (hit) return;
-    if (Array.isArray(n)) { n.forEach(walk); return; }
-    if (!n || typeof n !== 'object') return;
-    if (n.props && n.props[name] === value) { hit = n; return; }
-    if (Array.isArray(n.children)) n.children.forEach(walk);
-  })(root);
-  return hit;
-}
 
 /** className 里带某个**令牌**的节点。 */
 function findByClass(root, cls) {
@@ -575,24 +607,88 @@ console.log('\n3. 直调判定：六个谓词 + 两个过滤助手（负对照�
     !callsTo(M.isUploadedWallpaper, [{ id: '' }], true));
   check('isDirWallpaper：up-dir-2 是目录项目', callsTo(M.isDirWallpaper, [W[9]], true));
   check('负对照：up-1 不是目录项目', !callsTo(M.isDirWallpaper, [W[8]], true));
-  check('matchesRatingFilter：all 档放行一切', callsTo(M.matchesRatingFilter, [W[3], 'all'], true));
-  check('负对照：换成 everyone 档后同一张被拒（档位真的参与判定）',
-    !callsTo(M.matchesRatingFilter, [W[3], 'everyone'], true));
+  check('matchesRatingFilter：四档全勾放行一切（含未分级）',
+    callsTo(M.matchesRatingFilter, [W[3], RATING_ALL], true));
+  check('matchesRatingFilter：旧档字符串 all 读作四档全勾（旧存档读兜底）',
+    callsTo(M.matchesRatingFilter, [W[3], 'all'], true));
+  // 多档勾选（用户拍板 2026-10-30 / 在 #294 之后再次协商）：勾上的档才放行，**自由组合**，
+  // 不再强制累积 —— 只勾「成人」是合法的纯 R18 用法，只勾 everyone 也不会顺手放行 PG13。
+  check('matchesRatingFilter：只勾 everyone ⇒ 放行 Everyone',
+    callsTo(M.matchesRatingFilter, [W[0], ['everyone']], true));
+  check('负对照：只勾 everyone ⇒ PG13 被拒绝',
+    !callsTo(M.matchesRatingFilter, [W[1], ['everyone']], true));
+  check('matchesRatingFilter：勾上 PG13 后放行 PG13',
+    callsTo(M.matchesRatingFilter, [W[1], ['everyone', 'pg13']], true));
+  check('负对照：勾 everyone+pg13 仍挡成人',
+    !callsTo(M.matchesRatingFilter, [W[2], ['everyone', 'pg13']], true));
+  check('matchesRatingFilter：只勾成人 ⇒ 放行 Mature（纯 R18 用法）',
+    callsTo(M.matchesRatingFilter, [W[2], ['mature']], true));
+  check('负对照：只勾成人 ⇒ Everyone 被挡（自由组合，不是累积上限）',
+    !callsTo(M.matchesRatingFilter, [W[0], ['mature']], true));
+  check('matchesRatingFilter：只勾未分级 ⇒ 放行未分级',
+    callsTo(M.matchesRatingFilter, [W[3], ['unrated']], true));
+  check('负对照：只勾未分级 ⇒ Everyone 被挡',
+    !callsTo(M.matchesRatingFilter, [W[0], ['unrated']], true));
+  check('负对照：空勾选集合 fail-closed（既不全放行、也不静默取默认）',
+    !callsTo(M.matchesRatingFilter, [W[0], []], true));
+  check('负对照：null 入参 ⇒ false', !callsTo(M.matchesRatingFilter, [W[0], null], true));
+  check('负对照：未知档位 fail-closed（不放行任何人）',
+    !callsTo(M.matchesRatingFilter, [W[0], 'pg-18'], true));
+  check('负对照：数组里的未知档位被消毒掉后为空 ⇒ fail-closed',
+    !callsTo(M.matchesRatingFilter, [W[0], ['pg-18']], true));
+  check('matchesRatingFilter：旧存档的字符串档位按等价集合读（mature ⇒ 三档）',
+    callsTo(M.matchesRatingFilter, [W[1], 'mature'], true));
+  check('负对照：旧字符串 mature 仍挡未分级（未分级是独立档）',
+    !callsTo(M.matchesRatingFilter, [W[3], 'mature'], true));
+  // 轮播成员 / 「下一张」的入选判据（用户拍板 2026-10-30 / issue #294）：只认「内容安全 ∧
+  // 可播放」，**不认类型档**；与 keepPlayingWallpaper 同源（二级封装，单一真源）。
+  check('isRotationEligible：分级放行 ∧ 可播放 ⇒ true',
+    callsTo(M.isRotationEligible, [W[0], RATING_ALL], true));
+  check('负对照：勾选集合里没有它的档 ⇒ false（只勾 everyone 挡 PG13）',
+    callsTo(M.isRotationEligible, [W[1], ['everyone']], false));
+  check('负对照：不可播放类型 ⇒ false（不是只看分级）',
+    callsTo(M.isRotationEligible, [W[7], RATING_ALL], false));
+  check('负对照：null ⇒ false', callsTo(M.isRotationEligible, [null, RATING_ALL], false));
+  check('isRotationEligible 只收两个入参（类型档不得入内）',
+    M.isRotationEligible.length === 2);
   check('matchesTypeFilter：类型一致 ⇒ true', callsTo(M.matchesTypeFilter, [W[0], 'video'], true));
   check('负对照：换成别的类型档 ⇒ 不是 true',
     !callsTo(M.matchesTypeFilter, [W[0], 'web'], true));
   // 「正在应用的壁纸」判据（keepPlayingWallpaper）：**没有类型档入参**就是语义本身 ——
   // 类型档只筛列表与轮播候选，切过滤档不得把当前壁纸干掉（用户口径）。
   check('keepPlayingWallpaper：可播 + 分级放行 ⇒ true（类型档不参与播放闸门）',
-    callsTo(M.keepPlayingWallpaper, [W[0], 'all'], true));
-  check('负对照：分级闸门仍在 —— mature 档下同一张被拒',
-    !callsTo(M.keepPlayingWallpaper, [W[0], 'mature'], true));
+    callsTo(M.keepPlayingWallpaper, [W[0], RATING_ALL], true));
+  check('keepPlayingWallpaper：勾上成人时 Everyone 照旧可播（它也在勾选里）',
+    callsTo(M.keepPlayingWallpaper, [W[0], ['everyone', 'mature']], true));
+  check('负对照：分级闸门仍在 —— 只勾 everyone 时 PG13 被拒',
+    !callsTo(M.keepPlayingWallpaper, [W[1], ['everyone']], true));
   check('keepPlayingWallpaper：不可播放的条目照旧拒（v4 playable:false）',
-    !callsTo(M.keepPlayingWallpaper, [W[7], 'all'], true));
+    !callsTo(M.keepPlayingWallpaper, [W[7], RATING_ALL], true));
   check('pageSlice：30 张 / 每页 24 ⇒ 第 1 页 24 张、共 2 页',
     slicesTo(M, EXTRA, 0, [24, 0, 2]));
   check('负对照：翻到第 2 页后同一条判据不再给出第 1 页的形状',
     !slicesTo(M, EXTRA, 1, [24, 0, 2]));
+
+  // 分级白名单在「持久化消毒」（lib/settings-schema.js 的 RATING_TIER_VALUES）与「判定」
+  // （src/picker-model.js 的 RATING_TIERS）各有一份字面量：必须逐字同序。两边各自都不报错，
+  // 一旦漂移就是「存进去的档判定不认识」（勾了却永远不出现）—— 只能靠文本对账钉住。
+  const tierList = (src, name) => {
+    const m = new RegExp('const ' + name + ' = \\[([^\\]]*)\\]').exec(src);
+    return m ? m[1].split(',').map((s) => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean) : null;
+  };
+  const schemaSrc = readFileSync(new URL('../lib/settings-schema.js', import.meta.url), 'utf8');
+  const pickerSrc = readFileSync(MODEL_PATH, 'utf8');
+  const schemaTiers = tierList(schemaSrc, 'RATING_TIER_VALUES');
+  const modelTiers = tierList(pickerSrc, 'RATING_TIERS');
+  check('分级白名单：schema（持久化消毒）与 model（判定）逐字同序',
+    Array.isArray(schemaTiers) && schemaTiers.length === 4
+    && JSON.stringify(schemaTiers) === JSON.stringify(modelTiers),
+    JSON.stringify([schemaTiers, modelTiers]));
+  check('负对照：把 model 那份白名单换个顺序 ⇒ 同一条判据判出差异',
+    JSON.stringify(tierList(pickerSrc.replace(
+      "const RATING_TIERS = ['everyone', 'pg13', 'mature', 'unrated'];",
+      "const RATING_TIERS = ['pg13', 'everyone', 'mature', 'unrated'];"), 'RATING_TIERS'))
+    !== JSON.stringify(schemaTiers));
 }
 
 console.log('\n3. 跨层对拍：模型算出的当页卡片数 == 真实渲染的 .we-picker__card 数（减关闭卡）');
@@ -616,12 +712,29 @@ await sleep(80); // 等 loadPersisted → loadInventory → revalidateSelection 
   openBtn.props.onClick();
   let tree = render();
 
-  // 模型的入参**从渲染出的 UI 读**（不给默认档写死值）：过滤档取两个 select 的当前值，
-  // 搜索词取搜索框的值。这样"两边看的是不是同一份状态"本身也被判住。
-  const selectValue = (root, label) => {
-    const s = findByProp(root, 'aria-label', label);
-    return s ? s.props.value : null;
+  // 模型的入参**从渲染出的 UI 读**（不给默认档写死值）：类型档取 select 的当前值，
+  // 分级取下拉里勾中的档位（多档勾选，v7 起是数组），搜索词取搜索框的值。这样
+  // "两边看的是不是同一份状态"本身也被判住。
+  /** 下拉里的全部勾选框（分级与类型共用同一套 DOM 类名；vdom 里始终在，不依赖 <details>）。 */
+  const allCheckboxes = (root) => {
+    const out = [];
+    (function walk(n) {
+      if (Array.isArray(n)) { n.forEach(walk); return; }
+      if (!n || typeof n !== 'object') return;
+      if (n.type === 'input' && n.props && n.props.className === 'we-picker__rating-check') out.push(n);
+      if (Array.isArray(n.children)) n.children.forEach(walk);
+    })(root);
+    return out;
   };
+  const ratingCheckboxes = (root) => allCheckboxes(root)
+    .filter((n) => RATING_ALL.indexOf(n.props.value) !== -1);
+  const ratingAllowFromUi = (root) => ratingCheckboxes(root)
+    .filter((n) => n.props.checked).map((n) => n.props.value);
+  /** 类型下拉里的 4 个勾选框（与分级同一套 DOM 类名，按 value 区分域）。 */
+  const typeCheckboxes = (root) => allCheckboxes(root)
+    .filter((n) => TYPE_ALL.indexOf(n.props.value) !== -1);
+  const typeAllowFromUi = (root) => typeCheckboxes(root)
+    .filter((n) => n.props.checked).map((n) => n.props.value);
   const searchValue = (root) => {
     const i = findByClass(root, 'we-picker__search');
     return i ? i.props.value : null;
@@ -630,15 +743,21 @@ await sleep(80); // 等 loadPersisted → loadInventory → revalidateSelection 
     wallpapers: WALLPAPERS,
     hiddenIds: [], // 起点没有隐藏项（localStorage 未种选择）
     search: searchValue(root),
-    ratingFilter: selectValue(root, '内容分级'),
-    typeFilter: selectValue(root, '类型'),
+    ratingFilter: ratingAllowFromUi(root),
+    typeFilter: typeAllowFromUi(root),
     page: 0, hiddenPage: 0, editorPage: 0,
   }, over));
 
-  const ratingSel = findByProp(tree, 'aria-label', '内容分级');
-  const typeSel = findByProp(tree, 'aria-label', '类型');
-  check('跨层：两个过滤下拉都在（模型入参从它们读，读不到就会静默用 null）',
-    !!ratingSel && !!typeSel, '分级=' + selectValue(tree, '内容分级') + ' 类型=' + selectValue(tree, '类型'));
+  const ratingChecks = ratingCheckboxes(tree);
+  const typeChecks = typeCheckboxes(tree);
+  check('跨层：分级 4 个勾选框 + 类型 4 个勾选框都在（模型入参从它们读）',
+    ratingChecks.length === 4 && typeChecks.length === 4,
+    '分级勾选=' + ratingChecks.length + ' / 类型勾选=' + typeChecks.length
+    + ' 已勾=' + JSON.stringify(ratingAllowFromUi(tree)) + ' 类型=' + JSON.stringify(typeAllowFromUi(tree)));
+  check('跨层：类型默认四档全勾（DEFAULTS 的 allow-set 与 UI 勾选态一致）',
+    JSON.stringify(typeAllowFromUi(tree)) === JSON.stringify(TYPE_ALL), JSON.stringify(typeAllowFromUi(tree)));
+  check('跨层：默认只勾「全年龄」（DEFAULTS 的 allow-set 与 UI 勾选态一致）',
+    JSON.stringify(ratingAllowFromUi(tree)) === '["everyone"]', JSON.stringify(ratingAllowFromUi(tree)));
 
   // ── 状态 A：未过滤的虚拟首窗（默认 Everyone 档、无搜索、无隐藏）──
   const modelA = modelFromUi(tree);
@@ -680,6 +799,31 @@ await sleep(80); // 等 loadPersisted → loadInventory → revalidateSelection 
     '模型 ' + modelB.playableList.length + ' / 渲染 ' + renderedCardCount(tree));
   check('负对照：把模型的搜索词换成空串（变异输入）后，同一条判据判为不一致',
     !crossLayerAgrees(tree, modelFromUi(tree, { search: '' })));
+}
+
+// #255③：库视图第一张「关闭」卡在有壁纸时是**暂停/继续**（保留当前画面），不是清空壁纸。
+{
+  const pickerSrc = readFileSync(new URL('../src/picker-modal.js', import.meta.url), 'utf8');
+  const clientSrc = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8');
+  const closeCardShape = (t) => {
+    const m = /function renderPickerCloseCard\(ctx\) \{[\s\S]*?\n {2}\}/.exec(t);
+    if (!m) return null;
+    const body = m[0];
+    return {
+      toggle: body.includes('onTogglePlay'),
+      labels: body.includes('⏸ 暂停') && body.includes('▶ 播放'),
+      fallback: body.includes('closePicker'),
+    };
+  };
+  const shape = closeCardShape(pickerSrc);
+  check('#255③ 关闭卡有壁纸时走 pause/resume（onTogglePlay + 两种文案），无壁纸才回退 closePicker',
+    Boolean(shape && shape.toggle && shape.labels && shape.fallback), JSON.stringify(shape));
+  const oldBody = pickerSrc.replace(/function renderPickerCloseCard\(ctx\) \{[\s\S]*?\n {2}\}/,
+    'function renderPickerCloseCard(ctx) {\n    const { sel, onClear } = ctx;\n    return React.createElement("div", { onClick: onClear, title: weT("关闭壁纸") });\n  }');
+  check('#255③ negative control: 旧「直接 onClear」实现会被同一判据判红',
+    closeCardShape(oldBody) !== null && !closeCardShape(oldBody).toggle);
+  check('#255③ picker ctx forwards onTogglePlay（否则回落分支会把暂停静默变成清空）',
+    /onClear, onTogglePlay, onRatingToggle/.test(clientSrc));
 }
 
 console.log('');

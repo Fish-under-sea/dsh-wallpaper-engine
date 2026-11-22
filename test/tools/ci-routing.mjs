@@ -4,7 +4,7 @@
  *
  * ## 守的是什么实害
  * 以前 `.github/workflows/verify.yml` 对**每一次** push / PR 都跑同一套重活：装依赖、静态棘轮、
- * 构建、88 步结构守卫、media-bridge 端到端、冒烟 —— 改一个 README 错别字也要在 Windows +
+ * 构建、结构守卫、media-bridge 端到端、冒烟 —— 改一个 README 错别字也要在 Windows +
  * Ubuntu 两个平台上把整条链走一遍。真正的代价不是慢，而是**排队**：文档改动与代码改动争同一
  * 份 runner，文档作者等的是与自己无关的门。
  *
@@ -16,7 +16,7 @@
  *   · 分类失败时默认走文档 —— 判据一崩，门禁就变成"什么都不做"。
  * 本文件把"哪些改动算纯文档"变成机器事实，且每条判断都 **fail-closed**（不确定 ⇒ full）。
  *
- * ## 三条硬约束（与 `docs/wip/CI-GATE-SIMPLIFICATION-PLAN.md:40` 一致）
+ * ## 三条硬约束（与 `test/verify-ci-steps.mjs` 一致）
  *   ① 文档白名单**小且明确**，不用 `assets/**` 代表文档；
  *   ② `docs/TOKEN-CONTRACT.md`、`docs/ROUTE-INDEX.md` 这类**机器派生契约不豁免**（改了它们
  *      等于改了判据本身，判据自己给自己免检就是假牙）；
@@ -30,8 +30,16 @@
 /** 三种验证路径（CI 的 `ci/result` 只认这三个值）。 */
 export const MODE_DOCS = 'docs';
 export const MODE_DOCS_ASSETS = 'docs-assets';
+export const MODE_NOTICE = 'notice';
 export const MODE_FULL = 'full';
-export const MODES = [MODE_DOCS, MODE_DOCS_ASSETS, MODE_FULL];
+export const MODES = [MODE_DOCS, MODE_DOCS_ASSETS, MODE_NOTICE, MODE_FULL];
+
+/** 公告区块的起止标记（逐字出现在 `src/client.js` 与 `src/i18n/i18n-copy-ext.js` 里）。 */
+export const NOTICE_MARK_BEGIN = 'UPDATE NOTICE COPY（begin）';
+export const NOTICE_MARK_END = 'UPDATE NOTICE COPY（end）';
+
+/** 允许被公告快通道覆盖的文件（**只允许这两个**；多了就是放行了别的代码）。 */
+export const NOTICE_FILES = ['src/client.js', 'src/i18n/i18n-copy-ext.js'];
 
 /** 差异条目超过这个数就直接 full（防"大范围改动被分类成文档"）。 */
 export const DIFF_FLOOR = 300;
@@ -42,7 +50,7 @@ export const DIFF_FLOOR = 300;
  * 三个 README 都要列：它们是同一个对外门面的三个语种/难度版本，漏一个就等于
  * "改那个版本的错别字要跑双平台全链" —— 与漏判同样都是错的判据。
  */
-export const DOC_ROOT_FILES = ['README.md', 'README.en.md', 'README.beginner.md', 'CONTRIBUTING.md'];
+export const DOC_ROOT_FILES = ['README.md', 'README.en.md', 'README.beginner.md', 'CONTRIBUTING.md', 'AGENTS.md'];
 
 /** 文档目录（普通 Markdown；机器派生契约见 `GENERATED_CONTRACTS`）。 */
 export const DOC_DIRS = ['docs/'];
@@ -205,6 +213,13 @@ export function parseRawDiff(raw) {
 export const SYMLINK_MODE = '120000';
 
 /**
+ * 普通 blob 的模式位（二审 F02：快通道只认**明确的普通文件**）。
+ * `000000` 表示该侧不存在（新增条目的 oldMode / 删除条目的 newMode），不算文件类型；
+ * `120000`（符号链接）与 `160000`（gitlink/子模块指针）及任何未知值都不给快通道。
+ */
+export const REGULAR_BLOB_MODES = ['100644', '100755'];
+
+/**
  * 分类本体（纯函数）：变更条目 → `{ mode, reasons, files }`。
  *
  * 顺序即 fail-closed 的顺序：**任何一条不放心就 full**，绝不因为"看起来主要是文档"而放行。
@@ -240,13 +255,50 @@ export function classify(entries) {
   if (links.length) {
     reasons.push('含符号链接（mode ' + SYMLINK_MODE + '）：' + links.slice(0, 5).map((e) => e.path).join(' '));
   }
+  // ④-b gitlink / 未知模式：只有 120000 之外还有一种"名字可伪造"的形态 —— 160000（子模块
+  //     指针）。P08 实证（二审 F02）：`docs/x.md` 若是 gitlink，名字在白名单里、状态是 A、
+  //     又不是符号链接 ⇒ 旧判据把它当普通 Markdown 放进 docs 快通道；而文档审计读不到
+  //     gitlink 内容（read=null 被静默跳过）⇒ **零文件审计也"通过"**。因此快通道只认
+  //     REGULAR_BLOB_MODES；`000000` 只许出现在不存在的一侧（新增的 oldMode / 删除的
+  //     newMode —— 而删除/改名本就被 ③ 判 full）。符号链接已在 ④ 有专属理由，这里不再重复计。
+  //     ⚠️ 前提：本判据只对**带模式位**的条目生效。生产路径不可达空洞——parseRawDiff 的
+  //     正则保证模式位必在、CLI 本地通道有 modeOfFile 兜底——但 classify 是导出纯函数，
+  //     未来的直接调用方必须先经 parseRawDiff / collectDiff 取条目，别手工喂裸对象。
+  const nonBlob = [];
+  for (const e of list) {
+    const bad = [e.newMode, e.oldMode].find((m) => m
+      && m !== '000000' && m !== SYMLINK_MODE && !REGULAR_BLOB_MODES.includes(m));
+    if (bad) nonBlob.push(e.path + '（' + bad + '）');
+  }
+  if (nonBlob.length) {
+    reasons.push('含非普通文件模式（gitlink/子模块或未知类型，快通道只认 ' + REGULAR_BLOB_MODES.join('/') + '）：'
+      + nonBlob.slice(0, 5).join(' '));
+  }
   // ⑤ 机器派生契约：判据给自己免检就是假牙。
   const contracts = list.filter((e) => isGeneratedContract(e.path));
   if (contracts.length) reasons.push('改动机器派生契约（判据的事实来源）：' + contracts.map((e) => e.path).join(' '));
   // ⑥ 包清单 / 锁文件 / CI 接线：改了它们就改变了"门禁跑什么"这件事本身。
   const pinned = list.filter((e) => isPinnedPath(e.path));
   if (pinned.length) reasons.push('改动包清单 / 锁文件 / CI 接线：' + pinned.slice(0, 5).map((e) => e.path).join(' '));
-  // ⑦ 白名单外的一切。
+  // ⑦ 公告快通道的**候选**：改动文件全都落在 NOTICE_FILES 里（至少一个）。
+  // ⚠️ 这条必须在"白名单外"之前判：那两个文件本来就不在文档白名单里，先落到 ⑦ 就永远
+  // 走不到这里。同时它只判"候选"，**不判内容** —— 分类层拿不到文件内容（纯函数、不读盘）。
+  // 真正的放行由 `notice` 作业调 `judgeNoticeEdit()` 做内容级判定；内容不通过 ⇒ 该作业
+  // 退出码 1 ⇒ `ci/result` 不放行。
+  // ⚠️ **允许只改一个**：改中文正文时英文译文常常原样可用（措辞/数字微调）。漏译由
+  // `judgeNoticeEdit` 的译文覆盖检查抓（它读当前词表族，不需要那个文件也被改）。
+  const noticeSet = new Set(NOTICE_FILES);
+  const isPureNoticeSet = list.length > 0 && list.every((e) => noticeSet.has(norm(e.path)));
+  if (isPureNoticeSet && !reasons.length) {
+    return {
+      mode: MODE_NOTICE,
+      reasons: ['改动全部落在公告快通道登记的文件（' + NOTICE_FILES.join(' / ') + '）⇒ 交 notice 作业做**内容级**判定'
+        + '（区块外逐字节一致 · 区块内代码骨架一致 · 区块内译文覆盖完整；结构一变即判红）'],
+      files,
+    };
+  }
+
+  // ⑧ 白名单外的一切。
   const outside = list.filter((e) => !isDocFile(e.path) && !isDocAsset(e.path));
   if (outside.length) {
     const shown = outside.slice(0, 8).map((e) => e.path).join(' ');
@@ -319,10 +371,11 @@ export function dirOf(p) {
   return at < 0 ? '' : path.slice(0, at);
 }
 
-/** 每条路径**必须真跑过并成功**的作业（`changes` 是分类本身，三条路径都要它）。 */
+/** 每条路径**必须真跑过并成功**的作业（`changes` 是分类本身，四条路径都要它）。 */
 export const REQUIRED_JOBS = {
   [MODE_DOCS]: ['changes', 'docs'],
   [MODE_DOCS_ASSETS]: ['changes', 'docs'],
+  [MODE_NOTICE]: ['changes', 'notice'],
   [MODE_FULL]: ['changes', 'full'],
 };
 
@@ -330,6 +383,7 @@ export const REQUIRED_JOBS = {
 const JOB_LABEL = {
   changes: '变更分类（changes）',
   docs: '文档快通道（docs）',
+  notice: '公告快通道（notice）',
   full: '完整验证（full）',
 };
 
@@ -407,9 +461,19 @@ export function auditDocs(input) {
     if (!path) continue;
     // 图片类素材：只查存在与大小（下面的素材段落），文本检查一律不做。
     if (isImageAsset(path)) continue;
-    // 只查**还在盘上**的那一侧：删除件由分类层判 full，这里没有可读内容 ⇒ 不重复判。
+    // 只查**还在盘上**的那一侧：删除件（D）由分类层判 full，这里没有可读内容 ⇒ 不重复判。
+    // 但**新增/修改**（A/M）读不到内容不能静默当作"审计完成" —— P08 实证（二审 F02）：
+    // gitlink 冒充 Markdown 时 read=null，旧逻辑零文件审计也报通过（fail-open）。分类层
+    // 已把 gitlink/未知模式判 full（④-b），这里兜住其余"该在盘上却读不到"的情形：显式
+    // 记一条发现，让快通道红出来，而不是让 counts.files 停在 0 假装干净。
     const text = read(path);
-    if (text == null) continue;
+    if (text == null) {
+      const status = String(entry && entry.status || '').toUpperCase();
+      if (status === 'A' || status === 'M') {
+        push(path, 'unreadable', '白名单文档有 A/M 改动但读不到内容（gitlink / 不在盘上 / 权限）——拒绝静默放行');
+      }
+      continue;
+    }
     if (textKind(path, text) === 'binary') { counts.binarySkipped += 1; continue; }
     counts.files += 1;
     const isMd = /\.md$/i.test(path);
@@ -454,4 +518,281 @@ export function auditDocs(input) {
   }
 
   return { findings, counts, assetMode };
+}
+
+// ══ ④ 公告快通道（notice）：只改公告文案的提交绕过全量链 ══════════════════════
+//
+// ## 守的是什么实害（以及为什么这条捷径比文档通道更危险）
+// 更新公告是**每版必改**的一小块文案，改一句错别字也要跑双平台全链（装依赖 / 构建 /
+// 全量守卫 / 媒体桥 / 冒烟）。但公告住在 `src/client.js`（整份浏览器半边）与
+// `src/i18n/i18n-copy-ext.js`（词表域）里 —— **按文件名放行等于让整份客户端免检**。
+// 因此这条通道**不认文件名**，只认**内容级事实**：
+//   ① 两个文件里被 `UPDATE NOTICE COPY` 标记圈出的区块**之外**，逐字节完全一致；
+//   ② 区块**之内**，把字符串字面量的内容挖空、注释剥掉后得到的「代码骨架」逐字节一致。
+// 也就是说：只允许"改引号里的字"。增删一个键、改一个 props、加一个分支都会让骨架变
+// ⇒ 回落 `full`。结构变更永远拿不到豁免。
+//
+// ## 为什么骨架挖空字符串内容而不只剥注释
+// 公告的可变面**就是**字符串内容（标题 / 每条正文 / 英文译文）。只剥注释的话，改一个字
+// 都判红，通道没用；连字符串一起保留又等于不判。挖空内容却保留**引号/逗号/括号/键位**
+// 恰好是"只有值可变、形状不可变"的机器表达 —— 增删一条键会改变引号与逗号的位置。
+//
+// ## fail-closed
+// 标记缺失 / 重复 / 顺序颠倒、区块外任何字节差异、骨架任何差异、旧版本读不到 —— 一律 full。
+
+/**
+ * 从一份源码里切出公告区块：`{ before, block, after }`，标记行本身**计入区块**
+ * （标记行的增删同样属于"形状"变化）。找不到 / 重复 / 顺序颠倒 ⇒ `null`（调用方 fail-closed）。
+ * @param {string} src
+ * @returns {{before:string, block:string, after:string}|null}
+ */
+export function sliceNoticeBlock(src) {
+  const text = String(src == null ? '' : src);
+  const b = text.indexOf(NOTICE_MARK_BEGIN);
+  if (b < 0) return null;
+  if (text.indexOf(NOTICE_MARK_BEGIN, b + NOTICE_MARK_BEGIN.length) >= 0) return null;
+  const e = text.indexOf(NOTICE_MARK_END, b);
+  if (e < 0) return null;
+  if (text.indexOf(NOTICE_MARK_END, e + NOTICE_MARK_END.length) >= 0) return null;
+  // 区块从 begin 标记**所在行的行首**开始，到 end 标记**所在行的行尾**结束 ——
+  // 这样区块外不会残留半行注释（否则改标记行的缩进会被算成"区块外改动"）。
+  const lineStart = text.lastIndexOf('\n', b) + 1;
+  const endLineBreak = text.indexOf('\n', e);
+  const blockEnd = endLineBreak < 0 ? text.length : endLineBreak + 1;
+  return { before: text.slice(0, lineStart), block: text.slice(lineStart, blockEnd), after: text.slice(blockEnd) };
+}
+
+/**
+ * 把一段 JS 源码化成「骨架」：注释换空格、**字符串/模板字面量的内容换空格**
+ * （引号保留、换行保留 ⇒ 行号与行数不变）。
+ *
+ * 与 `test/tools/js-text.mjs` 的 `stripComments` / `blankStringLiterals` 同一套字符扫描
+ * 语义（字符串感知：`https://x` 里的 `//`、正则里的 `[/*]` 都不当注释）。本文件保持零依赖，
+ * 故就地实现；两条实现对同一批输入的逐字节一致性由 `test/verify-notice-routing.mjs` 的自检钉住。
+ *
+ * ⚠️ 模板字面量的 `${…}` 里是**代码**不是文案：挖空整段会把"插值被改掉"也放过 ⇒
+ * 只挖空静态段，`${…}` 原样保留（其内容不递归求骨架，但那是**更严**的方向：改了插值就判红）。
+ *
+ * @param {string} src
+ * @returns {string}
+ */
+export function noticeSkeleton(src) {
+  const text = String(src == null ? '' : src);
+  const n = text.length;
+  const out = [];
+  let i = 0;
+  let prev = '';
+  const isValueEnd = (ch) => ch !== '' && /[\w$)\]}'"`]/.test(ch);
+  const blank = (ch) => out.push(ch === '\n' ? '\n' : ' ');
+  const blankKeepStructure = (s) => s.replace(/[^\n]/g, ' ');
+  while (i < n) {
+    const c = text[i];
+    const c2 = text[i + 1];
+    if (c === '/' && c2 === '/') {                       // 行注释
+      while (i < n && text[i] !== '\n') { blank(text[i]); i += 1; }
+      continue;
+    }
+    if (c === '/' && c2 === '*') {                       // 块注释
+      blank(c); blank(c2); i += 2;
+      while (i < n && !(text[i] === '*' && text[i + 1] === '/')) { blank(text[i]); i += 1; }
+      if (i < n) { blank(text[i]); blank(text[i + 1]); i += 2; }
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') {           // 字符串 / 模板
+      const quote = c;
+      let j = i + 1;
+      let closed = false;
+      while (j < n) {
+        const d = text[j];
+        if (d === '\\') { j += 2; continue; }
+        j += 1;
+        if (d === quote) { closed = true; break; }
+      }
+      const end = Math.min(j, n);
+      const inner = text.slice(i + 1, closed ? end - 1 : end);
+      out.push(quote);
+      if (quote === '`' && /\$\{/.test(inner)) {
+        // 模板只挖静态段：`${…}`（含嵌套花括号）原样保留。
+        let k = 0;
+        let seg = '';
+        const flush = () => { if (seg) { out.push(blankKeepStructure(seg)); seg = ''; } };
+        while (k < inner.length) {
+          if (inner[k] === '$' && inner[k + 1] === '{') {
+            flush();
+            let depth = 1;
+            let m = k + 2;
+            while (m < inner.length && depth > 0) {
+              if (inner[m] === '{') depth += 1;
+              else if (inner[m] === '}') depth -= 1;
+              m += 1;
+            }
+            out.push(inner.slice(k, m));
+            k = m;
+            continue;
+          }
+          seg += inner[k];
+          k += 1;
+        }
+        flush();
+      } else {
+        out.push(blankKeepStructure(inner));
+      }
+      if (closed) out.push(quote);
+      prev = quote;
+      i = end;
+      continue;
+    }
+    if (c === '/' && !isValueEnd(prev)) {                // 正则字面量：整段原样保留
+      let j = i + 1;
+      let inClass = false;
+      let closed = false;
+      while (j < n) {
+        const d = text[j];
+        if (d === '\\') { j += 2; continue; }
+        if (d === '\n') break;
+        if (d === '[') inClass = true;
+        else if (d === ']') inClass = false;
+        else if (d === '/' && !inClass) { j += 1; closed = true; break; }
+        j += 1;
+      }
+      out.push(text.slice(i, Math.min(j, n)));
+      prev = closed ? '/' : c;
+      i = Math.min(j, n);
+      continue;
+    }
+    out.push(c);
+    if (!/[\s]/.test(c)) prev = c;
+    i += 1;
+  }
+  return out.join('');
+}
+
+/** 首个差异的位置与两侧上下文（日志可读；不做完整 diff）。 */
+function firstDiff(a, b) {
+  const x = String(a == null ? '' : a);
+  const y = String(b == null ? '' : b);
+  const n = Math.min(x.length, y.length);
+  let i = 0;
+  while (i < n && x[i] === y[i]) i += 1;
+  const line = x.slice(0, i).split('\n').length;
+  const col = i - (x.lastIndexOf('\n', i) + 1) + 1;
+  const ctx = (s) => JSON.stringify(s.slice(Math.max(0, i - 30), i + 50));
+  return '首个差异在第 ' + line + ' 行第 ' + col + ' 列；旧=' + ctx(x) + ' 新=' + ctx(y);
+}
+
+/**
+ * 公告快通道判定（纯函数）：内容快照 + 改动文件集 → `{ ok, reasons }`。
+ *
+ * `before` / `after` 是 `{ [relPath]: content|null }` —— **两个文件的快照都要给**
+ * （`null` = 该侧读不到），因为译文覆盖检查需要读**未改动**那一侧的当前内容。
+ * `changed` 是本次**真正改动**的路径列表（缺省取 `after` 的键，便于负对照直喂）。
+ * `dictionary` 是整个**词表族**的拼接文本（可选；缺省用 `after[i18n-copy-ext.js]`）。
+ * 传全族的理由：公告里的「知道了」等词条住在别的域文件（`i18n-copy-core.js`），
+ * 只查单文件会误判成漏译。
+ *
+ * 放行条件：改动文件 ⊆ `NOTICE_FILES`；每个改动文件的公告区块外逐字节一致、区块内骨架一致；
+ * 且公告区块里每个 `weT("原文")` 在词表里有对应键。
+ * 失败时的 `reasons` 直接进 CI 日志，说明**为什么回落 full**。
+ *
+ * @param {{before?: Record<string,string|null>, after?: Record<string,string|null>,
+ *   changed?: string[], dictionary?: string}} input
+ * @returns {{ok:boolean, reasons:string[]}}
+ */
+export function judgeNoticeEdit(input) {
+  const src = input || {};
+  const before = src.before || {};
+  const after = src.after || {};
+  const changed = (Array.isArray(src.changed) ? src.changed : Object.keys(after)).map((p) => norm(p));
+  const reasons = [];
+  const fail = (r) => ({ ok: false, reasons: reasons.concat([r]) });
+
+  if (!changed.length) return fail('公告快通道：差异为空');
+  const extra = changed.filter((p) => !NOTICE_FILES.includes(p));
+  if (extra.length) {
+    return fail('公告快通道只覆盖 ' + NOTICE_FILES.join(' / ') + '，本次还改了：'
+      + extra.slice(0, 5).join(' ') + (extra.length > 5 ? ' …共 ' + extra.length : ''));
+  }
+  // ⚠️ **允许只改一个文件**：改中文正文时英文译文常常原样可用（措辞微调、改个数字），
+  // 强制两个文件同改只会逼人为凑数去改译文。但"只改中文、英文漏了"仍是真缺陷，
+  // 所以下面 ③ 单独核一次**公告区块内**的译文覆盖（只查这一段，不跑整条 i18n 守卫）。
+  for (const rel of changed) {
+    const b = before[rel];
+    const a = after[rel];
+    if (a == null) return fail('公告快通道：' + rel + ' 新版读不到（删除 / 读失败）');
+    if (b == null) return fail('公告快通道：' + rel + ' 旧版读不到（新增文件 / 读失败）');
+    const sb = sliceNoticeBlock(b);
+    const sa = sliceNoticeBlock(a);
+    if (!sb) return fail(rel + ' 旧版缺少唯一的公告区块标记（' + NOTICE_MARK_BEGIN + ' / ' + NOTICE_MARK_END + '）');
+    if (!sa) return fail(rel + ' 新版缺少唯一的公告区块标记（' + NOTICE_MARK_BEGIN + ' / ' + NOTICE_MARK_END + '）');
+    // ① 区块外逐字节一致 —— 整条捷径的安全性全在这两行。
+    if (sb.before !== sa.before) {
+      return fail(rel + ' 公告区块**之前**的内容有改动（这已不是"只改公告文案"）：' + firstDiff(sb.before, sa.before));
+    }
+    if (sb.after !== sa.after) {
+      return fail(rel + ' 公告区块**之后**的内容有改动（这已不是"只改公告文案"）：' + firstDiff(sb.after, sa.after));
+    }
+    // ② 区块内骨架一致：只许改引号里的字。
+    const kb = noticeSkeleton(sb.block);
+    const ka = noticeSkeleton(sa.block);
+    if (kb !== ka) {
+      return fail(rel + ' 公告区块内的**代码骨架**有改动（增删条目 / 改 props / 加分支不走这条捷径）：'
+        + firstDiff(kb, ka));
+    }
+  }
+  // ③ 公告区块内的**译文覆盖**：区块里每个 `weT("原文")` 都必须能在那份词表里找到键。
+  //    只核这一段 —— 不动整条 i18n 守卫（它管全仓 700+ 条，那是 full 链的事）。
+  //    读的是**当前**内容（未改的那个文件也读），所以"只改中文、漏译文"照样能被抓到。
+  //
+  //    ⚠️ 两个范围限制，都有实测理由：
+  //      · 查**整份词表文件**而不是只查它的公告区块 —— 配图 caption / 求星入口这几条的
+  //        词条**故意住在公告区块外**（它们不随公告换血，是稳定面）；
+  //      · 「知道了」的词条住在**另一个域文件**（`src/i18n/i18n-copy-core.js`）⇒ 调用方必须把
+  //        整个词表族的内容拼起来传进来（`scripts/ci-routing.mjs` 那边按 DICT_FAMILY 拼）。
+  //        只传 `i18n-copy-ext.js` 会把它误判成漏译（实测：1 条假红）。
+  const clientText = after[NOTICE_FILES[0]];
+  const dictText = after[NOTICE_FILES[1]];
+  if (clientText == null || dictText == null) {
+    return fail('公告快通道：两个文件的当前内容都要可读（client=' + (clientText == null ? '缺失' : 'ok')
+      + ' dict=' + (dictText == null ? '缺失' : 'ok') + '）—— 译文覆盖检查需要两份');
+  }
+  const clientBlock = sliceNoticeBlock(clientText).block;
+  const missing = noticeKeysWithoutTranslation(clientBlock, src.dictionary == null ? dictText : String(src.dictionary));
+  if (missing.length) {
+    return fail('公告区块里有 ' + missing.length + ' 句缺少英文词条（漏译 ⇒ 英文界面会原样露中文）：'
+      + missing.slice(0, 4).map((k) => JSON.stringify(k.slice(0, 28))).join(' ')
+      + (missing.length > 4 ? ' …' : ''));
+  }
+  reasons.push(changed.length === NOTICE_FILES.length ? '两个文件的' : '单个文件的'
+    + '公告区块外逐字节一致 · 区块内代码骨架一致 · 区块内译文覆盖完整 ⇒ 只改了公告文案');
+  return { ok: true, reasons };
+}
+
+/**
+ * 公告区块内的**译文覆盖**：抽 `weT("原文")` 的字面量，逐个查词表区块里有没有键。
+ *
+ * 只做"有没有这条键"，不判译文质量/占位符 —— 那些是 `test/verify-i18n.mjs` 的职责，
+ * 在这条**绕过全链**的捷径上重复实现一遍只会多一份会漂的判据。
+ * 不含 CJK 的键（如 `⭐ 去 GitHub 点亮 Star` 这类纯符号/英文混排）同样要求有词条：
+ * 词表双向对账在 full 链上不分语种，这里保持同一口径（少一条就判红）。
+ *
+ * @param {string} clientBlock `src/client.js` 的公告区块原文
+ * @param {string} dictBlock   `src/i18n/i18n-copy-ext.js` 的公告区块原文
+ * @returns {string[]} 缺词条的原文
+ */
+export function noticeKeysWithoutTranslation(clientBlock, dictBlock) {
+  const keys = [];
+  const re = /\bweT\("((?:[^"\\]|\\.)*)"/g;
+  let m;
+  while ((m = re.exec(String(clientBlock == null ? '' : clientBlock))) !== null) {
+    // 转义还原（`\"` / `\\`），与 JS 字面量语义一致。
+    let key = m[1];
+    try { key = JSON.parse('"' + key + '"'); } catch { /* 保持原样 */ }
+    if (key && !keys.includes(key)) keys.push(key);
+  }
+  const dict = String(dictBlock == null ? '' : dictBlock);
+  const has = (key) => {
+    const esc = key.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    return dict.includes('"' + esc + '":') || dict.includes('"' + esc + '" :');
+  };
+  return keys.filter((k) => !has(k));
 }

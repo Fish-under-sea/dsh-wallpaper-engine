@@ -442,6 +442,8 @@ export function createMediaBridge({ dataDir, cacheBaseDir = join(dataDir, 'cache
       else setAudio('off', '已在设置中关闭「系统音频反应」');
       pollNowPlaying();
       npTimer = setInterval(pollNowPlaying, 1000);
+      // #241：宿主优雅退出不等插件 unload ⇒ 定时器必须 unref，否则事件循环永远撑住、更新回滚。
+      try { npTimer.unref?.(); } catch { /* ignore */ }
     },
     stop() {
       stopped = true;

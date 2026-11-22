@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-wallpaper-engine-fonts",
-  "version": "1.3.3",
-  "description": "Font system for the DSH wallpaper engine: the appearance tab's font section and the font-set editor (browser half, packages/fonts/lib/client.fonts.js) plus the host routes /fontsets and /system-fonts. Config keys and state stay in the main bundle (ADR-0013 D20); the only cross-package channel is the main bundle's explicit host bridge（浏览器半边契约见 ADR-0014 S3.8/S3.9 与 .integration-notes/p-c-contract.md）.",
+  "version": "1.4.3",
+  "description": "Font system for the DSH wallpaper engine: the appearance tab's font section and the font-set editor (browser half, packages/fonts/lib/client.fonts.js) plus the host routes /fontsets and /system-fonts. Config keys and state stay in the main bundle (ADR-0013 D20); the only cross-package channel is the main bundle's explicit host bridge（浏览器半边契约见 ADR-0014 S3.8/S3.9）.",
   "icon": "./icon.png",
   "type": "module",
   "main": "./lib/index.js",
@@ -17,7 +17,7 @@
       "patch": "./cordis.patch.yml"
     },
     "client": {
-      "inject": ["@deepseek-ai/dsh-client-runtime"],
+      "inject": ["@deepseek-ai/dsh-client-runtime", "dsh-plugin-wallpaper-engine"],
       "platform": "web",
       "immediately": true
     }

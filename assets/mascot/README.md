@@ -2,13 +2,15 @@
 
 本目录归档**「聊天吉祥物」/ 拉绳功能**的原始美术素材。它们是**源资产**，不是运行时载荷：
 
-- 运行时用的是 10 张立绘的 base64 派生版本：**载荷字节住
-  [`../rope/`](../rope/README.md)**（`assets/rope/<名>.png`），由
-  [`scripts/build-client.mjs`](../../scripts/build-client.mjs) 在构建期注入 `lib/client.js`。
-  `src/client.js` 里只剩声明与 `__ROPE_ART_<NAME>__` 占位符（见 `ROPE_IMG_<NAME>` 常量及其注释）。
-  ⚠️ 2026-10-13 之前这些字节是**内联在 `src/client.js`** 的 10 条巨型常量；本 README 下文凡提到
-  「转 base64 内联 / 替换对应常量」的步骤，载荷落点一律改读 [`../rope/README.md`](../rope/README.md)：
-  写 `<名>.png` 到 `assets/rope/`，源码只留占位符，`npm run build` 负责拼回。
+- 运行时用的是 10 张立绘的派生版本：**载荷字节住
+  [`../rope/`](../rope/README.md)**（`assets/rope/<名>.png`，随 npm 包发布），由宿主只读路由
+  `/wallpaper-engine/rope-art/<名>.png` 按需直出；`src/client.js` 里只有
+  `const ROPE_IMG_<NAME> = BASE + "/rope-art/<名>.png";` 声明（见常量注释）。
+  ⚠️ 2026-10-30 起不再在构建期把字节拼进 `lib/client.js`（启动性能：那 2.37MB 曾占主产物
+  56%）；`scripts/build-client.mjs` 的 `checkRopeArtDeclarations()` 只对账「声明 ↔ 文件」。
+  2026-10-13 之前这些字节甚至是**内联在 `src/client.js`** 的 10 条巨型常量；本 README 下文凡提到
+  「转 base64 内联 / 替换对应常量」的步骤，载荷落点一律改读
+  [`../rope/README.md`](../rope/README.md)：写 `<名>.png` 到 `assets/rope/`，源码写 URL 声明。
 - 因此本目录**不进 npm 包**（不在 `package.json` 的 `files` 白名单内），只随仓库源码分发。
 - 原本散落在**仓库根目录**（三个 `ChatGPT Image …png` + 一个 hash 名 `.svg`），P0-2 归入此处并
   改成可读名。`git mv` 完成，历史可追。
@@ -104,7 +106,7 @@
 | `src/client.js` | 删掉内联常量 `ROPE_IMG`（113,771 B / 256×283 / base64 151,696 chars）与 `ROPE_FORMS.maid` 条目；`ropeArtOf` 的兜底改为 `ROPE_FORMS.deepseek` |
 | `lib/glass-presets/factory-author.json` | `assets.mascot` = **对象**（`file: mascot-maidart001.png`、`box: 52x57`、`data: <那张 256×283 的 base64>`）⇒ 立绘随预设走，出厂列表里不再有它 |
 | 其余五套预设 | `assets.mascot` / `values.ropeForm` 一律 → `"deepseek"`（`purple-mood` 仍携带自定义图片、指向 `phoebe`） |
-| `src/i18n-copy.js` | 删掉「小女仆」词条（`maid` 除名后成孤儿） |
+| `src/i18n/i18n-copy.js` | 删掉「小女仆」词条（`maid` 除名后成孤儿） |
 
 > 老配置里存着 `ropeForm: "maid"` 的机器会被 sanitize **折成新默认 `deepseek`**（不是崩、也不是留空）；
 > 这条被 `test/fixtures/settings-sanitize-golden.json` 的 `defaults-echo` 用例钉住。

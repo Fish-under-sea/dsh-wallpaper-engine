@@ -14,7 +14,7 @@
  *        · `assertSubpackagesResolvable(rows, resolve)` → 全部可解析时正常返回；**任一失败必须抛 Error**，
  *          消息里逐条带上失败的 `name` 与行 `id`
  *      且 `lib/index.js` 的 `apply` 体里必须**调用**它（文本兜底）。
- *   ②b **宿主腿**（2026-10-16 三行 `failed to import` 的加固）：还必须导出
+ *   ②b **宿主腿**（三行 `failed to import` 的加固）：还必须导出
  *       `assertSubpackagesResolvableInHost(rows, { mainName, env, resolveInRoot })` —— 仓库腿的解析根是
  *       **本仓** `node_modules`，而宿主按裸包名从 `<profile>/cordis.yml` 旁解析（§8.1 spike）⇒
  *       少了这条腿时"仓库里在、profile 侧缺链接"恒过。本判据钉四件事：
@@ -203,7 +203,9 @@ check('负对照：合成 apply 体（无自检调用）⇒ 接线判据判红',
 // ── ④ 服务面真接线（§5.1 ①）：apply() 的**第一件事**必须是 provide ────────────────
 // 只查"调了没有"不够：顺序错（自检在前、服务在后）时子包 fiber 已经因缺服务 park，
 // 服务的撤销语义也就没人验。所以同时钉住"先 provide，再启动自检"。
-const facadeProvideRe = /provideSubpackageHost\s*\(\s*ctx\s*\)/;
+// S5c 刀2：`provide` 现在带第二个实参（`{ applyView: () => applyView }` 惰性面）⇒ 判据只钉
+// **第一个实参必须是 `ctx`**（`ctx\b`），不要求右括号紧跟。偏宽的代价由下面的 neg 控制覆盖。
+const facadeProvideRe = /provideSubpackageHost\s*\(\s*ctx\b/;
 const facadeAssertRe = /assertSubpackagesResolvable\s*\(/;
 const facadeProvideImported = /import\s*\{[^}]*\bprovideSubpackageHost\b[^}]*\}\s*from\s*['"]\.\/subpackage-boot\.js['"]/.test(stripComments(facadeSrc));
 check('lib/index.js 的 apply 体里调用了 provideSubpackageHost(ctx)（服务面真接线，import 自 ./subpackage-boot.js）',
@@ -222,6 +224,14 @@ const synthBody3 = functionBodyOf(stripComments('export function apply(ctx) { as
 check('负对照：合成 apply 体（自检在前、provide 在后 = 顺序错）⇒ 第一步判据判红',
   synthBody3 !== null && !(synthBody3.search(facadeProvideRe) < synthBody3.search(facadeAssertRe)),
   '合成体=' + JSON.stringify(synthBody3));
+// 负对照：把 ctx 换成别的绑定（服务挂到错的宿主对象上）⇒ 放宽后的正则仍必须判红
+const synthWrongArgBody = functionBodyOf(stripComments('export function apply(ctx) { provideSubpackageHost(other); return () => {}; }\n'), APPLY_HEADER);
+check('负对照：合成 apply 体（provide 的第一个实参不是 ctx）⇒ 服务面接线判据判红',
+  !(synthWrongArgBody !== null && facadeProvideRe.test(synthWrongArgBody)), '合成体=' + JSON.stringify(synthWrongArgBody));
+// 负对照：只写了个同名前缀的调用（`provideSubpackageHostX(ctx)`）不能冒充接线
+const synthPrefixBody = functionBodyOf(stripComments('export function apply(ctx) { provideSubpackageHostX(ctx); return () => {}; }\n'), APPLY_HEADER);
+check('负对照：合成 apply 体（调用名是 provideSubpackageHostX）⇒ 服务面接线判据判红',
+  !(synthPrefixBody !== null && facadeProvideRe.test(synthPrefixBody)), '合成体=' + JSON.stringify(synthPrefixBody));
 
 
 // ── ④b 跨包服务面契约（§5.1 ①；纯函数，真模块 / 合成体 / 真源码变异体同一判据）─────────
@@ -229,9 +239,23 @@ check('负对照：合成 apply 体（自检在前、provide 在后 = 顺序错�
 // provide 的**两条腿**（真宿主走 ctx.provide ⇒ 服务随主包 fiber 撤销、子包 inject 级联；
 // 直调夹具没有 provide ⇒ 退回挂同名属性）。少哪条都是静默失效，必须逐条判红。
 const HOST_SERVICE_LITERAL = 'wallpaperEngineHost';
-const HOST_KEYS = ['ids', 'keyNames', 'keys', 'handOff', 'schema', 'http'];
-const SCHEMA_KEYS = ['isFontSetId', 'sanitizeFontset', 'FONTSET_MIGRATED_ID', 'FONTSET_SCHEMA_TAG', 'systemFontKeyOf'];
-// P-F：`http` 面多了一个纯符号 —— 组件（media-bridge）读体的字节上限常量 `CONTROL_JSON_MAX_BYTES`
+const HOST_KEYS = ['ids', 'keyNames', 'keys', 'handOff', 'schema', 'http', 'apply'];
+// S5c 刀2：`apply` = per-apply 实例面（服务面第七键，设计稿 §4.2「APPLY_VIEW」），**只住运行期实例**。
+// 键集是主包 9 族路由真实消费面的并集（父门面构造点 `lib/index.js` 的 `applyView = Object.freeze(…)`
+// 必须与此逐字相同）；惰性访问器在 `createHostSession()` 之前返回 null（R-1 顺序：provide 先于会话）。
+const APPLY_KEYS = ['buildInventory', 'componentsProbe', 'faststartVariant', 'handleSceneFiles', 'mediaMap',
+  'mediaOriginApi', 'mediaOriginInfo', 'payloadProgress', 'pinnedFaststartVariant', 'SCENE_VIDEO_INFLIGHT',
+  'serveFile', 'serveLayout', 'tokenFor', 'trackStream', 'transcodeCached'];
+// S5c 刀2：纯符号视图扩到 11 键 —— 除 settings-schema 的 5 个 fontset 符号外，加 `clampNum`
+// （media-derived 抽帧钳制）、we-props 的 3 个（props 族解析用户属性）与 scene-manifest 的 2 个
+// （scene-media 提取内嵌媒资）。叶子本身留主包（主包内核仍 import 它们，见设计稿 §4.6 落地修正）。
+const SCHEMA_KEYS = ['isFontSetId', 'sanitizeFontset', 'FONTSET_MIGRATED_ID', 'FONTSET_SCHEMA_TAG',
+  'systemFontKeyOf', 'clampNum', 'parseUserPropDefs', 'entryDirPrefix', 'filterKnownOverrides',
+  'extractSceneVideoFromDir', 'extractSceneVideoFromPkgFile',
+  // S5d 刀3：遮挡 hub 随包出户，平台适配器/会话判定留主包（x11 只是取数适配器，不是省电判据
+  // 本身）⇒ 两个纯符号经这个视图注入。缺任一键 = hub 构造期无法拿到平台能力（大声抛）。
+  'isX11CandidateEnv', 'createX11Adapter'];
+// P-F：`http` 面多了一个纯符号 —— 组件（wallpaper；P-D 阶段1 前名 media-bridge）读体的字节上限常量 `CONTROL_JSON_MAX_BYTES`
 // 不能静态 import 主包模块（§5.2 禁"直接 import 另一个包的模块级导出"）⇒ 同样从服务面取。
 const HTTP_KEYS = ['sendJson', 'bodyReader', 'CONTROL_JSON_MAX_BYTES'];
 const notSameSet = (a, b) => JSON.stringify([...a].sort()) !== JSON.stringify([...b].sort());
@@ -250,6 +274,17 @@ function serviceViolations(mod2, expectName) {
   for (const k of HOST_KEYS) {
     if (!Object.prototype.hasOwnProperty.call(host, k)) continue;
     if (k === 'schema' || k === 'http') { if (host[k] === null || typeof host[k] !== 'object') bad.push('host.' + k + ' 不是对象：' + typeof host[k]); continue; }
+    if (k === 'apply') {
+      // 惰性面：`createSubpackageHost()`（不带 options）读到的就是 null —— 那表示「本宿主还没进过
+      // apply 会话」。非 null 时必须是**冻结的对象**（子包能往里塞实例 = token 域可被污染）。
+      const view = host[k];
+      if (view !== null) {
+        if (typeof view !== 'object') bad.push('host.apply 既不是 null 也不是对象：' + typeof view);
+        else if (!Object.isFrozen(view)) bad.push('host.apply 没有冻结（子包能改 per-apply 实例面）');
+        else if (notSameSet(Object.keys(view), APPLY_KEYS)) bad.push('host.apply 键集 ' + JSON.stringify([...Object.keys(view)].sort()) + ' ≠ ' + JSON.stringify([...APPLY_KEYS].sort()));
+      }
+      continue;
+    }
     if (typeof host[k] !== 'function') bad.push('host.' + k + ' 不是函数：' + typeof host[k]);
   }
   const schemaKeys = (host.schema && typeof host.schema === 'object') ? Object.keys(host.schema) : [];
@@ -290,8 +325,13 @@ const synthHost = (over) => {
       schema: Object.freeze({
         isFontSetId: () => false, sanitizeFontset: (v) => v,
         FONTSET_MIGRATED_ID: 'migrated', FONTSET_SCHEMA_TAG: 'tag', systemFontKeyOf: () => 'k',
+        clampNum: (v) => v,
+        parseUserPropDefs: () => [], entryDirPrefix: () => '', filterKnownOverrides: () => ({}),
+        extractSceneVideoFromDir: () => null, extractSceneVideoFromPkgFile: () => null,
+        isX11CandidateEnv: () => false, createX11Adapter: () => ({ poll: async () => null, start: async () => {}, stop: () => {}, onChange: () => {} }),
       }),
       http: Object.freeze({ sendJson: () => true, bodyReader: () => ({}) }),
+      get apply() { return Object.freeze(Object.fromEntries(APPLY_KEYS.map((k) => [k, { key: k }]))); },
     }),
     provideSubpackageHost: (ctx) => {
       const value = base.createSubpackageHost();
@@ -307,7 +347,7 @@ const synthHost = (over) => {
 const baseHostMod = synthHost();
 const baseHostValue = baseHostMod.createSubpackageHost();
 
-check('跨包服务面契约（HOST_SERVICE_NAME 字面量 / 6 键冻结 / schema 5 键 / http 3 键 / provide 真宿主+夹具两腿）',
+check('跨包服务面契约（HOST_SERVICE_NAME 字面量 / 7 键冻结 / schema 13 键 / http 3 键 / apply 惰性 15 键 / provide 真宿主+夹具两腿）',
   mod ? serviceViolations(mod, HOST_SERVICE_LITERAL).length === 0 : false,
   mod ? JSON.stringify(serviceViolations(mod, HOST_SERVICE_LITERAL)) : '契约模块没有加载成功');
 // P-F：组件行出户后，组件宿主半边**也只**能从这个服务面取键（零主包说明符）⇒ 把每个已登记 id 的
@@ -344,12 +384,15 @@ if (mod && typeof mod.subpackageIds === 'function' && typeof mod.subpackageKeys 
     const names = mod.subpackageKeyNames(id);
     if (!Array.isArray(names) || names.length === 0) { componentKeyIssues.push(id + ' 的声明面为空'); continue; }
     let view;
-    try { view = mod.subpackageKeys(id, null); } catch (e) { componentKeyIssues.push(id + ' 取键抛错：' + e.message); continue; }
+    // S5c 刀2：`apply:` 源型经 `ctx[HOST_SERVICE_NAME].apply` 取 per-apply 实例面 ⇒ 这里必须给一份
+    // **带服务的 ctx**（真宿主里由 cordis 的 provide 注入；直调夹具挂同名属性）。其余源型不吃 ctx。
+    const synthCtx = { [HOST_SERVICE_LITERAL]: baseHostValue };
+    try { view = mod.subpackageKeys(id, synthCtx); } catch (e) { componentKeyIssues.push(id + ' 取键抛错：' + e.message); continue; }
     for (const k of names) if (view[k] === undefined) componentKeyIssues.push(id + '.' + k + ' 取到 undefined（声明面与取值面不一致）');
   }
 }
 check('每个已登记 id（含出户的组件行）都能通过服务面取到一份**非空**键集（组件半边零主包说明符的物理前提）',
-  mod ? mod.subpackageIds().length >= 4 && componentKeyIssues.length === 0 : false,
+  mod ? mod.subpackageIds().length >= 6 && componentKeyIssues.length === 0 : false,
   componentKeyIssues.join('；') || (mod ? mod.subpackageIds().map((id) => id + '(' + mod.subpackageKeyNames(id).length + ')').join(' ') : 'n/a'));
 // 不再捆绑 fork：服务登记必须与实际目录逐项一致，不允许残留 pet 幽灵项。
 const expectedIds = PACKAGE_DIRS_ON_DISK.map(dir => dir.slice(PACKAGES_PREFIX.length)).sort();
@@ -360,12 +403,25 @@ check('negative control: 残留 pet 服务登记必须判红',
   mod && !idsMatch([...mod.subpackageIds(), 'pet']));
 check('负对照：合成服务面缺 handOff 键 ⇒ 判红（键集不许少）',
   serviceViolations(synthHost({ createSubpackageHost: () => Object.freeze({ ids: () => [], keyNames: () => [], keys: () => ({}), schema: baseHostValue.schema, http: baseHostValue.http }) }), HOST_SERVICE_LITERAL).length > 0);
+check('负对照：服务面缺 apply 键（per-apply 实例面无通道）⇒ 判红',
+  serviceViolations(synthHost({ createSubpackageHost: () => Object.freeze({ ids: () => [], keyNames: () => [], keys: () => ({}), handOff: (_c, d) => d, schema: baseHostValue.schema, http: baseHostValue.http }) }), HOST_SERVICE_LITERAL).length > 0);
+check('负对照：合成服务面 apply 未冻结 ⇒ 判红（子包能污染 per-apply 实例面）',
+  serviceViolations(synthHost({ createSubpackageHost: () => Object.freeze({ ...baseHostValue, apply: Object.fromEntries(APPLY_KEYS.map((k) => [k, { key: k }])) }) }), HOST_SERVICE_LITERAL).length > 0);
+check('负对照：合成服务面 apply 键集漂移（少一个实例）⇒ 判红',
+  serviceViolations(synthHost({ createSubpackageHost: () => Object.freeze({ ...baseHostValue, apply: Object.freeze(Object.fromEntries(APPLY_KEYS.slice(0, -1).map((k) => [k, { key: k }]))) }) }), HOST_SERVICE_LITERAL).length > 0);
 check('负对照：合成服务面没冻结 ⇒ 判红',
   serviceViolations(synthHost({ createSubpackageHost: () => ({ ...baseHostValue }) }), HOST_SERVICE_LITERAL).length > 0);
 check('负对照：服务名漂移 ⇒ 判红',
   serviceViolations(synthHost({ HOST_SERVICE_NAME: 'wallpaperFoo' }), HOST_SERVICE_LITERAL).length > 0);
 check('负对照：schema 键漂移 ⇒ 判红',
   serviceViolations(synthHost({ createSubpackageHost: () => Object.freeze({ ...baseHostValue, schema: Object.freeze({ isFontSetId: () => false, sanitizeFontset: (v) => v, FONTSET_MIGRATED_ID: 'm', FONTSET_SCHEMA_TAG: 't' }) }) }), HOST_SERVICE_LITERAL).length > 0);
+// S5d 刀3：schema 面扩了两个遮挡平台符号 —— 缺任一键必须判红（hub 出户后只能靠它拿适配器）。
+const schemaWithout = (drop) => Object.freeze(Object.fromEntries(
+  Object.entries(baseHostValue.schema).filter(([k]) => k !== drop)));
+check('负对照：schema 缺 isX11CandidateEnv ⇒ 判红（hub 拿不到会话判定）',
+  serviceViolations(synthHost({ createSubpackageHost: () => Object.freeze({ ...baseHostValue, schema: schemaWithout('isX11CandidateEnv') }) }), HOST_SERVICE_LITERAL).length > 0);
+check('负对照：schema 缺 createX11Adapter ⇒ 判红（hub 拿不到平台适配器）',
+  serviceViolations(synthHost({ createSubpackageHost: () => Object.freeze({ ...baseHostValue, schema: schemaWithout('createX11Adapter') }) }), HOST_SERVICE_LITERAL).length > 0);
 check('负对照：provide 腿被抹掉（真宿主只挂属性）⇒ 判红',
   serviceViolations(synthHost({ provideSubpackageHost: (ctx) => { const value = baseHostMod.createSubpackageHost(); try { ctx[baseHostMod.HOST_SERVICE_NAME] = value; } catch { /* 只读 */ } return value; } }), HOST_SERVICE_LITERAL).length > 0);
 check('负对照：直调夹具腿不挂 ctx 属性（mock ctx 下子包取不到）⇒ 判红',
@@ -431,7 +487,7 @@ if (mod && typeof mod.subpackageSpecifiers === 'function' && typeof mod.assertSu
     mutBad.length > 0, JSON.stringify(mutBad));
 }
 
-// ── ②b 宿主腿（§7.6① 的**第二条腿**；2026-10-16 三行 `failed to import` 的加固）──────────
+// ── ②b 宿主腿（§7.6① 的**第二条腿**；三行 `failed to import` 的加固）──────────
 // 仓库腿（②）的解析根是**本仓** `node_modules`；宿主却按裸包名从 `<profile>/cordis.yml` 旁解析
 // 行名（§8.1 spike：本版 `boot()` 只传 4 实参 ⇒ `bareModuleBaseUrl` 恒 undefined）⇒ 少了这条腿时
 // "仓库里在、profile 侧缺链接"**恒过**：三行在宿主里 failed to import，主包却报自检通过。
@@ -542,7 +598,7 @@ check('宿主腿默认解析根（不注入）：合成 profile 里**没装**的
   realNegErr instanceof Error && realNegErr.message.includes(notInstalledName),
   realNegErr ? realNegErr.message : '没有抛错');
 
-// b3) **同名但另一个版本**的 profile **不归本版管**（2026-10-18 真机事故）。
+// b3) **同名但另一个版本**的 profile **不归本版管**（真机事故）。
 //     现场：开发机 `dshwe132` 钉着 1.3.0-r2 的**打包产物**（那个版本的 patch 只有一条主包行、
 //     根本没有子包行），而它同样满足"装了同名主包"的形态 ⇒ 被旧口径扫进检查面 ⇒ 新版 apply
 //     在自检里抛错 ⇒ **六条路由一条都没注册** ⇒ 设置页「壁纸引擎」整屏 404

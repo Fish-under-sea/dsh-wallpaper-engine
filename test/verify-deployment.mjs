@@ -11,8 +11,9 @@ const cache = join(ROOT, '.test-cache', 'deployment');
 mkdirSync(cache, { recursive: true });
 const home = mkdtempSync(join(cache, 'home-'));
 const plan = sourcePlan({ home, profile: 'web' });
-assert.equal(plan.subs.length, 7);
-assert.equal(plan.specs.length, 8);
+// 子包计数随出户推进抬升：v1.4.0 七包 ⇒ ADR-0016 第一刀起八包（glass 先行；现其宿主半边已有状态路由）。
+assert.equal(plan.subs.length, 8);
+assert.equal(plan.specs.length, 9);
 assert.throws(() => sourcePlan({ profile: 'web' }), /Specify/);
 assert.throws(() => sourcePlan({ home, profile: '../desktop' }), /Specify/);
 assert.throws(() => assertNodeVersion('22.11.0'), /22.12/);

@@ -20,7 +20,7 @@
  *      975 字符这一档）⇒ **整体拒绝 0 条**，绝不 slice 出半截选择器（+ 旧实现红对照）
  *   ③ 负对照：未消毒的同串拼进规则**会**含 `}` ⇒ ② 不是恒真
  *   ④ DOM 通道：空 ⇒ 不建标签 · 有值 ⇒ 建且内容正确 · 同值不重写 · 变空/卸载 ⇒ 移除
- *   ⑤ 接线（源码形态）：effects 两处调用 · INLINE_MODULES 登记 · 面板控件与文案 ·
+ *   ⑤ 接线（源码形态）：glass-layer 两处调用 · 包内 client.build.json 登记 · 面板控件与文案 ·
  *      两侧 ctx 都给处理器（漏一侧 = 侧栏档渲染期 ReferenceError）· schema 两处登记
  *   ⑥ 设置往返：合法清单过 sanitizeFromSchema 逐字保留；非法条被丢
  *
@@ -36,15 +36,19 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
-const MOD_URL = pathToFileURL(join(ROOT, 'src', 'glass-extra.js')).href;
+const MOD_URL = pathToFileURL(join(ROOT, 'packages', 'glass', 'src', 'glass-extra.js')).href;
 const TAG_ID = 'dsh-wallpaper-engine/extra-glass';
 
 const schema = await import(pathToFileURL(join(ROOT, 'lib', 'settings-schema.js')).href);
-const effectsSrc = readFileSync(join(ROOT, 'src', 'effects.js'), 'utf8');
-const panelSrc = readFileSync(join(ROOT, 'src', 'glass-panel.js'), 'utf8');
+// ADR-0016 第三刀：effects.js 的玻璃段（含 syncExtraGlassCss 调用与 --we-blur 写入）随玻璃层
+// 出户到 packages/glass —— 接线判据改读**玻璃层源码**。
+const glassLayerSrc = readFileSync(join(ROOT, 'packages', 'glass', 'src', 'glass-layer.js'), 'utf8');
+const panelSrc = readFileSync(join(ROOT, 'packages', 'glass', 'src', 'glass-panel.js'), 'utf8')
+  + '\n' + readFileSync(join(ROOT, 'packages', 'glass', 'src', 'glass-presets-panel.js'), 'utf8');
 const clientSrc = readFileSync(join(ROOT, 'src', 'client.js'), 'utf8');
 const quickSrc = readFileSync(join(ROOT, 'src', 'quick-panel.js'), 'utf8');
-const buildSrc = readFileSync(join(ROOT, 'scripts', 'build-client.mjs'), 'utf8');
+// ADR-0016 第三刀：glass-extra 随玻璃子包出产物 ⇒ 登记面判据改读**该包自己的配方**。
+const glassRecipe = readFileSync(join(ROOT, 'packages', 'glass', 'client.build.json'), 'utf8');
 
 let failed = 0;
 const check = (name, ok, detail) => {
@@ -170,6 +174,40 @@ function selectorList(css) {
     css2.split('::before {').every((part, i) => i === 0 || part.split('}').length === 2));
 }
 
+// ── ②c 引号属性选择器（#381）───────────────────────────────────────────────────
+// `[data-sidebar-right-panel="fullscreen"]` 是真实面板的锚点形状；引号多一层危险：
+// **落单的引号**会让整条规则（连同逗号列表里别的选择器）一起非法 —— 整组静默失效，
+// 与 #381 里"整条被丢掉、没提示"是同一种坏法。口径：引号只能开在 `[ ]` 内、同字符
+// 闭合、内部不许有反斜杠/花括号/分号 ⇒ 否则**整条作废**（不替用户补引号或删引号）。
+{
+  const { mod } = await fresh();
+  const san = schema.sanitizeExtraGlassSelectors;
+  const quoted = '[data-sidebar-right-panel="fullscreen"]';
+  const css = mod.weExtraGlassCss({ extraGlassSelectors: quoted });
+  check('带引号的属性选择器保留（4 档规则，且选择器逐字进 CSS）',
+    (css.match(/::before \{/g) || []).length === 4
+      && css.includes(quoted + ':where([data-we-surface-runtime="extra"])::before'),
+    'n=' + (css.match(/::before \{/g) || []).length + ' · 含选择器=' + css.includes(quoted));
+  const okCases = ['[data-dsh-panel="right"]', "[data-dsh-panel='right']", "[title=\"it's fine\"]"];
+  const okOut = okCases.map((s) => san(s));
+  check('成对的单 / 双引号都保留（内含对方引号也当字面量）',
+    okOut.every((got, i) => got === okCases[i]), JSON.stringify(okOut));
+  const badCases = ['[a="x]', "[a='x\"]", '[a="x\\"]', '.a"b', '[a="x;"]', '[a="x}y"]',
+    '[a="x{y"]', '[a=', '[a="x"]"'];
+  const badOut = badCases.filter((s) => san(s) !== '');
+  check('落单 / 错配 / 反斜杠 / 引号在方括号外 / 方括号没配对 ⇒ 整条作废（一条都不补不删）',
+    badOut.length === 0, JSON.stringify(badOut));
+  const smuggle = mod.weExtraGlassCss({ extraGlassSelectors: '[a="x"], body { display: none }' });
+  check('引号不会变成注入通道：坏条被丢、好条只生成它自己的规则',
+    !smuggle.includes('display') && smuggle.includes('[a="x"]:where([data-we-surface-runtime="extra"])::before'));
+  // 负对照（证明这条判据有牙，不是空转）：旧白名单是"整串正则白名单"，字符类里没有 ' 和 "
+  // ⇒ 同一条真实锚点在 #381 之前必被判 false、整条被静默丢弃。改完后必须为 true。
+  const OLD_RE = new RegExp('^[A-Za-z0-9\\s.#_:*>()\\[\\]=+~|\\-]{1,120}$');
+  check('负对照：旧白名单对带引号的真实锚点判 false（#381 复现），新判据判 true',
+    !OLD_RE.test(quoted) && san(quoted) === quoted,
+    '旧=' + OLD_RE.test(quoted) + ' · 新=' + JSON.stringify(san(quoted)));
+}
+
 // ── ②b 总量上限（P1 复审：#204 原实现 slice(0,400) 会切出半截选择器）──────────────
 // 合法输入的极限是 8 条 × 单条 120 字 = 974 B（含 7 个 ", "）。旧版把总量上限写死 400 并对
 // 结果 `.slice(0, 400)` ⇒ 8 条满长输入只活下来 4 条、第 4 条被切成半截（能匹配到**别的**
@@ -290,11 +328,10 @@ function selectorList(css) {
 
 // ── ⑤ 接线（源码形态）─────────────────────────────────────────────────────────
 {
-  check('effects.applyEffects 同步这条通道',
-    /applyGlass\(selection, s\);\n[^\n]*\n(?:[^\n]*\n)*?\s+syncExtraGlassCss\(selection\);/.test(effectsSrc)
-    || /syncExtraGlassCss\(selection\);/.test(effectsSrc));
-  check('effects.clearEffects 撤标签（与 body 那批清理成对）', /disposeExtraGlassCss\(\);/.test(effectsSrc));
-  check('构建期内联清单已登记 src/glass-extra.js', buildSrc.includes("file: 'src/glass-extra.js'"));
+  check('玻璃层同步这条通道（ADR-0016 第三刀：原 effects.applyEffects 的玻璃段出户）',
+    /syncExtraGlassCss\(selection\);/.test(glassLayerSrc));
+  check('玻璃层 dispose 撤标签（与 body 那批清理成对）', /disposeExtraGlassCss\(\);/.test(glassLayerSrc));
+  check('构建期内联清单已登记 src/glass-extra.js', glassRecipe.includes('src/glass-extra.js'));
   check('面板渲染了这个控件（走 weT 词条 + 具名处理器）',
     /weT\("额外补雾化的选择器"\)/.test(panelSrc) && /onInput: \(e\) => onExtraGlassSelectors\(e\.target\.value\)/.test(panelSrc));
   check('渲染器解构了这个处理器（否则面板拿到 undefined）', /onExtraGlassSelectors,/.test(panelSrc));
@@ -345,11 +382,11 @@ function selectorList(css) {
     kindsSrc.includes('extraGlassSelectors') && !kindsSrc.includes('extraBlur')
     && !kindsSrc.includes('extraAlpha') && !kindsSrc.includes('extraTransparency')
     && !panelSrc.includes('sel.extraBlur') && !panelSrc.includes('sel.extraAlpha'));
-  check('⑦-5 端值刻度 = 全局滑杆真实刻度（雾化 0..60 / 玻璃透明度 0..100），非自有面 5..42/5..50；--we-blur 由 selection.blur 驱动',
+  check('⑦-5 端值刻度 = 全局滑杆真实刻度（雾化 0..60 / 玻璃透明度 0..100），非自有面 5..42/5..50；--we-blur 由 selection.blur 驱动（写入在玻璃层，ADR-0016）',
     /SliderRow\(weT\("雾化"\), 0, 60, 1, sel\.blur/.test(panelSrc)
     && /SliderRow\(weT\("玻璃透明度"\), 0, 100, 5, sel\.glassAlpha/.test(panelSrc)
     && !/SliderRow\(weT\("雾化"\), 5, 42/.test(panelSrc)
-    && /s\.setProperty\("--we-blur", selection\.blur \+ "px"\)/.test(effectsSrc));
+    && /s\.setProperty\("--we-blur", selection\.blur \+ "px"\)/.test(glassLayerSrc));
 }
 
 console.log('\n' + (failed ? 'EXTRA-GLASS CHECKS FAILED — ' + failed + ' failed' : 'ALL EXTRA-GLASS CHECKS PASSED'));

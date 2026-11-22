@@ -2,7 +2,8 @@
 /**
  * dev-link-subpackages.mjs —— 开发期把 `packages/<pkg>/` 接进 profile 的 `node_modules`。
  *
- * 为什么需要（docs/wip/BUNDLE-SPLIT.md §8.1 的 spike 结论）：
+ * 为什么需要（2026-10 spike 结论：宿主按裸包名从 `<profile>/cordis.yml` 旁解析行，而开发期
+ * `link:` 不会把被 link 包的 `dependencies` 装进 profile）：
  *   本版 DSH 的 `boot()` 调用点只传 4 个实参 ⇒ `bareModuleBaseUrl` 恒 `undefined` ⇒
  *   loader 恒走 `Include` 分支 ⇒ **行名一律从 `<profile>/cordis.yml` 旁起算**：
  *   裸包名 → `<profile>/node_modules/<name>`（与 `./…` 相对名同底）。
@@ -36,9 +37,9 @@
  *      ⇒ 不建这条主包 apply 会抛）；
  *   ② 各 profile 的 node_modules（宿主解析 patch 行名）。
  *
- * 已删除的第三个链接点（2026-10-15）：本仓 `node_modules/<主包名>` → 本仓根（主包**自链接**）。
+ * 已删除的第三个链接点：本仓 `node_modules/<主包名>` → 本仓根（主包**自链接**）。
  *   它唯一服务的是子包宿主入口里 `import … from 'dsh-plugin-wallpaper-engine/subpackage-boot.js'`
- *   这条裸说明符；跨包通道改走 **① Cordis Service**（BUNDLE-SPLIT §5.1）后，子包宿主半边
+ *   这条裸说明符；跨包通道改走 **① Cordis Service**（ADR-0014 §S5.1）后，子包宿主半边
  *   **零主包说明符**（`test/verify-subpackage-purity.mjs` 的 `ROOT_SPEC_ALLOW` 已收紧为零）
  *   ⇒ 那条 `node_modules` 边不存在了，`rootSelfLink()` 与 `--no-self-link` 一并删除。
  *
@@ -173,7 +174,7 @@ function main(argv) {
 
   // 链接点有两处，缺一不可：
   //   ① 本仓 node_modules —— **主包自己**在启动自检里 resolve 子包名时走的那条路
-  //      （lib/index.js 的 apply 用 createRequire(import.meta.url)）。开发期三个子包还没发布，
+  //      （lib/index.js 的 apply 用 createRequire(import.meta.url)）。开发期 8 个子包还没发布，
   //      不建这条链接，主包一 apply 就直接抛"子包行解析不到"；
   //   ② 每个 profile 的 node_modules —— **宿主**按裸包名解析 patch 行时的落脚处（§8.1 spike 第 1 条）。
   const sites = [];

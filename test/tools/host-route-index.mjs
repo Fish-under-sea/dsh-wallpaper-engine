@@ -234,7 +234,7 @@ function routeModules() {
  *    （`analyze-host-apply.mjs` 用它们框出 `apply()` 的正文 —— 那是"门面还剩多少"，别混入组件行）。
  *
  * **清单数据驱动（P2-9 / 度量 M5，P-B 起改读发现层）**：组件行 = 发现层里 `kind === 'subpath'`
- * 的包（`lib/components/<sub>/package.json` —— P-F 批 1c（2026-10-16）三格出户后该目录已删除，此行只为历史兼容、命中数恒为 0；宿主入口取该包清单的 `main`），且该包必须在
+ * 的包（`lib/components/<sub>/package.json` —— P-F 批 1c三格出户后该目录已删除，此行只为历史兼容、命中数恒为 0；宿主入口取该包清单的 `main`），且该包必须在
  * `cordis.patch.yml` 有行、入口文件在磁盘上存在 —— 两侧交叉才算一行：
  *   · 只看磁盘 ⇒ 未登记的组件目录会被当成"运行时会注册的行"，索引说谎；
  *   · 只看行 ⇒ 缺文件的死行也会算一行。
@@ -461,7 +461,7 @@ export function buildIndex() {
   for (const r of ordered) r.mentions = mentions(r.path);
 
   const md = [];
-  md.push('# 宿主路由索引（P2-11 前置 1 · 自动生成，勿手改）');
+  md.push('# 宿主路由索引（自动生成，勿手改）');
   md.push('');
   md.push('> 生成：`node test/tools/host-route-index.mjs --write`；核对：`node test/verify-route-index.mjs`');
   md.push('> （守卫会在索引与代码不一致时失败 —— 索引因此不会烂掉）。');
@@ -474,7 +474,7 @@ export function buildIndex() {
   md.push('> 两条注册（渲染页按根路径上报，只挂一条会静默 404）。**守卫提及**列的口径：该路由以');
   md.push('> 路由形状（尾边界，`/media` 不被 `/media-info` 误算）出现在几个守卫/冒烟文件的**代码**里；');
   md.push('> `lib/…`、`src/…`、`test/…` 这类**代码路径**先被遮掉 ⇒ 也不会被 `lib/media/mp4-probe.js`');
-  md.push('> 这类源文件路径误算（提及 ≠ 有断言；零提及 = 拆前无安全网）。');
+  md.push('> 这类源文件路径误算（提及 ≠ 有断言；零提及 = 没有守卫安全网）。');
   md.push('');
   md.push(`共 **${ordered.length}** 条路由。`);
   md.push('');
@@ -487,7 +487,7 @@ export function buildIndex() {
   });
   md.push('');
   const uncovered = ordered.filter((r) => !r.mentions);
-  md.push(`**零提及（拆分前必须先补守卫）**：${uncovered.length ? uncovered.map((r) => '`' + r.path + '`').join('、') : '（无）'}`);
+  md.push(`**零提及（暂无守卫覆盖，建议补）**：${uncovered.length ? uncovered.map((r) => '`' + r.path + '`').join('、') : '（无）'}`);
   md.push('');
   // 出现最多的闭包状态 = context 字段的优先级（只统计**主文件**的路由：路由模块的依赖是 c 字段，
   // 混进来会把"该提出来的 apply 状态"和"已经提出的 context 字段"算成同一张票）

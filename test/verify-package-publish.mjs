@@ -32,6 +32,10 @@ import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
 import { join, relative, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Script } from 'node:vm';
+// 扫描面口径的**唯一真源**：`.artifacts` / `.playwright-mcp` 这类"只在本机存在的取证产物"
+// 必须按 git 视角跳过，否则本机面会被撑到 6 万文件（实测 58,505 + 2,185），判据要么慢到
+// 分钟级、要么结论与 CI 不一致（同族教训见 repo-face.mjs 的文件头「本机脏面 ⇒ 假绿」）。
+import { DEFAULT_SKIP } from './tools/repo-face.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 let failed = 0;
@@ -73,13 +77,16 @@ const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
 const files = Array.isArray(pkg.files) ? pkg.files : [];
 const publishSet = (r) => files.some((entry) => coveredBy(r, entry));
 
-/** 遍历仓库文件；跳过永远不可能"被发布"的重目录（否则本机要白走一遍 .git 与 node_modules）。 */
+/** 遍历仓库文件；跳过永远不可能"被发布"的重目录（否则本机要白走一遍 .git 与 node_modules）。
+ *  ⚠️ `DEFAULT_SKIP` 里是**相对路径**（posix 前缀），顶层名与它的首段比对；本机 `.artifacts`
+ *  实测 58,505 个文件，不跳过会让下面的 `publishSet` 变成 61,338 × 106 ≈ 650 万次 statSync。 */
 const SKIP_DIRS = new Set(['.git', 'node_modules', '.test-cache', '_refs', '.integration-notes']);
+const LOCAL_ONLY = new Set(DEFAULT_SKIP.map((p) => p.split('/')[0]));
 const walk = (dir, out = []) => {
   let names;
   try { names = readdirSync(dir); } catch { return out; }
   for (const name of names) {
-    if (SKIP_DIRS.has(name)) continue;
+    if (SKIP_DIRS.has(name) || LOCAL_ONLY.has(name)) continue;
     const abs = join(dir, name);
     let st;
     try { st = statSync(abs); } catch { continue; }
@@ -138,7 +145,7 @@ function usedByClosure(dep, list = bare) {
   return [...list].some((s) => s === dep || s.startsWith(dep + '/'));
 }
 /** `cordis.patch.yml` 里每个模块行的 `name:` = **宿主加载该模块用的 specifier**。
- *  与 `test/verify-package-files.mjs:86` 的 `patchRowNames` 同一口径（逐字对齐其取词正则；
+ *  与 `test/verify-package-files.mjs` 的 `patchRowNames` 同一口径（逐字对齐其取词正则；
  *  那条正则与 `lib/subpackage-boot.js` 的 `subpackageSpecifiers` 同源）。逐行剥 `#` 注释。
  *
  *  为什么 ④ 要消费它（**别把这条当假阳性删掉**）：子包（`packages/**`）不是被主包 `import`
@@ -336,9 +343,9 @@ section('⑦ 安装期不得跑任何仓库脚本（无构建钩子 + 不引用�
     'build', 'verify', 'verify:docs', 'verify:all', 'verify:bridge', 'verify:e2e', 'smoke',
     // 本分支追加的桥闸门（严格模式）：命令指向 test/ 下的用例，同样只在仓库里跑 ⇒ 开发期脚本。
     'verify:bridge:strict',
-    'verify:pet-link', 'verify:pet-link:integration', 'verify:pet-link:browser',
+    'verify:pet-link', 'verify:pet-link:integration', 'verify:pet-link:browser', 'verify:pet-install',
     // Explicit checkout commands, not npm lifecycle hooks; release staging removes scripts.
-    'install:source', 'pack:release', 'verify:deployment',
+    'install:source', 'install:release', 'pack:release', 'verify:deployment',
     // 静态门禁（ESLint / tsc 棘轮）：只在仓库里跑，工具与基线夹具都不随包发布。
     // `lint`/`typecheck` 不在此列是**不需要**：它们的命令里没有未随包路径（判据只看真引用）。
     'verify:static'];

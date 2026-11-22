@@ -14,7 +14,7 @@ in fact the **host half had never reloaded**). The two halves load in completely
 | Client half (`lib/client.js` / `src/**`) | The host serves the **built artifact** as a static asset to the page | **Refreshing the page** is enough (the `client-boot` build marker in diagnostics changes) |
 | Host half (`lib/index.js` / `lib/routes/**`) | `apply(ctx)` runs **once** when the DSH process starts, then lives in memory | You **must restart that host** (the official `DeepSeek Harness` and the community `DSH Desktop` are **two separate processes**, each loading its own copy) |
 
-Three on-the-spot checks (all on local 127.0.0.1; any one of them settles it):
+Four on-the-spot checks (all on local 127.0.0.1; any one of them settles it):
 
 ```powershell
 # 1) Only a new host has this route: 200 = new code running, 404 = the host is old
@@ -23,7 +23,7 @@ curl.exe -s -o NUL -w "%{http_code}`n" "http://127.0.0.1:<GUI port>/wallpaper-en
 (Invoke-WebRequest "http://127.0.0.1:<GUI port>/wallpaper-engine/inventory").Content | Select-String scenePkgBytes
 # 3) Timestamp comparison: build-stamp.at is when the CURRENT host ran apply; earlier than the source mtime => the host did not reload
 Get-Content "$env:USERPROFILE\.dsh-wallpaper-engine\build-stamp.json"
-Get-Item  D:\dsh-wallpaper-engine\lib\index.js | Select-Object LastWriteTime
+Get-Item  <repo root>\lib\index.js | Select-Object LastWriteTime
 # 4) Process start time: the host process started before you edited the file => it holds the old module in memory
 Get-Process 'DeepSeek Harness','DSH Desktop' | Select-Object ProcessName,Id,StartTime
 ```
@@ -93,45 +93,55 @@ generation-install: installed in 436ms
 generation-install: generation peer validation failed: @deepseek-ai/dsh-client-runtime does not resolve from the installation closure
 ```
 
-**Your DSH core is older than this plugin's tested floor.** The plugin declares
-`engines.dsh >= 0.1.5-rc.1` and `@deepseek-ai/dsh-client-runtime >= 0.1.0-rc.6`
-(`package.json` `engines` / `peerDependencies`; the tested floor is kernel **0.1.5**) — a kernel
-older than **0.1.5-rc.1** (e.g. `0.1.2-rc.1` / DSH Desktop 2.0.5) ships a runtime below that floor,
-so pnpm rejects the dependency graph at generation time. This is not a network / mirror /
-pnpm-state problem, and **installing an older plugin version will not help**: kernels predating
-0.1.5-rc.1 are outside the tested support range — loosening the peer range would only produce an
-install that is broken at runtime.
+**Your DSH core is older than this plugin's supported floor.** The plugin declares **two**
+floors in `package.json`: `engines.dsh` (the release manifest — the host uses it to decide
+whether the plugin can be installed at all) and `@deepseek-ai/dsh-client-runtime` under
+`peerDependencies` (the **runtime capability surface** — the interfaces the code actually
+calls start at that tier). Take the current values from the manifest (check with
+`node -e "console.log(require('./package.json').engines, require('./package.json').peerDependencies)"`)
+and compare `dsh --version` against `engines.dsh`. The usual trigger is a kernel older than
+the `engines.dsh` floor (e.g. an old DSH Desktop / the `0.1.x` line): the runtime it brings
+into the install closure is below the peer floor, so pnpm rejects the dependency graph at
+generation time. This is not a network / mirror / pnpm-state problem, and loosening the peer
+range would only produce an install that is broken at runtime — so the install gate is not
+meant to be bypassed.
 
 **Fix: upgrade the host first, then install** (both steps):
 
 ```sh
-# 1) Bring the DSH kernel to >= 0.1.5-rc.1 (updating the official desktop app to the latest is
-#    enough; the old DSH Desktop line needs at least 2.0.7). Self-check: `dsh --version` >= 0.1.5-rc.1
+# 1) Bring the DSH kernel to the engines.dsh floor (updating the official desktop app
+#    to the latest is enough). Self-check: `dsh --version` is within engines.dsh
 dsh --version
 # 2) Install again
 dsh plugin --profile web add dsh-plugin-wallpaper-engine
 ```
 
 > "The desktop app says v0.10.0" is the **app's own** version number, not the bundled **DSH core**
-> version — the verdict comes from `dsh --version` (issue #116: a v0.10.0 desktop app bundling a
-> 0.1.7-rc.2 core; that kernel now satisfies ≥ 0.1.5-rc.1 and can install this plugin).
+> version — the verdict comes from `dsh --version`, compared against `engines.dsh` in `package.json`;
+> if it is below the floor, upgrade the kernel first.
 
 ### Symptom → where to look first
 
 | Symptom | Check first |
 |---|---|
-| The panel shows 「宿主里没有字体集路由…」 or 「宿主返回 404 / 405」 | The host is stale: **host-side code loads once at startup**, so a page refresh only swaps the client bundle. **Restart DSH** (`dsh web` again, or quit and reopen the desktop app). Two self-checks: ① `~/.dsh-wallpaper-engine/build-stamp.json`'s `at` must be later than `lib/index.js`'s mtime; ② search `diag/http.jsonl` for `fontsets` — **zero hits** means the request never reached the plugin (a bare status code can only come from another layer) |
+| The panel shows 「宿主里没有字体集路由…」「宿主里没有本机字体路由…」 or 「宿主返回 404 / 405」 | The host is stale: **host-side code loads once at startup**, so a page refresh only swaps the client bundle. **Restart DSH** (`dsh web` again, or quit and reopen the desktop app). Two self-checks: ① `~/.dsh-wallpaper-engine/build-stamp.json`'s `at` must be later than `lib/index.js`'s mtime; ② search `diag/http.jsonl` for `fontsets` / `system-fonts` — **zero hits** means the request never reached the plugin (a bare status code can only come from another layer) |
+| A locally installed font picked in 「默认字体 / 终端字体」 makes **no visible difference at all** (special characters are still boxes) | First read that row's status note: 「已略过 N 个本浏览器取不到的字体名」 means some names were filtered out — **a family name listed by the OS is not necessarily one the browser can match** (`Apple Color Emoji` / `Symbol` / `Zapf Dingbats` / `Apple Braille` are system-reserved, and `苹方-繁` / `黑体-繁` are another spelling of the same font). For TC/HK variants pick the **canonical** name (`PingFang TC` / `Heiti TC` are both there). If individual **characters** are still boxes after picking a matchable name, **no installed font covers that code point** (another font will not help) — paste the characters and we can locate it (Nerd Font icons have one separate cause: the font uses v3 code points while the content carries v2 ones) |
+| The sidebar's 「控制台 / 终端面板」 font will not change (icons are still boxes) | That panel is `dsh-ssh`'s **xterm**, whose font **only comes from options** and cannot be changed by ordinary CSS rules — we deliver through the `--dsh-ssh-terminal-font` hook it leaves for skins (the 「终端字体」 row covers both terminals: the terminal block in the conversation and this panel). Self-checks: ① after refreshing the page, **reopen the terminal panel once** (it re-resolves the font when constructed / remounted); ② if `terminalFontFamily` is set in `dsh-ssh`'s own settings, **that value wins** — clear it so our hook takes effect; ③ open DevTools and check whether `body` carries `--dsh-ssh-terminal-font` (missing means the font customisation master switch is off, or that row is set to 「跟随」) |
+| A font I know (e.g. `PingFang SC` / `Heiti SC` / `Songti SC`) is missing from the dropdown; only Chinese names like 「苹方-简」 appear | On macOS **one font has two names**: `system_profiler` gives the localised name and the plugin's second leg (CoreText) gives the canonical English name, and both go into the list — try the English name (the native dropdown jumps by first letter: typing `Pin` lands on `PingFang SC`). If the English name really is absent, the CoreText leg (`osascript`) is probably blocked or missing; click 「重新扫描」 once and report `source` from `~/.dsh-wallpaper-engine/system-fonts.json` (normally `system_profiler+coretext`; only `system_profiler` means the second leg did not run) |
+| The 「默认字体 / 终端字体」 dropdown has no local fonts (only the built-in ones) | Three causes, and the panel speaks to each: ① 「正在读取本机字体…」 = the first scan is still running (on macOS it walks every font, **seconds to tens of seconds**; afterwards it uses the cache); ② 「本机字体读不到：…」 = follow that sentence (usually the "host did not remount" row above); ③ only built-in family keys with **no note at all** = the system really yielded none. After installing a new font click 「重新扫描」 on that row (**skips the cache** — no need to wait for expiry) |
+| The local-font list says it was 「按文件名推测的」 (guessed from file names) | All three authoritative sources (macOS `system_profiler` / Windows PowerShell / Linux `fc-list`) failed, so it fell back to **deriving names from font file names**. The list works, but names may carry a weight suffix (e.g. 「STHeiti Light」) — fix the availability of the tool in the row above and click 「重新扫描」 to get the authoritative family names |
 | The settings panel suddenly goes blank / the whole UI whites out | Search the client-exception trace first: `client-error` (the message plus the first three stack frames, all in one diagnostics line). One known class is **React #31** (an array of objects rendered as a child) — the `client-error` text points straight at the line |
-| After confirming something (a delete / hide) the wallpaper stays paused and inputs stop responding | A native `confirm` hands focus to its own window, so with "pause on window blur" the wallpaper stops; the modal also blocks the render thread, and the `focus` event on dismissal is not guaranteed to arrive (on older builds only a reload recovered). The occlusion decision is re-checked every 3 s and logs an `occlusion-recheck` line (a lost event heals itself), and deleting a font set uses an in-panel confirmation. On older builds, click the window or switch away and back |
+| After confirming something (a delete / hide) the wallpaper stays paused and inputs stop responding | A native `confirm` hands focus to its own window, so with "pause on window blur" the wallpaper stops; the modal also blocks the render thread, and the `focus` event on dismissal is not guaranteed to arrive (on older builds only a reload recovered). The occlusion decision is re-checked on a low-frequency timer (`OCCLUSION_RECHECK_MS` in `lib/client.js`) and logs an `occlusion-recheck` line (a lost event heals itself), and deleting a font set uses an in-panel confirmation. On older builds, click the window or switch away and back |
 | The wallpaper picker is empty | Wallpaper Engine installed with at least one wallpaper; restart `dsh web` (see [`../../README.beginner.md`](../../README.beginner.md), FAQ 1 — Chinese only) |
-| A solid white flash (light grey under the default dimming) when minimizing / restoring the window, and a white taskbar thumbnail | What shows through is the **window base plate**. **Current branch**: while a wallpaper is active the root element carries an opaque wallpaper representative colour (picture dominant colour → author scheme colour, `--we-wallpaper-underlay`), so a dropped layer degrades to a tone-matched solid instead of a white flash; becoming visible again also triggers a two-frame re-composite nudge. If it is **still pure white** (no tone at all), the window submitted **no frame at all** at that moment — that is the shell's base plate (the win32 `BrowserWindow` sets no transparent `backgroundColor`) and cannot be changed from the plugin side; please attach the `onscreen` line from the diagnostics |
+| A solid white flash (light grey under the default dimming) when minimizing / restoring the window, and a white taskbar thumbnail | What shows through is the **window base plate**. **Current behaviour**: while a wallpaper is active the root element carries an opaque wallpaper representative colour (picture dominant colour → author scheme colour, `--we-wallpaper-underlay`), so a dropped layer degrades to a tone-matched solid instead of a white flash; becoming visible again also triggers a two-frame re-composite nudge. If it is **still pure white** (no tone at all), the window submitted **no frame at all** at that moment — that is the shell's base plate (the win32 `BrowserWindow` sets no transparent `backgroundColor`) and cannot be changed from the plugin side; please attach the `onscreen` line from the diagnostics |
 | Video wallpaper is black / frozen | The card's play button and message: 「播放」 means it is not actually playing — click to retry; an "cannot decode" hint means re-export as **H.264** MP4 |
 | A Web (HTML) wallpaper shows nothing but the page background | Web wallpapers render **live** by default (the renderer page loads `/scene-live/` and pulls sub-resources via `/scene-files/<token>/…`). **Refresh the page first**; if it is still blank, restart `dsh web` once (the host route is registered when the plugin loads). To rule the live path out, turn off 「网页实时渲染」 under **Playback → Effects** and check the **compatibility path** (`/wallpaper-engine/media/<token>` — the plain-iframe fallback loading the same entry HTML). On either path, check DevTools → Network: sub-resources should be 200 — report the failing request path if you see 404/403 |
 | A web wallpaper turned black / 403 after picking an adapter target | The manual pick in 「System → Advanced → 适配」 **wins over detection**: picking 「原生浏览器」 while running in a desktop client that enforces the capability-header fence makes the web payload switch to the app origin and get rejected with `403`. Switch back to 「自动检测」 (or any desktop target) to recover; the section's status line states what was detected and warns directly when the pick contradicts it |
 | A custom upload is not visible | The **content rating** filter above the grid (defaults to Everyone; unrated uploads count as Everyone) |
 | Scene wallpaper shows a still image | **It should not by default** — scene wallpapers are rendered **live** by WebWallGL (particles / scripts / parallax all animate). First check whether 「场景实时渲染」 under **Playback → Effects** was turned off, and whether a failure reason (first-frame timeout / runtime stall) is shown under that switch: re-enabling it clears the failure memory and retries. Only when live rendering is unavailable does it fall back to the chain (author-embedded MP4 → live capture → custom frame → empty state; before the first frame it shows the **author's preview**, so there is no black screen); browsers without WebGL2 **always** take that chain (a **loose `scene.json` directory does not** — it renders live too) — there, use 「出图来源」 to pick another frame source or import a 「自定义画面」 (see [`HOW-IT-WORKS.md`](./HOW-IT-WORKS.md)) |
-| Scene / web wallpaper is black, and ~15 s later it falls back to a static frame (or just the poster) | That is the live renderer's **watchdog degrading**: no first frame within 15 s ⇒ the failure is remembered and it degrades automatically. Check that the file is readable and the GPU driver works (WebGL2 is required); re-enabling 「场景实时渲染」/「网页实时渲染」 clears the memory and retries. **Current behaviour**: that extraction/compositing chain is gone entirely — the host **only serves a frame that already exists** (otherwise an honest 404 empty state; it neither generates nor prewarms anything) — and the client's pre-first-frame poster takes **live-captured frame → the author's preview → the theme colour**, so **even a wallpaper that never captures a frame is not black before the first frame**. If you still see nothing but a flat colour for a long time, **not even the author's preview** could be read (no preview in the project, or a read failure) — please attach the diagnostics lines |
-| The frame-rate cap does nothing | It needs ffmpeg (the encoder prefers NVENC, falling back to libx264 software encoding without an NVIDIA GPU); with no ffmpeg at all the feature disables itself (see 「Limitations」 in `../README.en.md`) |
+| Scene / web wallpaper is black, and after the watchdog budget runs out it falls back to a static frame (or just the poster) | That is the live renderer's **watchdog degrading**: no first frame ⇒ it degrades (and decides, by cause, whether the failure is remembered — see below). Check that the file is readable and the GPU driver works (WebGL2 is required); re-enabling 「场景实时渲染」/「网页实时渲染」 clears the memory and retries. **The first-frame budget is computed from the package size** (`liveFirstFrameBudget()`: base + `scenePkgBytes` ÷ throughput floor, capped by a hard ceiling; constants and formula in `LIVE_FIRST_FRAME_*` / `LIVE_PAYLOAD_FLOOR_BPS` in `lib/client.js`), and **time never counts while payload bytes are still arriving** (the host payload ledger `GET /wallpaper-engine/scene-payload-progress?token=…`, polled by the client heartbeat) — so "a huge package downloading slowly" is no longer misjudged as "cannot render". **When the first frame really does not arrive there are two cases**: ① the ledger says "transferred but not completed" (stalled download / starved by another instance) ⇒ only a **session-local** soft failure, never the failure memory shared by all windows, and it retries after a cooldown (cooldown and retry cap: `LIVE_TRANSFER_RETRY_*`); ② the renderer really produces no frame **and this window has whole-package completion evidence** (or the renderer page reports a load error) ⇒ only then is the failure written to disk for that wallpaper; a **runtime stall (no frames while it should be playing) is likewise only a session-local soft failure**, retried after a cooldown. **Current behaviour**: the extraction/compositing chain is not in this repo — the host **only serves a frame that already exists** (otherwise an honest 404 empty state; it neither generates nor prewarms anything) — and the client's pre-first-frame poster takes **live-captured frame → the author's preview → the theme colour**, so **even a wallpaper that never captures a frame is not black before the first frame**. If you still see nothing but a flat colour for a long time, **not even the author's preview** could be read (no preview in the project, or a read failure) — please attach the diagnostics lines |
+| A large scene wallpaper (`scene.pkg` of hundreds of MB) repeatedly hits 「首帧超时」, yet the same wallpaper shows up quickly in another window | Classic **starved payload**. Three self-checks: ① are **multiple DSH windows / tabs** open at the same time — each is an independent client instance building its own renderer page (hidden / unplayed instances no longer pull the payload; only the visible one does); ② under 「高级 → 适配」, does `GET /wallpaper-engine/media-origin` **return an address** — the scene payload must use the separate media origin (it is much faster than the app origin, which may not answer for a long time); ③ the `载荷=` field of the `liveFail` line in the diagnostics file: `"served":0,"completed":0` = not a single byte arrived (the transfer never started), `served>0` with `completed=0` = transferred but not finished (starved). Send both lines and we can locate it |
+| The frame-rate cap does nothing | It needs ffmpeg (the encoder prefers NVENC, falling back to libx264 software encoding without an NVIDIA GPU); with no ffmpeg at all the feature disables itself (see 「Limitations」 in `../../README.en.md`) |
 | A mid-grey / light slab appears to the right of the conversation area once the right sidebar is closed | The right-panel container keeps its width and only hides its children, while the plugin's frosted background applies to that container in every state (guarded by `verify-host-paint-scope`); workaround: turn off the 「侧栏液态玻璃」 master switch, or drag that session's right-sidebar width to 0 |
 | Settings revert after a restart | Settings live in a host-side file (see "Where are my settings stored?" below) — check `~/.dsh-wallpaper-engine/config.json` is writable and that you did not roll back to an older version. Also: a host log line reading 「settings PUT 丢弃了白名单外的键」 means the client's and host's field lists have drifted — please report that line |
 
@@ -184,9 +194,10 @@ $env:DSH_WE_NOTICE = "1"   # set before launching DSH; "0" silences it permanent
 
 ## Known behaviour boundaries (**not bugs**, but very easy to report as bugs)
 
-All three are the unavoidable price of one trade-off: **keep the old picture rather than show the base
-colour.** They are listed here so that a "looks stuck / flashed for a moment" symptom has an explanation.
-Criteria and readings for all three are in `docs/CHANGELOG.md` (the unreleased section).
+All of these are the unavoidable price of one trade-off: **keep the old picture rather than show the base
+colour** (plus how far the glass solid base reaches). They are listed here so that a "looks stuck / flashed
+for a moment / why is this not see-through" symptom has an explanation.
+The criteria are below; readings are in the matching `docs/CHANGELOG.md` entries.
 
 ### After switching to a wallpaper: "nothing happened" and the old wallpaper stays
 
@@ -205,19 +216,55 @@ of base colour for a second or two).
 ### The first wallpaper after a page load shows a short stretch of base colour
 
 There is **no old layer to hold** at that moment, so the gate is not armed at all ⇒ the base colour is on
-screen until the first frame arrives. Measured (one-off; readings and conditions in the unreleased section of
-`docs/CHANGELOG.md`): for the same 729 MB 4K120 source, `loadedmetadata` on that "first wallpaper" path takes
-only a bit over a hundred milliseconds.
+screen until the first frame arrives. On that "first wallpaper" path `loadedmetadata` arrives quickly, so the
+stretch is short.
 
-**Current state (not done)**: the fix is to give video wallpapers a **real still frame** as their face
-(reusing the existing frame-extraction path) instead of waiting for the `<video>`'s first frame.
+**Current state (not done)**: the stretch is still there; the candidate fix (give video wallpapers a **real
+still frame** as their face, reusing the existing frame-extraction path) is logged in
+[`wip/UNIMPLEMENTED.md`](../wip/UNIMPLEMENTED.md).
 
 ### Switching to a "web wallpaper (legacy link)" shows a short white / empty stretch
 
 The gate recognises `iframe.we-live-iframe` via `we-live-on`; a bare `iframe.we-iframe` falls into the
 "don't gate" bucket.
 
-**Current state (not done)**: this one **can be covered** — the iframe element's own `load` / `error` fire
-even cross-origin (the same code already uses them in `prepareWebProbe`); all that is missing is wiring those
-two signals into the gate's signal table.
+**Current state (not done)**: the legacy link can still briefly flash white / empty; the iframe element's own
+`load` / `error` fire even cross-origin (`prepareWebProbe` already uses them) — wiring those two signals into the
+gate's signal table is logged in [`wip/UNIMPLEMENTED.md`](../wip/UNIMPLEMENTED.md).
 
+### Under glass, third-party overlays without a stable anchor are still translucent
+
+"Opaque base for third-party dialogs" (`floaterSolidBase`, on by default) recognises overlays through **stable
+anchors**. The surfaces below carry none of them, so under glass they show the "translucent and frost-free"
+look (see #315: base alpha ≈ 0.65, `backdrop-filter: none`) and whatever is behind them shows straight through:
+
+- framework-layer containers parented directly to `body` (overlays / drawers / custom menus drawn by
+  third-party plugins);
+- sticky headers and floating toolbars — persistent overlays with no dialog semantics;
+- third-party containers that carry neither a `role` nor one of the existing solid-base rules.
+
+**What we do: only trust stable anchors, never guess class names.** Matching on class names bakes third-party
+internals into this plugin — it silently stops working the day they rename a class, and it hits unrelated
+panels that happen to share the name. There are three anchor paths (all gated by the same `floaterSolidBase`
+switch):
+
+1. **ARIA surfaces**: `role="dialog"` / `role="alertdialog"` and `aria-modal="true"` (covers overlays that put
+   dialog semantics on `aria-modal` without a `role`);
+2. **User declaration**: add the overlay's CSS selector to "Extra frost targets" (`extraGlassSelectors`) — if
+   the surface can **only fall back to native** under glass (e.g. `position: static`, so it cannot be glassed
+   safely), the runtime tags it with `data-we-solid-base` and the glass CSS then gives it a solid base
+   (`--we-readability-base` + no `backdrop-filter`);
+3. **Plugin-provided anchor**: a third-party plugin's root node can carry `data-we-solid-base` directly as a
+   stable anchor (this plugin only trusts anchors, never the other side's class names or internals); host
+   dialogs keep using the native fallback via `data-we-host-dialog`.
+
+**Boundaries**: all of the above apply only while "Give third-party plugin dialogs a solid base" is on (default
+on); turning it off returns every overlay (ARIA dialogs included) to the host's native translucent look. Anchors
+are written and restored in pairs — removing the selector, the surface becoming glassable again, a row-level
+toggle remount, or dispose all clear it, so no residue is left. Undeclared surfaces without an anchor stay as
+they are (the cost of not guessing); workarounds:
+
+- turn off "Give third-party plugin dialogs a solid base" ⇒ every overlay goes back to the host's native
+  translucent look;
+- if an overlay merely "has no frost" rather than "too see-through to read", add its selector to "Extra frost
+  targets" — that adds the blur channel, **not** a solid base.

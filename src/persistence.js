@@ -13,6 +13,7 @@
  *   SETTINGS_URL     ← 宿主设置路由（client.js 顶层 const）
  *   sanitizeSettings / serializeSettings / DEFAULTS ← lib/settings-schema.js（消毒 / 白名单 / 默认值）
  *   settingsNamespaceOf / KINDS / SETTINGS_META_NAMESPACE ← 同文件（差分按组件簇分组）
+ *   CLIENT_ONLY      ← 同文件（只住 localStorage、宿主不接收的键：设备本地的抽帧 / 自定义画面记忆）
  *   emit             ← 单向重渲染（启动加载完成后通知一次）
  *   applyEffects     ← src/effects.js（设置落地到 DOM）
  *   setAdapterFromHost ← src/adapter.js（宿主上报的适配目标观测值）
@@ -31,11 +32,12 @@
  *     的路径都必须有明确理由（目前只有一条：宿主还没有任何存档时做一次性迁移）。
  *   · **写必须 debounce 且可重试**：滑块每格都 JSON.stringify + 同步写 localStorage 会拖垮拖动；
  *     非 2xx 要留下脏标记（否则宿主文件变旧，下次加载会把用户的设置**回滚**）。
- *   · **只发改动键**：宿主侧 `PUT /settings/<ns>` 是**按键合并**的，所以客户端维护"上一次
- *     成功推送的快照"，把与它不同的键按组件簇分组、每簇一个请求发出去；无改动 ⇒ 一个请求都不发。
+ *   · **只发改动键**：宿主侧 `PUT /settings/<ns>` 是**按键合并**的，所以客户端维护"基线"——
+ *     宿主**已知持有**的那份快照（写入成功后推进；启动时从宿主 GET 采纳），把与它不同的键按组件簇
+ *     分组、每簇一个请求发出去；无改动 ⇒ 一个请求都不发。
  *     不进任何簇的键（`CLIENT_ONLY` 只住 localStorage、`settingsVersion` 属 `meta`）与 `kind:'const'`
- *     的键（宿主侧改不动，发了只会被 ignored）一律不发。**唯一的整段路径**是首启迁移：宿主还没有
- *     存档时不知道基线，仍走老 `PUT /settings`（兼容入口，请求体与改造前逐字节一致）。
+ *     的键（宿主侧改不动，发了只会被 ignored）一律不发。**整段路径只在基线未知时走**（首启迁移 /
+ *     宿主不可达）：不知道宿主有什么，仍走老 `PUT /settings`（兼容入口，请求体与改造前逐字节一致）。
  *   · **在途 GET 不许覆盖用户的新写**：`persistWrites` 计数器是这条的判据 —— 快照 → 比对 → 跳过合并。
  *   · 定时器只经 `window.*`（带守卫）：无定时器设施的验证环境退化为立即写，而不是抛。
  *   · 本文件必须保持浏览器安全（无 import / require / Node API），且**不得有顶层可执行语句**
@@ -94,9 +96,14 @@ let persistDirty = false;
 // host→selection merge when the user edited settings while the GET was in
 // flight (the user's pending PUT is newer than the host's answer).
 let persistWrites = 0;
-// 差分基线：宿主**已知持有**的那份快照（客户端形状，134 键）。`null` = 还不知道宿主
+// 差分基线：宿主**已知持有**的那份快照（客户端形状；键集由 `serializeSettings()` 从 schema 派生，
+// 条数不写死）。`null` = 还不知道宿主
 // 有什么（loadPersisted 未跑 / 宿主不可达 / 首启迁移）⇒ pushPersisted() 走老整段入口。
 // 只在"写入成功 / 宿主值真的被采纳"时推进；按簇确认成功键，失败键下次重发（按键合并 ⇒ 幂等）。
+// ⚠️ 不变量（#292）：基线必须是**冻结副本**，且差分按**值**比较 —— 两件事缺一不可。
+//   · 只比较不冻结：`serializeSettings` 是浅拷贝，数组/对象与 `selection` 共用同一个引用 ⇒
+//     `push()` / `splice()` 就地改后两边永远相等，复合键从第二次起**永远进不了 PUT 体**（原缺陷）；
+//   · 只冻结不比较：每次序列化都产生新引用 ⇒ 所有键都被判成"变了"，退化成按簇全量 PUT。
 let pushedSnapshot = null;
 // 同时只跑一批 PUT；在途 flush 合并为一次后续写，等确认基线后再读取最新值。
 let persistInFlight = false;
@@ -111,6 +118,30 @@ function writableNamespaceOf(key) {
   if (!ns || ns === SETTINGS_META_NAMESPACE) return "";
   return KINDS[key] && KINDS[key].kind === "const" ? "" : ns;
 }
+// ── 差分基线的冻结与按值比较（#292）────────────────────────────────────────
+// `serializeSettings` 只做浅拷贝：数组 / 对象与 `selection` 共用引用，而轮播列表（push/splice）、
+// 隐藏清单（push）是**就地修改**的。基线若直接存快照，就地改会同时改到基线 ⇒ 引用比较永远相等。
+// 所以：存进去的每一层值都必须脱离 `selection`；比较时必须**按值**（否则冻结后引用必不相等，
+// 每个键都被判成变了，退化成按簇全量 PUT）。
+function cloneSettingValue(v) {
+  if (v === null || typeof v !== "object") return v;
+  try { return JSON.parse(JSON.stringify(v)); } catch { return v; }
+}
+function cloneSettingsSnapshot(snap) {
+  const out = {};
+  for (const key of Object.keys(snap)) out[key] = cloneSettingValue(snap[key]);
+  return out;
+}
+// 对象/数组按 JSON 值比较（同一构造路径的键序稳定；键序不同最多多发一次幂等 PUT），标量用 ===。
+function sameSettingValue(a, b) {
+  const aObj = a !== null && typeof a === "object";
+  const bObj = b !== null && typeof b === "object";
+  if (aObj || bObj) {
+    if (!aObj || !bObj) return false;
+    try { return JSON.stringify(a) === JSON.stringify(b); } catch { return false; }
+  }
+  return a === b;
+}
 // 逐键差分：与基线不同、且可路由的键按簇归组 ⇒ { ns: { 改动键: 值 } }（无改动 ⇒ 空对象）。
 // 基线为 null（首启/宿主不可达）时不该走到这里：那条路径整段发（见 pushPersisted）。
 function changedGroupsOf(snapshot, base) {
@@ -118,7 +149,7 @@ function changedGroupsOf(snapshot, base) {
   for (const key of Object.keys(snapshot)) {
     const ns = writableNamespaceOf(key);
     if (!ns) continue;
-    if (base && base[key] === snapshot[key]) continue;
+    if (base && sameSettingValue(base[key], snapshot[key])) continue;
     (groups[ns] || (groups[ns] = {}))[key] = snapshot[key];
   }
   return groups;
@@ -156,7 +187,7 @@ async function pushPersisted() {
       let ok;
       try { ok = await putSettingsBody(SETTINGS_URL, snapshot); } catch { ok = false; }
       persistDirty = !ok;
-      if (ok) pushedSnapshot = snapshot;
+      if (ok) pushedSnapshot = cloneSettingsSnapshot(snapshot);
       return;
     }
     const groups = changedGroupsOf(snapshot, pushedSnapshot);
@@ -168,11 +199,15 @@ async function pushPersisted() {
       try { nsOk = await putSettingsBody(SETTINGS_URL + "/" + ns, groups[ns]); }
       catch { nsOk = false; }
       // 按成功的簇确认基线：别的簇失败时，用户仍可能把已成功的键改回旧值。
-      if (nsOk) Object.assign(pushedSnapshot, groups[ns]);
+      // 值同样要冻结（#292）：`groups[ns]` 里是 `snapshot` 的引用，直接并进基线会再次与
+      // `selection` 共用数组 ⇒ 下一次就地修改又会被"引用相同"吞掉。
+      if (nsOk) Object.assign(pushedSnapshot, cloneSettingsSnapshot(groups[ns]));
       else ok = false;
     }
     persistDirty = !ok;
-    if (ok) pushedSnapshot = snapshot;
+    // 全批成功才推进基线；且必须是冻结副本（#292：直接存 `snapshot` 会让基线继续与
+    // `selection` 共用数组，下一次就地修改又被"引用相同"吞掉）。
+    if (ok) pushedSnapshot = cloneSettingsSnapshot(snapshot);
   } finally {
     persistInFlight = false;
     // 仅处理在途时明确请求的 flush；失败本身不自旋，仍由后续改动/可见性重试。
@@ -247,11 +282,22 @@ async function loadPersisted() {
     // Host is the truth: apply it and refresh the local cache copy — unless the
     // user edited settings during the fetch (their write wins).
     if (!stale) {
-      Object.assign(selection, sanitizeSettings(hostSettings));
+      // CLIENT_ONLY 的键宿主**从来不收**（它们只住 localStorage：设备本地的抽帧 / 自定义画面记忆）。宿主 GET 回的是
+      // 宿主快照，而 `sanitizeSettings()` 是客户端视角的消毒 —— 它会给这两个键补上**默认值**。整份 assign 下去 ⇒
+      // 每次启动都把本地记忆清成默认值，随后 `writeLocalCache()` 再把清空结果写回缓存（真·数据丢失，且与"宿主不可达
+      // 就回落本地缓存"那条路径合并结果不同 —— #371 的附带发现，两条加载路径语义必须一致）。所以这两个键一律取已有的本地值。
+      const fromHost = sanitizeSettings(hostSettings);
+      // 本地值取**内存里的 `selection`**：它初始化时就铺了 `readPersisted()`（client.js 的 store 初始化），
+      // 再读一遍 localStorage 既是重复的 parse + 消毒，也埋了一个边界 —— 启动瞬间 localStorage 不可用时
+      // `readPersisted()` 回落 `DEFAULTS`，反而把内存里已采纳的本地记忆清空。
+      for (const key of CLIENT_ONLY) {
+        if (key in selection) fromHost[key] = selection[key];
+      }
+      Object.assign(selection, fromHost);
       writeLocalCache();
       // 差分基线 = 宿主现在持有的那份（客户端形状）。⚠️ 只在真的采纳宿主值时推进：GET 在途时
       // 用户改过设置的话，他们那次整段 PUT 已经写进宿主，别拿过期应答当基线（会漏发后续改动）。
-      pushedSnapshot = serializeSelection();
+      pushedSnapshot = cloneSettingsSnapshot(serializeSelection());
     }
   } else if (hostOk) {
     // Host has nothing saved yet: migrate any existing localStorage data once.
@@ -261,6 +307,17 @@ async function loadPersisted() {
     const parsedLocal = readPersistedRaw();
     if (!stale) Object.assign(selection, parsedLocal ? sanitizeSettings(parsedLocal) : { id: "", ...DEFAULTS });
     if (parsedLocal) pushPersisted();
+    else if (!stale) {
+      // ── 首次安装：宿主没存档，本机也没有 ⇒ 套用「深色 + 作者自用」──
+      // 判据就是**两边都空**（用户口径：新装默认好看，升级用户一概不受影响）。
+      // `!parsedLocal` 这一条是关键：宿主文件被删但浏览器 localStorage 还在（老用户重装宿主）时，
+      // 本地存档说了算，绝不能拿默认外观盖掉他。
+      // 不设任何哨兵键：本分支只在"真正第一次"成立，套用后 pushPersisted() 写出存档 ⇒
+      // 下次启动走宿主分支，天然只触发一次。
+      // ⚠️ 本文件在 INLINE_MODULES 里排在 `preset-store.js` **之前**，直接调 applyPreset 会撞 TDZ ⇒
+      // 经注入钩子 `firstRunAdopt`（在 client.js 里定义、读到的是已初始化的函数）。
+      if (typeof firstRunAdopt === "function") firstRunAdopt();
+    }
   } else {
     // Host unreachable (route missing / static load): localStorage fallback.
     if (!stale) Object.assign(selection, readPersisted());

@@ -7,7 +7,7 @@
  * （本地链 / CI / `prepack` 三条路径都跑同一支构建）。它们**不再入库**：本仓的安装路径
  * （npm 包 / Release tgz）都在打包时构建，开发路径（`link:`）本来就要求先 `npm run build`。
  *
- * ⚠️ 产物**不止一份**（BUNDLE-SPLIT §7.2「每包一产物」）：主包 `lib/client.js` + 每个声明了
+ * ⚠️ 产物**不止一份**（ADR-0014 S10.2「每包一产物」）：主包 `lib/client.js` + 每个声明了
  * 浏览器半边（`dsh.client` / `exports['./client']`）的 standalone 子包各一份
  * `packages/<pkg>/lib/client.<短名>.js`（fx / parallax …）。产物集合**不写死在本文件里**，
  * 而是取发现层 `test/tools/packages.mjs` 的 `clientPackages` —— 写死清单的失败模式是
@@ -71,11 +71,10 @@ console.log('  产物集合（发现层 clientPackages）：' + ARTIFACTS.length
 
 // ── prebuilt（受控派生）形态：产物**必须入库**，不能按 §「产物不入库」判 ──────────
 // 绝大多数子包的浏览器半边由 `npm run build` 现场编译（源码 → 产物），所以产物出库。
-// 但 `packages/pet` 是 upstream-fork 形态：`lib/client.js` 是上游 dsh-pet@0.3.7 的
-// **预构建产物**（tsdown 出、含 .ts 源码面），本仓没有它的构建链 —— 它的
-// `client.build.json` 写的是 `prebuilt`：构建期只核对 sha256，不读源码重编。
+// 但若将来重新登记 upstream-fork 形态的包（其产物是上游预构建、本仓没有构建链），
+// `client.build.json` 会写 `prebuilt`：构建期只核对 sha256，不读源码重编。
 // 对这类产物「入库」才是对的：不入库 ⇒ CI 的 checkout 里根本没有这个文件 ⇒
-// `npm run build` 直接 `登记的浏览器半边 lib/client.js 不在盘上` 退出 1。
+// `npm run build` 直接以「登记的浏览器半边不在盘上」退出 1（此前 pet 预构建包即此形态，现已移除）。
 // 判据不能放宽成"忽略 pet"，而是**按配方登记的真实形态分支**：只有当真声明了
 // `prebuilt.sha256` 时才豁免，其余一律照旧要求未跟踪。
 const prebuiltRels = new Set();

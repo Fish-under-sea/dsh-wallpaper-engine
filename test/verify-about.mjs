@@ -38,7 +38,7 @@ import { Writable } from 'node:stream';
 // 就写着"不要用 startsWith(dir + '/')"，不剥注释会被自己的说明误伤成真阳性）。
 import { stripComments } from './tools/js-text.mjs';
 // 词表族的按构建顺序读法（组装点 + 各域模块；单一真源 = scripts/build-client.mjs 的 INLINE_MODULES）。
-import { scopeFiles, panelText } from './tools/src-scope.mjs';
+import { panelText } from './tools/src-scope.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 let passed = 0;
@@ -462,14 +462,13 @@ async function runQr(route, pathname, method, headers) {
   const clientSrc2 = panelText();
   check('渲染器用 apiUrl 拼路由路径（不是内联图）',
     /src: apiUrl\(ABOUT_QR_QQ_PATH\)/.test(clientSrc2) && /src: apiUrl\(ABOUT_QR_DOUYIN_PATH\)/.test(clientSrc2));
-  // ⚠️ 不能泛判 `data:image/png;base64,iVBOR` —— 吉祥物立绘就是这种（那两张该留）。要判的是
-  // **这两张码的字节**在不在 bundle 里：拿每张图 base64 的头 64 字符做指纹（内联过就必然命中）。
+  // 立绘已外置为 `/rope-art` 路由（不再内联），所以这里只判二维码字节不在 bundle。
+  // 要判的是 **这两张码的字节**在不在 bundle 里：拿每张图 base64 的头 64 字符做指纹（内联过就必然命中）。
   const bundle = read('lib/client.js');
   const fingerprints = ['qq-group.png', 'douyin-group.png']
     .map((f) => readFileSync(join(ABOUT_DIR, f)).toString('base64').slice(0, 64));
-  check('客户端产物里不再有这两张二维码的字节（bundle 体积那条腿；吉祥物立绘不受影响）',
-    fingerprints.every((fp) => !bundle.includes(fp))
-      && bundle.includes('data:image/png;base64,iVBOR'), // 吉祥物仍在（证明这条不是把 base64 一网打尽）
+  check('客户端产物里不再有这两张二维码的字节（bundle 体积那条腿）',
+    fingerprints.every((fp) => !bundle.includes(fp)),
     '指纹数=' + fingerprints.length + ' bundle=' + bundle.length + 'B');
 }
 
@@ -478,16 +477,16 @@ console.log('\n④ 客户端：三态文案 + 只读 + 不进设置');
 const clientSrc = read('src/client.js');
 // 刀4：页签族并集（5 个域模块 + 组装点）；判据与断言一字未改。
 const tabsSrc = panelText();
-// 词表已按域拆族（`src/i18n-copy-*.js` + 组装点）：读**族并集**，判据与断言一字未改。
-const copySrc = scopeFiles('src/i18n-copy').map(read).join('\n');
 
 check('客户端只读宿主这条路由（apiJson 唯一入口）',
   clientSrc.includes('apiJson("/star-count")') && !/fetch\(\s*["'`]\/star-count/.test(clientSrc));
-check('三态文案都在（正在取 / 当前值 / 取不到）',
-  ['⭐ 正在获取 star 数…', '⭐ 当前 {count} star', '⭐ 暂时取不到 star 数'].every((k) => clientSrc.includes(k)));
-check('三条文案都进了英文词表（i18n 门禁的另一半）',
-  ['"⭐ 正在获取 star 数…"', '"⭐ 当前 {count} star"', '"⭐ 暂时取不到 star 数"',
-    '"来自 GitHub API 的实时数据（带缓存；拉不到时显示上一次取到的值）"'].every((k) => copySrc.includes(k)));
+// 三态的**措辞**不在这里钉：文案即词表键，键与英文词表的双向对账、占位符集合逐键相等都由
+// `test/verify-i18n.mjs` 守（ADR-0007 第 4 问：判据里不出现面向用户的文案字面量）。
+// 本条只钉状态机事实：三条分支各自成立，且取值态确实带 `{count}` 插值。
+check('三态分支都在（正在取 / 当前值 / 取不到），取值态带 {count} 插值',
+  clientSrc.includes('starCount.busy && starCount.value == null')
+  && clientSrc.includes('starCount.tried')
+  && /return weT\("⭐ [^"]*\{count\}/.test(clientSrc));
 /** star 数被当成设置写进去（直写 selection 字段 / 交给 setSetting 落盘）——两种都算越界。 */
 const writesStarIntoSetting = (s) =>
   /selection\.\w*[Ss]tarCount/.test(s) || /starCount[\s\S]{0,40}setSetting\(/.test(s);
@@ -528,8 +527,10 @@ check('公告等配图就绪才弹（pending 不弹；无图只在等满超时�
   /art === "ready" \|\| art === "timeout"/.test(noticeSrc));
 check('配图 <img> 只在 ready 态渲染（降级态不得出现裂图）',
   /art === "ready" \? React\.createElement\("img"/.test(noticeSrc));
+// 探针只在"会弹"时启动：已关公告（且不是手动重看）的用户一个请求都不发。
+// 源码形态是 `!eligible && !reopenRequested`（手动重看是第二条放行腿）—— 正则跟上它。
 check('探针只在"会弹"时启动（已关公告的用户不发请求）',
-  /if \(!eligible\) return undefined;/.test(noticeSrc));
+  /if \(!eligible && !reopenRequested\) return undefined;/.test(noticeSrc));
 check('negative control: 门控判据对无门控的合成组件有牙',
   !/art === "ready" \? React\.createElement\("img"/.test('function UpdateNotice() { return React.createElement("img", { src: x }); }')
     && !/art === "ready" \|\| art === "timeout"/.test('function UpdateNotice() { const show = loaded; }'));

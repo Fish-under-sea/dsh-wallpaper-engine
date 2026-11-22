@@ -89,15 +89,23 @@ const mutant = harness(true, mutantSource);
 mutant.setActive(true);
 assert.ok(!gateOn(mutant) && mutant.attributes.get(`${ATTR}-typo`) === 'on',
   'the gate predicate rejects an attribute-rename mutant');
-const drawerInsetSelector = 'html[data-windows-titlebar] body[data-we-glass-floaters] .we-repo-panel';
-const css = stripCssComments(cssBodyOf(bundle));
+const drawerInsetSelector = 'html[data-windows-titlebar] .we-repo-panel'; // ADR-0016 第四刀：该规则无门化（基础层）
+const glassBundle = readFileSync(new URL('../packages/glass/lib/client.glass.js', import.meta.url), 'utf8');
+const css = stripCssComments(cssBodyOf(bundle + glassBundle));
 function drawerInsetContract(text) {
   const rules = [...text.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
   const rule = rules.find((match) => match[1].trim() === drawerInsetSelector);
   return !!rule && /padding-top:\s*calc\(14px \+ var\(--dsh-windows-titlebar-height, 40px\)\)/.test(rule[2]);
 }
 assert.ok(drawerInsetContract(css), 'Windows drawer content must clear the native titlebar using its height token');
-assert.equal(drawerInsetContract(css.replace('padding-top: calc(14px + var(--dsh-windows-titlebar-height, 40px));', 'padding-top: 14px;')), false,
+// #249 起这份内缩在**无门控基础规则**里也有一份同值声明；负对照必须只改目标规则体，
+// 否则 `.replace` 先命中的是基础规则、目标规则原封不动 ⇒ 负对照假绿。
+const escSel = drawerInsetSelector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const drawerRule = new RegExp(escSel + '\\s*\\{[^}]*\\}').exec(css);
+assert.ok(drawerRule, 'drawer inset rule must be locatable for the negative control');
+const mutatedDrawer = css.replace(drawerRule[0],
+  drawerRule[0].replace(/padding-top:\s*calc\(14px \+ var\(--dsh-windows-titlebar-height, 40px\)\)/, 'padding-top: 14px'));
+assert.equal(drawerInsetContract(mutatedDrawer), false,
   'negative control: no titlebar inset is rejected');
 assert.equal(drawerInsetContract(css.replace(drawerInsetSelector, 'body[data-we-glass-floaters] .we-repo-panel')), false,
   'negative control: ordinary browsers must not inherit the Windows-only inset');

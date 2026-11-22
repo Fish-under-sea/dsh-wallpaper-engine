@@ -14,7 +14,7 @@
  *   · `base`           ← 路径前缀 `BASE`（宿主唯一的定义处；这里以别名 BASE 使用）
  *   · `appendDiagLine` ← `lib/diag-trace.js` 的落盘函数（多族共用；主包各族由门面注入，本组件行走组件会话交出）
  *   · `configPath`     ← 模块级：数据目录里的 `config.json` 路径（后端的 `dataDir` 取它的父目录）
- *   · `readConfig`     ← 模块级：读取设置（启动决策读 `audioSource` / `mediaIntegration` / `mediaLyricsOnline`）
+ *   · `readConfig`     ← 模块级：读取设置（启动决策读 `audioSource` / `mediaIntegration`）
  *   · `log`            ← `lib/log.js` 的宿主日志入口（已带 `[media]` 标签）⇒ 后端的注入契约为
  *                        `log(msg, level)`：级别由调用点标注，缺省 `info`
  *   · `serveFile`      ← 组件会话交出的静态文件发送器（多族共用；规模由 `node test/tools/host-route-index.mjs --deps` 现算）
@@ -57,7 +57,7 @@ export function registerNowPlayingRoutes(webServer, c) {
   // 3c-5. 媒体后端（Now Playing + 系统音频频谱）。首选 media-bridge 子进程
   //       （macOS MediaRemote/CoreAudio、Windows GSMTC/WASAPI、Linux MPRIS/PipeWire，
   //       三平台同一套能力）；取不到产物或起不来时由**媒体后端门面** `backend.js` 的
-  //       `createMediaBackend()` 自动回落到本包 `lib/legacy.js`
+  //       `createMediaBackend()` 自动回落到本包 `../legacy.js`
   //       （macOS Swift tap + ffmpeg 路径），回落原因在 status.fallback 里。
   //       `dataDir` = config.json 的父目录（中间件产物 / 音频 tap 编译产物，属工具链）；
   //       `cacheBaseDir` = 用户可改的**缓存根**访问器（中间件 --cache-dir 与封面缓存跟它走，
@@ -80,7 +80,6 @@ export function registerNowPlayingRoutes(webServer, c) {
     mediaBackend.start({
       // DSH_WE_MEDIA_NO_AUDIO=1：只取元数据、永不碰系统音频采集（不申请授权）。
       audio: st.audioSource !== 'off' && process.env.DSH_WE_MEDIA_NO_AUDIO !== '1',
-      online: st.mediaLyricsOnline === true,
     });
   };
 
@@ -153,7 +152,7 @@ export function registerNowPlayingRoutes(webServer, c) {
       if (method !== 'POST') { res.statusCode = 405; res.end('method not allowed'); return; }
       // 薄别名：保留调用点写法，实现收敛到 lib/json-response.js（默认带 no-store）。
       const json = (code, o) => http.sendJson(res, code, o);
-      // 上限 + 收完一次性解码（不变量见 lib/routes/upload.js 文件头）：
+      // 上限 + 收完一次性解码（不变量见 packages/media-bridge/lib/routes/upload.js 文件头）：
       // 这是一条 POST，而 webserver 允许 host: 0.0.0.0 ⇒ 无上限的累加会把宿主堆无界撑大。
       let tooLarge = false;
       const reader = http.bodyReader(req, {

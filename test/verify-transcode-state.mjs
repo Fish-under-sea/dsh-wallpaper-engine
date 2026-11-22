@@ -57,14 +57,17 @@ const results = [];
  *  **门面里的调用点**先后"（两族都不在门面里注册路由字面量）。 */
 {
   const host = readFileSync(new URL('../lib/index.js', import.meta.url), 'utf8');
-  const derived = readFileSync(new URL('../lib/routes/media-derived.js', import.meta.url), 'utf8');
+  const derived = readFileSync(new URL('../packages/media-bridge/lib/routes/media-derived.js', import.meta.url), 'utf8');
   const stale = /path: `\$\{BASE\}\/(media-info|transcode-progress|transcoded|video-preview)`/;
   const PATHS = ['media-info', 'transcode-progress', 'transcoded', 'video-preview'];
   check('派生媒体族：四条路由已搬进 lib/routes/media-derived.js（门面里零残留）',
     !stale.test(host) && PATHS.every((p) => derived.includes('path: `${BASE}/' + p + '`')));
-  const callAt = host.indexOf('registerMediaDerivedRoutes(webServer, {');
-  const bytesAt = host.indexOf('registerMediaBytesRoutes(webServer, {');
-  check('派生媒体族：调用点在门面里，且早于 /media 字节族（晚注册会被 prefix 吞掉）',
+  // S5c 刀2：两族都出户后，调用点先后搬到了包入口（`packages/media-bridge/lib/index.js`）——
+  // prefix 吞噬的防线跟着调用点走，所以这条对比读包入口而不是门面。
+  const entry = readFileSync(new URL('../packages/media-bridge/lib/index.js', import.meta.url), 'utf8');
+  const callAt = entry.indexOf('registerMediaDerivedRoutes(webServer, {');
+  const bytesAt = entry.indexOf('registerMediaBytesRoutes(webServer, {');
+  check('派生媒体族：调用点在包入口里，且早于 /media 字节族（晚注册会被 prefix 吞掉）',
     callAt > 0 && bytesAt > 0 && callAt < bytesAt);
   check('negative control: 门面里重新出现被搬走的路由字面量会被这条判据拒掉',
     stale.test(host + '\n  path: `${BASE}/media-info`,'));
@@ -80,7 +83,7 @@ const results = [];
   // （P0 库化；task-10 A 起本判据重指真源）；`transcodeCached` 仍在门面 ⇒ 合并两处文本，判据/期望值一字未改。
   const host = readFileSync(new URL('../lib/index.js', import.meta.url), 'utf8')
     + readFileSync(new URL('../lib/media/transcode.js', import.meta.url), 'utf8');
-  const derived = readFileSync(new URL('../lib/routes/media-derived.js', import.meta.url), 'utf8');
+  const derived = readFileSync(new URL('../packages/media-bridge/lib/routes/media-derived.js', import.meta.url), 'utf8');
   const layer = readFileSync(new URL('../src/video-layer.js', import.meta.url), 'utf8');
   check('抽帧缓存键只有一份：落盘与"有没有缓存"共用 transcodeCacheKey(abs, mtimeMs, fps)',
     /function transcodeCacheKey\(abs, mtimeMs, fps\)/.test(host)
@@ -442,6 +445,26 @@ const requireMock = (spec) => {
 };
 const exportsObj = factory(requireMock);
 
+// P-D S3c：「壁纸库」页签四节（含「当前壁纸」）已全部搬进 packages/media-bridge 的浏览器
+// 半边 ⇒ 抽屉里的「选择壁纸」按钮只在该产物登记 library 节之后才出现。与真实 loader 同形，
+// 在 apply() **之前**求值该产物（它的 factory 用主 bundle 的显式键集把四节登记进注册表）。
+// 不装这份产物 ⇒ 下面「picker open button found」必然红 —— 那是判据在正确报警，不是回归。
+{
+  const wallpaperArtifact = readFileSync(
+    new URL('../packages/media-bridge/lib/client.media-bridge.js', import.meta.url), 'utf8');
+  const subHandoffs = [];
+  sandbox.window.__ModuleLoader__ = { load: (h) => { subHandoffs.push(h); } };
+  new vm.Script(wallpaperArtifact, { filename: 'client.media-bridge.js' }).runInContext(sandbox);
+  sandbox.window.__ModuleLoader__ = { load: (h) => { cap.handoff = h; } };
+  if (subHandoffs.length !== 1) {
+    throw new Error('wallpaper 浏览器半边必须恰好注册一份 bundle（实际 ' + subHandoffs.length + ' 份）');
+  }
+  const wallpaperExports = subHandoffs[0].factory((spec) => (
+    spec === 'dsh-plugin-wallpaper-engine' ? exportsObj : requireMock(spec)
+  ));
+  if (typeof wallpaperExports.apply !== 'function') throw new Error('wallpaper 浏览器半边必须导出 apply');
+}
+
 const registrations = [];
 const pickerRenders = [];
 const slots = {
@@ -508,6 +531,8 @@ function stateMachineHarness(parts) {
   };
   const context = vm.createContext({
     selection, AbortController, LAYER_ID: 'fixture-layer', IS_EDGE: false,
+    // #363：buildVideoMedia 里挂的右键菜单抑制器（本台只测选择状态机，给它一个空实现）
+    suppressVideoContextMenu() {},
     document: { getElementById: () => null, createElement: makeVideo },
     apiJson: async (url, opts) => {
       requests.push({ url, signal: opts?.signal });

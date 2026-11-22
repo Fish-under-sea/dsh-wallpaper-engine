@@ -12,7 +12,7 @@
  * workstation), and is a silent no-op otherwise (a published tarball, where `src/` is
  * excluded from `files` and `lib/client.js` is pre-built).
  *
- * **只挂主包，不给子包各挂一份 `prepack`（BUNDLE-SPLIT §7.2 的决定）**：子包的浏览器半边
+ * **只挂主包，不给子包各挂一份 `prepack`（ADR-0014（子包契约） §7.2 的决定）**：子包的浏览器半边
  * （`packages/<pkg>/lib/client.<pkg>.js`）由**同一个**构建器在根 `pack` 时一并产出，产物随
  * 子包自己的 `files[]` 发布 —— 再给子包挂一次只是同一份字节的第二次构建。而且子包挂
  * `prepack` 会把 `scripts/` 拖进子包发布面（要么把 scripts/ 加进 files[]，要么让子包钩子指向

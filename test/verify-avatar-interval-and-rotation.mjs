@@ -23,8 +23,8 @@ import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createInventoryBuilder } from '../lib/inventory.js';
 import { createImagePreviewKit } from '../lib/media/image-preview.js';
-import { registerMediaBytesRoutes } from '../lib/routes/media-bytes.js';
-import { registerInventoryRoutes } from '../lib/routes/inventory.js';
+import { registerMediaBytesRoutes } from '../packages/media-bridge/lib/routes/media-bytes.js';
+import { registerInventoryRoutes } from '../packages/media-bridge/lib/routes/inventory.js';
 import { createServeKit } from '../lib/serve.js';
 import { createUploadDirKit } from '../lib/upload-dir.js';
 import { createUploadStoreKit } from '../lib/upload-store.js';
@@ -41,7 +41,7 @@ const schemaSrc = read('lib/settings-schema.js');
 const clientSrc = read('src/client.js');
 const avatarSrc = read('src/avatar-layer.js');
 const extAvatarSrc = read('src/ext-avatar.js');
-const tabsSrc = read('src/panel-tabs-wallpaper.js');
+const tabsSrc = read('packages/media-bridge/src/wallpaper-rotation-section.js');
 const videoSrc = read('src/video-layer.js');
 
 // ── ① avatarAiRepeatRows 四处齐 + 面板滑块 + 装饰层现读 ──────────────────────
@@ -67,9 +67,10 @@ const videoSrc = read('src/video-layer.js');
     schemaMod.sanitizeFromSchema({ avatarAiRepeatRows: 0 }, 'client').avatarAiRepeatRows === 6
     && schemaMod.sanitizeFromSchema({ avatarAiRepeatRows: 999 }, 'client').avatarAiRepeatRows === 6
     && schemaMod.sanitizeFromSchema({ avatarAiRepeatRows: 'x' }, 'client').avatarAiRepeatRows === 6);
-  check('面板：扩展页签有「助手头像间隔」滑块，量程取 schema 常量（不手写数字）',
-    extAvatarSrc.includes('weT("助手头像间隔")')
-    && /AVATAR_AI_REPEAT_MIN,\s*AVATAR_AI_REPEAT_MAX/.test(extAvatarSrc)
+  // 滑块标签的措辞不在这里钉（`weT("助手头像间隔")` ⇄ 英文词表由 `test/verify-i18n.mjs` 对账，
+// ADR-0007 第 4 问）；本条只钉「滑块存在、量程取 schema 常量、接到回调」。
+check('面板：扩展页签有头像间隔滑块，量程取 schema 常量（不手写数字）',
+    /SliderRow\(weT\("[^"]+"\), AVATAR_AI_REPEAT_MIN, AVATAR_AI_REPEAT_MAX, 1,/.test(extAvatarSrc)
     && extAvatarSrc.includes('onAvatarAiRepeatRows'));
   check('装饰层：分组**现读设置**（avatarAiRepeatRows 读 selection），不是读死常量',
     avatarSrc.includes('function avatarAiRepeatRows(selLike)')
@@ -95,8 +96,10 @@ const videoSrc = read('src/video-layer.js');
   check('修复：src/** 里**零处**再对 rotationInterval 调 schemaRange',
     !stripComments(clientSrc).includes('schemaRange("rotationInterval")'));
   const clamps = [...clientSrc.matchAll(/clampNum\(\s*[^;]*?DEFAULTS\.rotationInterval\s*\)/g)].map((m) => m[0]);
+  // #254 之后主行下拉改走实时覆盖（rotationLiveInterval，不写回列表），直接写 group.interval 的
+  // onGroupInterval 已删除 ⇒ 列表间隔的钳制点剩 2 处（草稿保存 + 编辑器输入）。
   check('修复：所有轮播间隔钳制点都用 ROTATION_INTERVAL_MIN/MAX（' + clamps.length + ' 处）',
-    clamps.length >= 3 && clamps.every((c) => c.includes('ROTATION_INTERVAL_MIN, ROTATION_INTERVAL_MAX')),
+    clamps.length >= 2 && clamps.every((c) => c.includes('ROTATION_INTERVAL_MIN, ROTATION_INTERVAL_MAX')),
     clamps.join(' | '));
   check('真源：schema 导出那对常量，且 readRotationGroups 用它（宿主与客户端同一域）',
     schemaSrc.includes('const ROTATION_INTERVAL_MIN = 1, ROTATION_INTERVAL_MAX = 1440;')
@@ -157,7 +160,7 @@ const videoSrc = read('src/video-layer.js');
     && tabsSrc.includes('weT("轮播推进方式")')
     && clientSrc.includes('function onEditTrigger(e)')
     && clientSrc.includes('const onGroupTrigger = (e) =>')
-    && clientSrc.includes('onEditTrigger, onGroupChange, onGroupInterval, onGroupTrigger'));
+    && clientSrc.includes('onEditTrigger, onGroupChange, onGroupTrigger'));
   // 选中视频结束档时，已经上屏的那层要立刻换 loop 语义（否则要等下一次换壁纸才生效）
   check('切换推进方式会立刻改已上屏视频的 loop（不只影响下一次建层）',
     clientSrc.includes('media.loop = group.trigger !== "videoEnd"'));
@@ -241,8 +244,12 @@ const videoSrc = read('src/video-layer.js');
       mtimeOrNullP: async (p) => { try { return statSync(p).mtimeMs; } catch { return null; } },
       extOf, ensureUploadDir: store.ensureUploadDir, readUploadMeta: store.readUploadMeta,
       enumerateUploadsP: uploads.enumerateUploadsP, metaEntry: store.metaEntry,
-      readPlaylistsP: async () => [], playlistItemId: () => null, weAssetsAvailable: () => false,
+      readPlaylistsP: async () => [], playlistItemId: () => null,
+      readFoldersP: async () => [], foldersWithIds: () => [], weAssetsAvailable: () => false,
       getUploadDir: uploads.getUploadDir, getWeAssetsDir: () => '', cacheBaseDir: () => join(dir, 'cache'),
+      // #386：清单族新增的两个内核面（自动探测素材目录 / 值的来源）——本用例不关心探测，
+      // 给空桩即可；缺桩会让 assembleInventory 抛错、/inventory 退化成 500（判据会读不到 wallpapers）。
+      adoptWeAssetsDir: () => null, getWeAssetsSource: () => null,
       imageThumbPath: kit.imageThumbPath, // 仅为恢复旧行为的负对照提供原依赖。
     })();
     const activeStreams = new Set();
@@ -272,6 +279,13 @@ const videoSrc = read('src/video-layer.js');
       const cold = await inventory();
       const coldInventory = cold.response.status === 200 && cold.item.preview === expectedPreview
         && cold.item.media === expectedMedia && !existsSync(thumb) && inputs.length === 0;
+      const fullUrl = `${cold.item.preview}?full=1`;
+      const full = await send(origin, fullUrl);
+      const fullHead = await send(origin, fullUrl, 'HEAD');
+      const fullPreview = full.status === 200 && full.body.equals(original)
+        && fullHead.status === 200 && fullHead.body.length === 0
+        && Number(fullHead.headers['content-length']) === original.length
+        && !existsSync(thumb) && resolutions === 0 && inputs.length === 0;
       const first = await Promise.all([send(origin, cold.item.preview), send(origin, cold.item.preview)]);
       const generated = first.every((r) => r.status === 200 && r.body.equals(thumbnail))
         && inputs.length === 1 && inputs[0].source === source
@@ -343,7 +357,7 @@ const videoSrc = read('src/video-layer.js');
       const cacheKeys = key1 !== key2 && key2 !== key3
         && readdirSync(kit.imageThumbDir()).every((n) => !n.includes('.tmp'));
       return {
-        coldInventory, generated, stableInventory, cached, revalidate, evicted, regenerated,
+        coldInventory, fullPreview, generated, stableInventory, cached, revalidate, evicted, regenerated,
         stableAfterPrune, missingFfmpeg, mediaUnchanged, noNestedThumbnail, routeSemantics, cacheKeys,
         detail: `before=${before.status} evicted=${evicted} after=${after.status} fallback=${fallback.status} source=${existsSync(source)}`,
       };
@@ -363,6 +377,10 @@ const videoSrc = read('src/video-layer.js');
 
   async function loadMutant(name, source) {
     const file = join(iso, `${name}.mjs`);
+    // inventory.js 现在有同目录相对 import（media/media-size.js）；变异体住 .test-cache，
+    // 必须把这棵依赖一起放进去，否则 import 阶段就 ERR_MODULE_NOT_FOUND。
+    mkdirSync(join(iso, 'media'), { recursive: true });
+    writeFileSync(join(iso, 'media', 'media-size.js'), read('lib/media/media-size.js'));
     writeFileSync(file, source);
     return import(pathToFileURL(file).href);
   }
@@ -371,6 +389,7 @@ const videoSrc = read('src/video-layer.js');
     const actual = await judgePreview();
     for (const [key, label] of Object.entries({
       coldInventory: '冷清单发布原图 token，枚举不生成缩略图',
+      fullPreview: '全屏预览 GET 和 HEAD 直出原图且不生成缩略图',
       generated: '真实 HTTP 冷取图合流生成一次，输入原图且按 kit 宽度缩放',
       stableInventory: '已有缓存的清单仍发布原图 token，不注册缓存绝对路径',
       cached: '淘汰前 HTTP 200 返回缓存字节且不重复生成',
@@ -397,15 +416,15 @@ const videoSrc = read('src/video-layer.js');
     return w.previewAbs;
   }`);
     oldInventory = replaceOnce(oldInventory,
-      '        preview: hasPreview\n          ? `${BASE}/preview/${tokenFor(w.previewAbs)}`',
-      '        preview: hasPreview\n          ? `${BASE}/preview/${tokenFor(previewSourceAbs(w))}`');
+      '        preview: hasPreview\n          ? `${BASE}/preview/${tokenFor(w.previewAbs)}${mediaVersion}`',
+      '        preview: hasPreview\n          ? `${BASE}/preview/${tokenFor(previewSourceAbs(w))}${mediaVersion}`');
     const old = await loadMutant('old-inventory', oldInventory);
     const broken = await judgePreview(old.createInventoryBuilder);
     check('负对照：恢复旧清单行为，同一个 LRU + HTTP 判据必须红（200 → 404，源图仍在）',
       broken.cached && broken.evicted && !broken.stableInventory && !broken.regenerated
       && broken.detail.includes('after=404'), broken.detail);
 
-    const bytes = read('lib/routes/media-bytes.js');
+    const bytes = read('packages/media-bridge/lib/routes/media-bytes.js');
     const noFallback = await loadMutant('no-fallback', replaceOnce(bytes, 'serveFile(thumb || abs,', 'serveFile(thumb,'));
     const brokenFallback = await judgePreview(createInventoryBuilder, noFallback.registerMediaBytesRoutes);
     check('负对照：删除原图 fallback，缺 ffmpeg 的同一 HTTP 判据必须红',
@@ -418,6 +437,23 @@ const videoSrc = read('src/video-layer.js');
   } finally {
     rmSync(iso, { recursive: true, force: true });
   }
+}
+
+// #255②：「自动轮转」行只在**选中列表且不在编辑**时渲染；旧实现常驻，没列表时只显示一句
+// 永远点不动的「请先选择或新建一个轮播列表」。
+{
+  const rotationSrc = read('packages/media-bridge/src/wallpaper-rotation-section.js');
+  // 注释里的旧文案不算代码（本文件在 #255② 的说明里引用了旧提示原文）——用共享的
+  // 字符串感知剥注释实现（verify-module-layout 禁止朴素块注释正则）。
+  const rotationCode = stripComments(rotationSrc);
+  const gatedCtl = (t) => t.includes('(sel.rotationGroupId && !editing) &&') && !t.includes('请先选择或新建一个轮播列表');
+  check('#255② 「自动轮转」行按 sel.rotationGroupId && !editing 门控，旧提示分支已删',
+    gatedCtl(rotationCode));
+  const oldStyle = rotationCode
+    .replace('(sel.rotationGroupId && !editing) && React.createElement("div", { className: "we-picker__ctl" },',
+      'React.createElement("div", { className: "we-picker__ctl" },')
+    .replace('ctlText(weT("自动轮转"),\n      playableCount < 2', 'ctlText(weT("自动轮转"),\n      !sel.rotationGroupId ? weT("请先选择或新建一个轮播列表") : playableCount < 2');
+  check('#255② negative control: 恢复旧常驻行会被同一 detector 判红', !gatedCtl(oldStyle));
 }
 
 if (stats.failed) {

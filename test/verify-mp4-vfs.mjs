@@ -300,6 +300,15 @@ const hostMod = await import(pathToFileURL(resolve(root, 'lib', 'index.js')).hre
 const host = hostMod.default || hostMod;
 const apply = host.apply || (host.inject && host.apply);
 const dispose = apply(mockCtx);
+// S5c 刀2：`/inventory` 与 `/media` 等族归 `wallpaper` 组件行（实现入包）⇒ 夹具连组件一起 boot；
+// 判据判什么没变（同 verify-scene-live 的既有做法）。
+if (typeof hostMod.applyComponent === 'function') {
+  for (const comp of ['media-bridge']) {
+    try { hostMod.applyComponent(mockCtx, {}, comp); } catch (err) {
+      console.log('  · 组件行 boot 失败（' + comp + '）：' + String(err && err.message));
+    }
+  }
+}
 
 function fakeRes() {
   const state = { status: 200, headers: {}, body: Buffer.alloc(0), ended: false };
@@ -483,7 +492,7 @@ section('E. /media-info 的抽帧缓存回答：只读、键与落盘一致、�
   check('E6 别的上限没缓存 ⇒ cached:false（不许把 30 的缓存当成 60 的）',
     other && other.transcode && other.transcode.fps === 60 && other.transcode.cached === false);
   // E7：`ok` 的期望值**不取自同一响应的 `info`** —— `plain.ok === (plain.info !== null)` 只是把
-  // `lib/routes/media-derived.js:93` 的 `ok: !!info` 再抄一遍：两边**一起**翻（info 变成对象而 ok 仍是
+  // `lib/routes/media-derived.js` 的 `ok: !!info` 再抄一遍：两边**一起**翻（info 变成对象而 ok 仍是
   // true）它就看不出来。这里给独立期望：夹具是手搓的布局盒（不含 `getMediaInfo` 要的元信息盒）⇒
   // `info` 必须是 null、于是 `ok` 必须是 false；不带 fps ⇒ `transcode` 必须是 null。
   // 同一个具名判据再喂一份**共同翻转**的变异响应，必须出来相反。
@@ -499,7 +508,7 @@ section('E. /media-info 的抽帧缓存回答：只读、键与落盘一致、�
 // D 段测的是 **kit 内部**逻辑（`legacyCacheBaseDir` 由判据自注入 ⇒ 接线错了也照绿）。
 // 真实故障形态（提交 6385b62e 的回归，已复现）：`hostKernel` 的返回对象漏了 `pluginDataDir`，
 // `lib/kernel/host-session.js` 却从 kernel 解构它 ⇒ `legacyCacheBaseDir = () => join(undefined, 'cache')`
-// 每次调用抛 TypeError，被 `lib/faststart.js:84-90` 吞掉 ⇒ **只扫当前根**，旧版几个 GB 永不回收。
+// 每次调用抛 TypeError，被 `lib/faststart.js` 吞掉 ⇒ **只扫当前根**，旧版几个 GB 永不回收。
 // 所以这一节必须跑**真会话**（`createHostSession`），而不是再喂一次自注入的 kit。
 // 判据的牙：G2/G3/G4 在"内核返回面漏键"或"会话段改从别处取值"时立刻变红（G4 是负对照，
 // 证明"两个根都在清扫面上"不是恒真）。

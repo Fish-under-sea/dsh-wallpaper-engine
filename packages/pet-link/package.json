@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-wallpaper-engine-pet-link",
-  "version": "1.3.3",
+  "version": "1.4.3",
   "description": "Optional official dsh-pet bridge: public API control, four interaction sequences and independent page bubbles; no bundled pet or patching.",
   "icon": "./icon.png",
   "type": "module",
@@ -17,7 +17,7 @@
       "patch": "./cordis.patch.yml"
     },
     "client": {
-      "inject": ["@deepseek-ai/dsh-client-runtime"],
+      "inject": ["@deepseek-ai/dsh-client-runtime", "dsh-plugin-wallpaper-engine"],
       "platform": "web",
       "immediately": true
     }

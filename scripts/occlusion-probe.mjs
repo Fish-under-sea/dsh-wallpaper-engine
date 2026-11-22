@@ -13,7 +13,11 @@
  */
 
 import process from 'node:process';
-import { createOcclusionHub } from '../lib/occlusion/index.js';
+// S5d 刀3：hub 随壁纸子包出户（实现在 `packages/media-bridge/lib/occlusion/`），平台适配器与
+// 会话判定留在主包 `lib/occlusion/x11.js` ⇒ 探针按**真宿主同一接线**把两者注入进去
+//（主包经键表 `schema:` 面给包入口，探针直接 import 同一份实现）。
+import { createOcclusionHub } from '../packages/media-bridge/lib/occlusion/index.js';
+import { createX11Adapter, isX11CandidateEnv } from '../lib/occlusion/x11.js';
 
 const intervalIdx = process.argv.indexOf('--interval-ms');
 const pollMs = intervalIdx !== -1 ? Number(process.argv[intervalIdx + 1]) || 1000 : 1000;
@@ -24,7 +28,7 @@ const ownPid = ownPidIdx !== -1 ? Number(process.argv[ownPidIdx + 1]) : undefine
 
 /**
  * 日志回调。hub 的 `log` 形参**只从默认值 `= () => {}` 推出类型 `() => void`**
- * （`lib/occlusion/index.js:37`），但实现恒以 `log(msg)` 调用（同文件 `:64`）⇒ 把 msg 写成
+ * （`packages/media-bridge/lib/occlusion/index.js` 的 hub），但实现恒以 `log(msg)` 调用 ⇒ 把 msg 写成
  * 必填参数会被 tsc 判 TS2322（"Target signature provides too few arguments"）。
  * 这里把参数写成**可选**：声明契约（允许零参调用）与真实调用（总会传 msg）两边都成立；
  * 行为与原来逐字一致（零参时原本也打印 `# undefined`）。lib 侧那处过窄的形参类型见报告。
@@ -34,6 +38,8 @@ const probeLog = (msg) => console.log(`# ${msg}`);
 
 const hub = createOcclusionHub({
   log: probeLog,
+  isX11CandidateEnv,
+  createX11Adapter,
   pollMs,
   ...(ownPid ? { ownPid } : {}),
 });

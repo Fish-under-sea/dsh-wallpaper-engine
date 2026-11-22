@@ -290,7 +290,7 @@ const AVATAR_EXTENSION_MODULE = {
   // 头像必须在**第一**（用户口径），两项子包模块各自声明 2 / 3。
   // 排序 = (order, 注册序)，唯一实现在 src/extension-registry.js。
   order: 1,
-  // 模块级重置的分组名（issue #192）：键集住在 lib/settings-schema.js 的 RESET_GROUPS，
+  // 模块级重置的分组名（issue #192）：键集住在 lib/settings-schema.js 的 RESET_MODULES，
   // 这一侧只报"我是哪一组" —— 键表不在渲染器里手抄第二份。
   resetGroup: 'avatar',
   get title() { return weT("自定义会话头像"); },

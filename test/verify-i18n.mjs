@@ -5,18 +5,18 @@
  *   ① **界面零裸中文**：`src/**` 里每条含中文的字符串字面量都必须进 `weT(...)`；带 `${}` 的模板
  *      与 `+` 拼接的碎片**不算**包过（前者 JS 先插值 ⇒ 查不到键；后者是半句话，英文语序对不上）。
  *      例外只有两类，都写死在下面的允许清单里：诊断/日志实参（`liveLog(...)` 等，不进界面）、
- *      纯数据块（`src/styles.js` 的整份样式表 —— 其中的中文全在 CSS 注释里）。
+ *      纯数据块（主包样式域模块与玻璃包样式表 —— 其中的中文全在 CSS 注释里）。
  *   ② **词表双向对账**：`WE_I18N_EN` 的键集 ⇄ 代码里 `weT("…")` 的字面量集合。少一条 = 该处
  *      在英文界面里原样露中文；多一条 = 孤儿键（改了中文原文却没清旧键，翻译白做）。两个方向
  *      都判，且**允许清单不许空转**（每条都必须在源码里真的还有）。
  *   ③ **值纪律**：每条译文非空、不含中文、`{}` 占位符集合与键**逐个相等**（少一个占位符 =
  *      英文句子把数字吞了；多一个 = 永远插不进去）。宿主表（`WE_I18N_HOST_EN`）另判"键必须能在
  *      `lib/**` 里找到同一条字面量"，防凭空造句。
- *   ④ **运行期行为**：在 vm 沙箱里真跑 `src/i18n-copy*.js`（词表族）+ `src/i18n.js`，判
+ *   ④ **运行期行为**：在 vm 沙箱里真跑 `src/i18n-copy*.js`（词表族）+ `src/i18n/i18n.js`，判
  *      中文=原文 / 英文=词表 / 未知键原样 / `{name}` 插值 / **接上宿主 locale 服务后跟随切换**
  *      （`locale/change` → 译文变、修订号 +1、订阅者被通知）/ 服务缺席时回落默认语言。
  *
- * 为什么要有这个门禁：插件的界面文案是**中文原文即键**（见 `src/i18n.js`），漏包一处不会报错 ——
+ * 为什么要有这个门禁：插件的界面文案是**中文原文即键**（见 `src/i18n/i18n.js`），漏包一处不会报错 ——
  * 英文用户只是看到一句中文；漏一条词表也不会报错 —— 那处原样露原文。两者都是"静默降级"，
  * 正是本仓最不想要的失败形态。所以两条都必须在提交前变红。
  *
@@ -52,21 +52,46 @@ const check = (name, ok, detail) => {
  *  （刀3）：原先登记的单文件 `src/styles.js` 已按视觉域拆成 8 个域模块 + 组装点
  *  （组装点无 CSS）⇒ 逐域登记，判据（kind / minLength / 空转检查）一字未改。 */
 const DATA_BLOCKS = [
-  { file: 'src/styles-base.js', kind: 'template', minLength: 10000, why: '样式域 base 是纯数据；其内的中文只出现在 CSS 注释（不渲染到界面）' },
-  { file: 'src/styles-shell.js', kind: 'template', minLength: 10000, why: '样式域 shell 是纯数据；其内的中文只出现在 CSS 注释（不渲染到界面）' },
-  { file: 'src/styles-sidebar.js', kind: 'template', minLength: 10000, why: '样式域 sidebar 是纯数据；其内的中文只出现在 CSS 注释（不渲染到界面）' },
-  { file: 'src/styles-chrome.js', kind: 'template', minLength: 10000, why: '样式域 chrome 是纯数据；其内的中文只出现在 CSS 注释（不渲染到界面）' },
-  { file: 'src/styles-settings.js', kind: 'template', minLength: 10000, why: '样式域 settings 是纯数据；其内的中文只出现在 CSS 注释（不渲染到界面）' },
-  { file: 'src/styles-panel.js', kind: 'template', minLength: 10000, why: '样式域 panel 是纯数据；其内的中文只出现在 CSS 注释（不渲染到界面）' },
-  { file: 'src/styles-quick.js', kind: 'template', minLength: 10000, why: '样式域 quick 是纯数据；其内的中文只出现在 CSS 注释（不渲染到界面）' },
-  { file: 'src/styles-ext.js', kind: 'template', minLength: 10000, why: '样式域 ext 是纯数据；其内的中文只出现在 CSS 注释（不渲染到界面）' },
+  // ADR-0016 第四刀：玻璃段出户到 packages/glass/src/glass-css.js（templates 表登记它、
+  // 主包被切的四个域模板放宽 minLength——它们只剩非玻璃段）。
+  { file: 'src/styles/base.js', kind: 'template', minLength: 3000, why: '样式域 base 是纯数据；其内的中文只出现在 CSS 注释（不渲染到界面）' },
+  { file: 'src/styles/shell.js', kind: 'template', minLength: 800, why: '样式域 shell 是纯数据；其内的中文只出现在 CSS 注释（不渲染到界面）' },
+  { file: 'src/styles/chrome.js', kind: 'template', minLength: 2000, why: '样式域 chrome 是纯数据；其内的中文只出现在 CSS 注释（不渲染到界面）' },
+  { file: 'packages/glass/src/glass-css.js', kind: 'template', minLength: 10000, why: '玻璃样式表（原 sidebar 整域 + base/shell/chrome/ext 的玻璃段）是纯数据；其内的中文只出现在 CSS 注释（不渲染到界面）' },
+  { file: 'src/styles/settings.js', kind: 'template', minLength: 10000, why: '样式域 settings 是纯数据；其内的中文只出现在 CSS 注释（不渲染到界面）' },
+  { file: 'src/styles/panel.js', kind: 'template', minLength: 10000, why: '样式域 panel 是纯数据；其内的中文只出现在 CSS 注释（不渲染到界面）' },
+  { file: 'src/styles/quick.js', kind: 'template', minLength: 10000, why: '样式域 quick 是纯数据；其内的中文只出现在 CSS 注释（不渲染到界面）' },
+  { file: 'src/styles/ext.js', kind: 'template', minLength: 10000, why: '样式域 ext 是纯数据；其内的中文只出现在 CSS 注释（不渲染到界面）' },
 ];
+
+/**
+ * 桌宠联动浏览器半的界面文件（panel-params / panel / extension-card）—— 文案经**注入式**
+ * translator（`translate()` / `t()`）在运行时翻译。**不再做文件级豁免**：改为按 pet-link
+ * 自带 EN 词表（`src/pet-link/i18n.js` 的 `PETLINK_I18N_EN`，键=中文原文）做**双向对账**
+ * （零漏译 / 零孤儿 / EN 值无中文）。这是有机判据：漏一条译文就红，而不是整文件闭眼放行。
+ * （t21：补齐词表后删除了 t16 遗留的三条整文件豁免。）
+ */
+const PETLINK_UI_FILES = [
+  'packages/pet-link/src/pet-link/panel-params.js',
+  'packages/pet-link/src/pet-link/panel.js',
+  'packages/pet-link/src/pet-link/extension-card.js',
+];
+/** pet-link 自成词表模块：它的中文就是**键**（同主包 i18n-copy 的口径），在扫描面之外，
+ * 由下方 pet-link 词表对账（零漏译/零孤儿/EN 值无中文）留牙。 */
+const PETLINK_I18N_MODULE = 'packages/pet-link/src/pet-link/i18n.js';
 
 /** 逐条精确值豁免（形如"是数据不是文案"的个别串）。每条都必须写明理由，且必须还在源码里。 */
 const VALUE_ALLOW = [
   ...[
     ...JSON.parse(readFileSync(join(ROOT, 'packages/pet-link/src/pet-link-actions.json'), 'utf8')).animations.events.DSHWE,
   ].map(value => ({ value, why: '桌宠资源池的实际动画名；必须与文件名一致，不能翻译。' })),
+  ...[
+    '累瘫鲸鱼的两碗饭', '蓝发鲸尾女仆拒绝换壁纸', '暴怒鲸尾女仆贴纸', '吓哭了', '？！欺负一只肥鱼！？',
+  ].map(value => ({
+    value,
+    why: '桌宠 `memes` 池的**表情图名**：作为 `/broadcast` 的 `image` 参数与配置键逐字匹配，' +
+      '翻译后就取不到图（宿主回 unknown-image）。属于数据标识，不是 UI 文案。',
+  })),
   {
     value: '设置',
     why: '**宿主的**标签候选（src/sidebar-right.js 的 settingsLabelCandidates）：' +
@@ -129,7 +154,7 @@ function fragmentedCjk(hits, dataBlocks = DATA_BLOCKS) {
 }
 
 /**
- * 从词表族（组装点 `src/i18n-copy.js` + 各域模块 `src/i18n-copy-*.js`）切出两块词表。
+ * 从词表族（组装点 `src/i18n/i18n-copy.js` + 各域模块 `src/i18n/i18n-copy-*.js`）切出两块词表。
  *
  * 取文口径**刻意保持朴素**：声明行到第一个 `\n};`（不配平大括号）—— 见 verify-module-layout 的
  * "朴素切片是刻意的"纪律：配平会改边界语义，反而把坏输入切"好"了。
@@ -206,15 +231,15 @@ function componentsWithoutLocaleHook(sources) {
 }
 
 // ══ 读源码 ═══════════════════════════════════════════════════════════════════
-// **词表模块本身在扫描面之外**：它的中文就是键（`src/i18n.js` 的设计），不是"漏包的界面文案"。
+// **词表模块本身在扫描面之外**：它的中文就是键（`src/i18n/i18n.js` 的设计），不是"漏包的界面文案"。
 // 排除它必须留牙：下面 ① 里那条"词表里确实还有中文键"的判据钉住这次排除不是空豁免。
-const DICT_MODULE = 'src/i18n-copy.js';
-// 词表落在**一个族**里：组装点 `DICT_MODULE` + 各域模块 `src/i18n-copy-*.js`。族顺序 = 构建期内联
+const DICT_MODULE = 'src/i18n/i18n-copy.js';
+// 词表落在**一个族**里：组装点 `DICT_MODULE` + 各域模块 `src/i18n/i18n-copy-*.js`。族顺序 = 构建期内联
 // 顺序（INLINE_MODULES 单一真源）⇒ 扫描面、切片面、vm 装载面三处用同一份清单，不会各自漂移。
 const DICT_FAMILY = parseInlineModules().map(({ file }) => file)
   .filter((file) => /(?:^|\/)i18n-copy(?:-[^/]+)?\.js$/.test(file));
 const DICT_MODULES = new Set(DICT_FAMILY);
-// A3（多包，BUNDLE-SPLIT §7.1）之后产品源码分居两处：主包 src/** 与 lib/**，子包 packages/<pkg>/{src,lib}/**。
+// A3（多包，ADR-0014 S10.2）之后产品源码分居两处：主包 src/** 与 lib/**，子包 packages/<pkg>/{src,lib}/**。
 // 扫描面必须同源扩到 packages/**：否则迁出去的 weT(…) 调用点（如 packages/fx/src/ext-fx.js）
 // 与宿主「原句」出处（如 packages/fonts/lib/fontsets.js）双双掉出扫描面 —— 症状恰好是
 // 「一堆孤儿键 + 一堆凭空造句」，而源码两半其实都合规。这正是 A3 打崩本守卫的形态。
@@ -235,9 +260,27 @@ const srcHits = [];
 for (const file of srcFiles) {
   const rel = relative(ROOT, file).split(/[\\/]/).join('/');
   if (DICT_MODULES.has(rel)) continue;
+  if (rel === PETLINK_I18N_MODULE) continue; // pet-link 词表：中文即键，由 pet-link 词表对账留牙
+  if (PETLINK_UI_FILES.includes(rel)) continue; // 这三个文件的文案走 pet-link 自成词表对账（见 ① 的 pet-link 段）
   for (const h of scanCjkStrings(readFileSync(file, 'utf8'))) srcHits.push({ file: rel, ...h });
 }
 const dictHits = DICT_FAMILY.flatMap((rel) => scanCjkStrings(readFileSync(join(ROOT, rel), 'utf8')));
+// ── pet-link 自成词表（path B）对账数据：三个 UI 文件的每个中文字面量都要有 EN 译文，且词表键都要被用到。
+const petLinkDict = (() => {
+  try { return new Function(readFileSync(join(ROOT, 'packages/pet-link/src/pet-link/i18n.js'), 'utf8') + ';return PETLINK_I18N_EN;')(); }
+  catch { return {}; }
+})();
+const petLinkUiHits = [];
+for (const plRel of PETLINK_UI_FILES) {
+  const abs = join(ROOT, plRel);
+  if (!existsSync(abs)) continue;
+  for (const h of scanCjkStrings(readFileSync(abs, 'utf8'))) petLinkUiHits.push({ file: plRel, ...h });
+}
+const petLinkValues = new Set(petLinkUiHits.map((h) => h.value));
+const HAS_CJK_RE = /[\u3000-\u303f\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\ufe30-\ufe4f\uff00-\uffef]/;
+const petLinkMissing = (values, dict) => [...values].filter((v) => !Object.prototype.hasOwnProperty.call(dict, v));
+const petLinkOrphan = (values, dict) => Object.keys(dict).filter((k) => !values.has(k));
+const petLinkBadValues = dict => Object.entries(dict).filter(([, v]) => typeof v !== 'string' || !v.trim() || HAS_CJK_RE.test(v));
 // 宿主文案的取值面：`lib/` 下的全部 `.js`（排除**生成物**与 **vendored** —— 它们不是本仓文案）。
 // 路径一律先归一成 `/` 再判（CI 里 Windows 的分隔符会让 `includes('/vendor/')` 静默失效）。
 // 本文件里的 glob 不许写成「斜杠紧跟两个星号」：那三个字符会让**朴素剥注释**的实现
@@ -256,7 +299,7 @@ for (const file of libFiles) {
   for (const h of scanCjkStrings(readFileSync(file, 'utf8'))) libValues.add(h.value);
 }
 
-const copySrc = readFileSync(join(ROOT, 'src', 'i18n-copy.js'), 'utf8');
+const copySrc = readFileSync(join(ROOT, 'src', 'i18n', 'i18n-copy.js'), 'utf8');
 const blocks = readCopyBlocks(DICT_FAMILY.map((rel) => readFileSync(join(ROOT, rel), 'utf8')));
 const enKeys = copyKeys(blocks.WE_I18N_EN);
 const hostKeys = copyKeys(blocks.WE_I18N_HOST_EN);
@@ -285,6 +328,25 @@ console.log('① 界面零裸中文（src/ 下，诊断串与纯数据块除外�
   const staleValues = VALUE_ALLOW.filter((v) => !srcHits.some((h) => h.value === v.value));
   check('允许清单不空转（精确值仍出现）', staleValues.length === 0,
     staleValues.length ? staleValues.map((v) => JSON.stringify(v.value).slice(0, 30)).join(' ') : VALUE_ALLOW.length + ' 条精确值在册');
+
+  // pet-link 面板/卡片自成词表（path B）对账：零漏译 / 零孤儿 / EN 值无中文；非空 + 负对照。
+  check('pet-link 词表非空（源码里确有中文字面量、词表确有译文）',
+    petLinkValues.size > 0 && Object.keys(petLinkDict).length > 0,
+    petLinkValues.size + ' 条中文 / ' + Object.keys(petLinkDict).length + ' 条译文');
+  const plMissing = petLinkMissing(petLinkValues, petLinkDict);
+  check('pet-link 面板/卡片中文 EN 词表零漏译（每句都有译文）', plMissing.length === 0,
+    plMissing.length ? plMissing.length + ' 条缺：' + plMissing.slice(0, 6).map((v) => JSON.stringify(v.slice(0, 30))).join(' ') : petLinkValues.size + ' 条对账');
+  const plOrphan = petLinkOrphan(petLinkValues, petLinkDict);
+  check('pet-link 面板/卡片 EN 词表零孤儿键（每条译文都被用到）', plOrphan.length === 0,
+    plOrphan.length ? plOrphan.length + ' 条多：' + plOrphan.slice(0, 6).map((k) => JSON.stringify(k.slice(0, 30))).join(' ') : '词表与源码一一对应');
+  const plBad = petLinkBadValues(petLinkDict);
+  check('pet-link EN 译文值非空 / 无中文残留', plBad.length === 0,
+    plBad.length ? plBad.slice(0, 6).map(([k]) => JSON.stringify(k.slice(0, 30))).join(' ') : Object.keys(petLinkDict).length + ' 条译文合规');
+  // 负对照：同一判据对"未登记中文 / 孤儿键 / 中文译文"分别判红（喂合成输入）。
+  check('negative control: pet-link 词表判据有牙（漏译/孤儿/中文译文各自判红）',
+    petLinkMissing(new Set(['一条没登记的合成中文']), petLinkDict).length === 1
+    && petLinkOrphan(new Set(['另一条']), { '孤儿键': 'Orphan' }).length === 1
+    && petLinkBadValues({ '合成键': '中' }).length === 1);
 
   // 词表模块的排除必须留牙：它里面必须**真的**还是"中文即键"（而不是被排除后空了）。
   check('词表族的排除不空转（' + DICT_MODULE + ' 族里仍有中文键）',
@@ -415,11 +477,11 @@ console.log('④ 宿主表（WE_I18N_HOST_EN 的键必须来自 lib/ 下的真�
   // 不许用「库里没有的键会被判红」这类对照：`['不存在的串'].filter((k) => !libValues.has(k))`
   // 对任何不含该字面量的集合都成立（含空集），只是复述 `Array.prototype.filter` 而已；
   // 覆盖点：上游 `stray = hostKeys.keys.filter(…)` 那条判据自身的开火路径
-  // （test/verify-i18n.mjs:332-337：`lib/` 抓不到某条宿主键时 stray 非空、当场判红，同一失效模式）。
+  // （test/verify-i18n.mjs：`lib/` 抓不到某条宿主键时 stray 非空、当场判红，同一失效模式）。
 }
 
 // ══ ⑤ 运行期行为（真跑 i18n 层）══════════════════════════════════════════════
-console.log('⑤ 运行期行为（vm 沙箱里跑词表族 src/i18n-copy*.js + src/i18n.js）');
+console.log('⑤ 运行期行为（vm 沙箱里跑词表族 src/i18n-copy*.js + src/i18n/i18n.js）');
 {
   const runtime = loadI18nRuntime({ search: '' });
   const enDictSource = runtime.api.WE_I18N_EN || {};
@@ -460,13 +522,13 @@ console.log('⑤ 运行期行为（vm 沙箱里跑词表族 src/i18n-copy*.js + 
   check('zh 表是"原文身份"（值 == 原文）',
     Object.keys(zhDict).length > 0 && Object.keys(zhDict).every((k) => zhDict[k] === k.replace(/^[^\u0000]*\u0000/, '')),
     Object.keys(zhDict).length + ' 条');
-  // 期望值必须取自**磁盘上的词表原文**（`parseCopyEntries(blocks.…)` 从词表族 `src/i18n-copy.js`
+  // 期望值必须取自**磁盘上的词表原文**（`parseCopyEntries(blocks.…)` 从词表族 `src/i18n/i18n-copy.js`
   // 与各域模块原文解析），不能拿被测模块经沙箱交回的 `WE_I18N_EN`：同源意味着模块整段漏合并宿主表也会绿，
   // "含宿主表合并"那一半就从未被断言。
   const enDisk = parseCopyEntries(blocks.WE_I18N_EN);
   const hostDisk = parseCopyEntries(blocks.WE_I18N_HOST_EN);
   const asDict = (entries) => Object.fromEntries(entries.map((e) => [e.key, e.value]));
-  // 合并形态照产品实现（`src/i18n.js:197` 的 `Object.assign({}, WE_I18N_EN, WE_I18N_HOST_EN)` ⇒ 宿主表覆盖同名键）。
+  // 合并形态照产品实现（`src/i18n/i18n.js` 的 `Object.assign({}, WE_I18N_EN, WE_I18N_HOST_EN)` ⇒ 宿主表覆盖同名键）。
   const enExpected = Object.assign({}, asDict(enDisk), asDict(hostDisk));
   const diskMismatches = (dict, expected) => Object.keys(expected).filter((k) => dict[k] !== expected[k]);
   const enDictKeys = Object.keys(enDict);
@@ -520,7 +582,7 @@ console.log('⑤ 运行期行为（vm 沙箱里跑词表族 src/i18n-copy*.js + 
 console.log('⑥ 跟随契约（可选服务 / 不 park / 顶层订阅）');
 {
   const clientSrc = readFileSync(join(ROOT, 'src', 'client.js'), 'utf8');
-  const i18nSrc = readFileSync(join(ROOT, 'src', 'i18n.js'), 'utf8');
+  const i18nSrc = readFileSync(join(ROOT, 'src', 'i18n', 'i18n.js'), 'utf8');
   check('inject 里没有 locale（缺服务的旧宿主不该被 park）',
     !/const inject = \[[^\]]*"locale"/.test(clientSrc) && /const inject = \["slots"\]/.test(clientSrc),
     (clientSrc.match(/const inject = \[[^\]]*\]/) || [''])[0]);
@@ -532,7 +594,13 @@ console.log('⑥ 跟随契约（可选服务 / 不 park / 顶层订阅）');
   const comps = [
     { name: 'WallpaperPickerSection', src: clientSrc.slice(clientSrc.indexOf('function WallpaperPickerSection')) },
     { name: 'WallpaperPicker', src: clientSrc.slice(clientSrc.indexOf('function WallpaperPicker()')) },
-    { name: 'RopeDock', src: clientSrc.slice(clientSrc.indexOf('function RopeDock')) },
+    { name: 'RopeDock', src: (() => {
+      const s = readFileSync(join(ROOT, 'src', 'client', 'rope-dock.js'), 'utf8');
+      // 头部注释不算组件体：从 `function RopeDock` 起算（判据看组件前 400 字符内是否订阅语言）
+      const at = s.indexOf('function RopeDock');
+      if (at < 0) throw new Error('verify-i18n: src/client/rope-dock.js 里找不到 function RopeDock');
+      return s.slice(at);
+    })() },
     { name: 'UpdateNotice', src: clientSrc.slice(clientSrc.indexOf('function UpdateNotice')) },
     { name: 'QuickPanel', src: readFileSync(join(ROOT, 'src', 'quick-panel.js'), 'utf8').slice(readFileSync(join(ROOT, 'src', 'quick-panel.js'), 'utf8').indexOf('function QuickPanel')) },
   ];
@@ -573,7 +641,7 @@ function parseCopyEntries(block) {
 }
 
 /**
- * 把 `src/i18n-copy.js` + `src/i18n.js` 装进一个 vm 沙箱（与 bundle 的工厂作用域同形：
+ * 把 `src/i18n/i18n-copy.js` + `src/i18n/i18n.js` 装进一个 vm 沙箱（与 bundle 的工厂作用域同形：
  * 同一作用域里的函数声明 + const）。返回 `{api}`，api 就是脚本末尾那条表达式的值
  * （vm 里 `const`/`function` 是脚本作用域，只能由脚本自己导出 —— 不能从 context 上取）。
  * 沙箱里补上 bundle 里由别的内联模块提供的两个定时器助手（sidebar-right.js 的
@@ -585,7 +653,7 @@ function loadI18nRuntime({ search = '', service = null } = {}) {
   // 装载顺序 = 族顺序（域模块在前、组装点在后），与构建期内联进同一工厂作用域时同形：
   // 组装点顶层读域常量，顺序反了会 TDZ 报错。
   const code = DICT_FAMILY.map((rel) => stripExportBlocks(readFileSync(join(ROOT, rel), 'utf8'))).join('\n;\n')
-    + '\n;\n' + stripExportBlocks(readFileSync(join(ROOT, 'src', 'i18n.js'), 'utf8'))
+    + '\n;\n' + stripExportBlocks(readFileSync(join(ROOT, 'src', 'i18n', 'i18n.js'), 'utf8'))
     + '\n;\n({ weT, WE_I18N_EN, WE_I18N_HOST_EN, weI18nAttach, weLocaleSubscribe,'
     + ' weLocaleRevisionValue, weOnLocaleChange, weLocaleId });\n';
   const sandbox = {

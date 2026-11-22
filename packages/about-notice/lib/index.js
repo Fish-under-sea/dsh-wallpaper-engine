@@ -82,7 +82,7 @@ export function applyImpl(root, _rawConfig, c) {
   const { base, pluginName, repoSlugFromPkg, pluginDataDir, componentViewFrom, createComponentSession } = c;
   // 两条装载路径都能这么读：① 组件行自己声明了 `inject = ['webServer', 'wallpaperEngineHost']`；② 门面路径的 `root`
   // 就是门面的 ctx，而门面同样声明了 `inject = ['webServer']`（主行 `lib/index.js` 的 `inject` 声明）。
-  const webServer = root && root.webServer;
+  const webServer = keys.tolerantWebServer(root && root.webServer);
   // 与门面 `apply()` 同款早退：服务在、但 register 面还没挂上（或换成了别的 webServer 实现）。
   if (!webServer || typeof webServer.register !== 'function') return () => {};
 
@@ -102,7 +102,7 @@ export function applyImpl(root, _rawConfig, c) {
   // 立刻撞 `webserver: duplicate … route`。收尾失败不掩盖原始错误：teardown 自己吞异常，
   // 原错照抛（装载失败必须仍然是红的）。
   try {
-    // 「关于」页签的仓库 star 数 → lib/routes/github-stars.js。**只读**一条腿：本插件唯一一处
+    // 「关于」页签的仓库 star 数 → packages/about-notice/lib/routes/github-stars.js。**只读**一条腿：本插件唯一一处
     // 出站请求（api.github.com），带 10 分钟 TTL + 落盘缓存兜底；一键 star 不做（GitHub 要点星
     // 必须有用户凭据，插件不存任何 token）。
     registerGithubStarsRoutes(webServer, {
@@ -111,7 +111,7 @@ export function applyImpl(root, _rawConfig, c) {
       log, http: keys.http,
     });
 
-    // 「关于」页签的两张联系方式二维码（静态 PNG，白名单直出）→ lib/routes/about-qr.js。
+    // 「关于」页签的两张联系方式二维码（静态 PNG，白名单直出）→ packages/about-notice/lib/routes/about-qr.js。
     registerAboutQrRoutes(webServer, { ...keys, disposers, base, aboutDir: ABOUT_DIR, serveFile });
   } catch (error) {
     teardown();

@@ -48,8 +48,8 @@
  *                                  无"，**不拦** —— 见本函数注释）
  *   exportGlassPresetUrl(id, embeds) 导出链接（普通 <a> 导航；宿主带附件头）
  *   importGlassPreset(file)        导入一份导出文件（成功后回读清单，**不自动应用**）
- *   deleteGlassPreset(id)          删预设（出厂或用户皆可；出厂删了即永久 ——
- *                                  墓碑遮蔽，没有恢复通道）
+ *   deleteGlassPreset(id)          删预设（用户层 = 真删；出厂 = 写墓碑**隐藏**，
+ *                                  可从面板「已隐藏」区恢复 —— #219）
  *
  * 不变量：
  *   · **整套采用或整套不动**：应用预设只有拿到宿主那份完整正文（消毒产物）才写进
@@ -158,7 +158,11 @@ async function loadGlassPresets() {
     }
     const data = res.data || {};
     selection.glassPresets = Array.isArray(data.presets) ? data.presets : [];
+    // #219：清单**真正**从宿主读成功过 ⇒ 首次应用引导的判据才可信。
+    // 失败分支不置回 false（旧清单仍在用，重读失败不该让引导复活）。
+    setTransient("glassPresetsLoaded", true);
     setPresetError("");
+    await loadHiddenBuiltin();
     return true;
   } catch {
     setPresetError(weT("宿主不可达（请求未完成）"));
@@ -166,8 +170,47 @@ async function loadGlassPresets() {
   }
 }
 
-/** 重读清单（保存 / 删除 / 导入后调用）。失败保留上一次清单并写原因 —— 不静默清空。 */
+/** 重读清单（保存 / 删除 / 导入 / 恢复后调用）。失败保留上一次清单并写原因 —— 不静默清空。 */
 async function refreshGlassPresets() { return loadGlassPresets(); }
+
+/**
+ * 「已隐藏的出厂预设」清单（#219）：`GET /glass-presets?hidden=1`。
+ * 它是**补充信息**，失败不写错误行（清单本身还可能好用，不该被这条腿拖成"预设不可用"）；
+ * 结果经 setTransient 写 `glassPresetHidden`，面板据此画恢复区。
+ */
+async function loadHiddenBuiltin() {
+  try {
+    const res = await gpJson(glassPresetsUrl() + "?hidden=1");
+    const rows = res.ok && !res.error && Array.isArray(res.data && res.data.hidden) ? res.data.hidden : [];
+    setTransient("glassPresetHidden", rows);
+  } catch {
+    setTransient("glassPresetHidden", []);
+  }
+}
+
+/**
+ * 恢复一套被隐藏的出厂预设（#219）：`POST /glass-presets/<id>/restore`。
+ * 宿主删掉用户层那份墓碑，随包层那套重新出现在清单里（成功回 `{ ok, restored }`）。
+ * 失败原因走统一出口：`not-hidden`（本来就没隐藏）与 `missing`（这套出厂已被包移除）可区分。
+ */
+async function restoreGlassPreset(id) {
+  if (!isGlassPresetId(id)) return false;
+  try {
+    const res = await gpFetch(glassPresetUrl(id) + "/restore", { method: "POST" });
+    if (!res.ok || res.error) {
+      setPresetError(glassPresetFailureReason(res));
+      return false;
+    }
+    setPresetError("");
+    await refreshGlassPresets();
+    setTransient("glassPresetNote", weT("已恢复「{name}」", { name: id }));
+    emit();
+    return true;
+  } catch {
+    setPresetError(weT("宿主不可达（请求未完成）"));
+    return false;
+  }
+}
 
 /**
  * 把宿主 `install-assets` 回的 `applied` 合并进 selection（ADR-0011 D4 的"应用半边"）。
@@ -288,6 +331,14 @@ async function applyPreset(id) {
       }
     }
     setPresetError("");
+    // ── 主题段：写宿主 `theme` 服务（**唯一**走出插件边界的资产段）──
+    // 放在设置段与资产段都落定之后：主题这一腿失败**不回滚**前面已经成功的部分
+    //（滚回去等于"套用预设，但外观被恢复到一半"）。服务缺席 ⇒ 静默跳过，不发任何提示：
+    // 低版本宿主没有 theme 服务是常态，不是用户需要处理的错误。
+    const themeSeg = res.data && res.data.assets && res.data.assets.theme;
+    if (themeSeg && typeof themeSeg === "object" && typeof themeSeg.preference === "string") {
+      try { themeFollowApplyPreference(themeSeg.preference); } catch { /* 增强腿：不影响套用结果 */ }
+    }
     persistSelection(); // debounce 200ms 的 PUT + 本地缓存 —— 与滑块拖动同一条路
     reapplyAll();       // emit() 订阅链之外的那几件：层重建 / 轮播定时器 / 场景音频
     emit();
@@ -316,9 +367,9 @@ function newGlassPresetId() {
  *   · **勾上** = "按本机现状声明这一族" —— 本机没有自定义图 ⇒ 落盘的就是 `null`（**显式
  *     声明无**），套用它的人回到内置默认；宿主侧对"勾了但没有"就是这样落的，不需要客户端拦。
  *   · **不勾** = "这一族我不管" —— 段根本不出现，对方的现值一个键都不碰。
- * 旧版把"勾了但本机没有"直接拦下（`return` 一句错误、保存失败）：结果是**用户自存预设永远
- * 无法声明"无"** —— 那一族只能靠出厂预设里的 `null` 来清，自己那份永远清不掉（本次缺陷的
- * 客户端半边）。改成"照存 + 一句人话"，出路写在提示里（想带上就先导入一张 / 不想动对方就取消勾选）。
+ * **别把"勾了但本机没有"拦下**（`return` 一句错误、保存失败）：那会让**用户自存预设永远
+ * 无法声明"无"** —— 那一族只能靠出厂预设里的 `null` 来清，自己那份永远清不掉。
+ * 所以这里"照存 + 一句人话"，出路写在提示里（想带上就先导入一张 / 不想动对方就取消勾选）。
  * @returns "" = 无需提示；非空 = 给用户的一句人话（**不阻断保存**）
  */
 function presetSaveChecks(checks, mascotPoint) {
@@ -497,7 +548,7 @@ function gpReadFileText(file) {
   });
 }
 
-/** 删预设：出厂或用户皆可（出厂 = 宿主落墓碑永久遮蔽，不可恢复；界面上两步确认）。 */
+/** 删预设：用户层 = 真删；出厂 = 宿主落墓碑**隐藏**（可从「已隐藏」区恢复，#219）；界面上两步确认。 */
 async function deleteGlassPreset(id) {
   if (!isGlassPresetId(id)) return false;
   try {

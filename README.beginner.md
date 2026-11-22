@@ -2,7 +2,7 @@
 
 [中文完整版](README.md) · [English README](README.en.md) · [English below](#english)
 
-> **先分清版本**：本指南对应 [Fish-under-sea 灰测源码](https://github.com/Fish-under-sea/dsh-wallpaper-engine)，不是 npm 上已经发布的版本。当前安装单位是**主包 + 七个子包，共八包**，不再内置 pet。正式项目的数据、发布与贡献记录见 [elysia395 主仓](https://github.com/elysia395/dsh-wallpaper-engine)。
+> **版本说明**：本指南对应**源码部署**，不是 npm 上已发布的版本；npm 通道见 [README](README.md)。当前安装单位是**主包 + 八个子包，共九包**，不再内置 pet。
 
 ## 中文
 
@@ -10,15 +10,15 @@
 
 把 Wallpaper Engine 的场景、网页和视频壁纸放到 DSH 聊天界面背后，再调整玻璃、字体、配色与吉祥物。没有 Wallpaper Engine 也能上传自己的 JPG / PNG / MP4。Application 类型需要运行第三方程序，本插件不支持。
 
-界面美化不向 AI 注册工具或注入提示词，**不额外消耗模型 token**。壁纸保存在本机；运行时下载、仓库统计和主动开启的在线歌词仍会联网。
+界面美化不向 AI 注册工具或注入提示词，**不额外消耗模型 token**。壁纸保存在本机；运行时下载与仓库统计仍会联网。
 
 ### 安装前准备
 
 - Windows、macOS 或 Linux 上能正常运行的 DSH。
-- **DSH 0.2 内核**，包括 `0.2.0-rc.1/rc.2`；桌面应用版本号与内核版本号不是一回事。
-- **Node.js >=22.12.0、pnpm 和目标宿主的 DSH CLI**。
+- **DSH 内核**：安装门槛看 `package.json` 的 `engines.dsh`（0.2 线可装；桌面应用版本号与内核版本号不是一回事）。
+- **Node.js（下限见 `package.json` 的 `engines.node`）、pnpm 和目标宿主的 DSH CLI**。
 - 目标 DSH 的**数据目录**和 **profile**。网页版通常是 `web`；桌面版为 `desktop`。数据目录从目标应用确认，不要照猜 `~/.dsh`。
-- 下载并解压 [本轮评审分支 `official-pet-bridge-20261020`](https://github.com/Fish-under-sea/dsh-wallpaper-engine/tree/official-pet-bridge-20261020) 的完整源码，不要用 Fork 默认分支代替，也不要只下载主包或某个子目录。
+- 下载并解压本仓库的完整源码，不要只下载主包、某个子目录或临时链接。
 
 Wallpaper Engine 只用于读取已有壁纸资源，不需要一直在后台运行。macOS 没有其官方客户端，可以用自定义上传或已有 WE 项目目录。
 
@@ -42,7 +42,7 @@ node scripts/install-source.mjs --profile web --dsh-home "<目标 DSH 数据目�
 
 脚本会安装依赖、构建客户端并登记全部八条持久链接。完成后重启 DSH。**安装后保留源码目录，不要移动或删除它**；链接仍指向这里。
 
-当前灰测不要使用裸 `github:` 直装、临时子包链接工具，或只执行 npm 包名安装。未来整套八包发布后，npm 命令才可取得相应发行版；今天执行包名安装不会取得未发布改动。
+源码部署不要使用裸 `github:` 直装、临时子包链接工具，或只执行 npm 包名安装；npm 命令只提供已发布的版本。
 
 ### 第二步：选择壁纸
 
@@ -59,7 +59,7 @@ node scripts/install-source.mjs --profile web --dsh-home "<目标 DSH 数据目�
 | 自动轮播 | 轮播列表 → 新建；至少选择两张可播放壁纸 |
 | 改配色、玻璃或字体 | 外观；侧栏有独立参数，不是所有表面共用一根滑条 |
 | 调亮度、取景、倍速或翻转 | 播放 → 效果 |
-| 换吉祥物 | 系统 → 吉祥物；内置十只，也可导入 |
+| 换吉祥物 | 系统 → 吉祥物；内置若干只（具体见设置页），也可导入 |
 | 开会话头像、拖尾或视差 | 扩展；按需启用 |
 | 移动缓存 | 系统 → 高级 → 缓存位置 |
 | 移动自定义上传 | 壁纸库 → 自定义壁纸 → 存储位置 |
@@ -89,7 +89,7 @@ node scripts/install-source.mjs --profile web --dsh-home "<目标 DSH 数据目�
 ### 常见问题
 
 **安装失败或说找不到子包？**
-核对是否在完整仓库根目录、Node / DSH 版本是否达标、目标 home / profile / CLI 是否一致。重跑完整安装器，不要先往活动 profile 手工塞临时链接。保留脱敏日志，参考 [故障排查](https://github.com/Fish-under-sea/dsh-wallpaper-engine/blob/official-pet-bridge-20261020/docs/TROUBLESHOOTING.md)。
+核对是否在完整仓库根目录、Node / DSH 版本是否达标、目标 home / profile / CLI 是否一致。重跑完整安装器，不要先往活动 profile 手工塞临时链接。保留脱敏日志，参考 [故障排查](docs/TROUBLESHOOTING.md)。
 
 **壁纸库是空的？**
 先检查内容分级 / 类型筛选，再确认 WE 下载过壁纸。Steam 未被识别时，可用 `DSH_WE_STEAM_ROOT` 指向含 `steamapps` 的 Steam 根目录。没有 WE 客户端就用上传，或将自定义存储位置指向已有 WE 项目目录。
@@ -101,29 +101,28 @@ node scripts/install-source.mjs --profile web --dsh-home "<目标 DSH 数据目�
 先等首帧。大场景要传输资源包；渲染失败后会降级为可用的预览图或实时帧。并非每个工坊项目都与原版引擎完全兼容。没有可用画面时会说明原因，不会伪造成功。
 
 **文字不好读 / 想关玻璃？**
-先调暗化、底色与边框。玻璃按表面管理，可在对应设置回退原生；未知插件表面不保证自动兼容，见 [共存说明](https://github.com/Fish-under-sea/dsh-wallpaper-engine/blob/official-pet-bridge-20261020/docs/COEXISTENCE.md)。
+先调暗化、底色与边框。玻璃按表面管理，可在对应设置回退原生；未知插件表面不保证自动兼容，见 [共存说明](docs/HOW-IT-WORKS.md#共存玻璃表面与其他-ui-插件)。
 
 **插件会把壁纸上传到网上吗？**
-不会。壁纸在本机读取和保存。不过下载运行时、查询仓库数据，以及开启在线歌词后的曲目信息查询会联网。系统频谱采集的是输出回环，不是麦克风。
+不会。壁纸在本机读取和保存。不过下载运行时、查询仓库数据会联网。系统频谱采集的是输出回环，不是麦克风。
 
 ### 项目与致谢
 
-- 正式项目、发布和贡献历史：[elysia395/dsh-wallpaper-engine](https://github.com/elysia395/dsh-wallpaper-engine)。
-- 当前灰测维护与集成：**[生鱼 / Fish-under-sea](https://github.com/Fish-under-sea/dsh-wallpaper-engine)**，包括部署闭包、官方 pet 桥接、气泡、排播与调参等本分支工作；尚未发布不等于已经合入主仓。
+- 项目与贡献记录：[GitHub Contributors](https://github.com/elysia395/dsh-wallpaper-engine/graphs/contributors)。
 - 感谢 **[PC2005-cloud / dsh-pet](https://github.com/PC2005-cloud/dsh-pet)** 的公开接口支持与联动讨论。
 - 感谢 B 站 UP 主 **[ZipZipPipe](https://space.bilibili.com/4168597)** 创作的 **AI 娘二创形象**，为我们的新吉祥物提供形象基础。不是模型厂商官方形象；署名不改变角色与素材的权利归属。
 
-其他贡献者、素材与授权见 [完整致谢](README.md#致谢) 和 [素材来源](assets/readme/SOURCES.md)。npm 包不带 `docs/`，技术文档使用当前源码仓库链接。
+其他贡献者、素材与授权见 [素材来源](assets/readme/SOURCES.md)。
 
 ## English
 
-This guide covers the **unpublished [Fish-under-sea source branch](https://github.com/Fish-under-sea/dsh-wallpaper-engine)**. The official upstream's releases and npm package are separate. The current source suite is **one main package plus seven subpackages**, with no bundled pet.
+This guide covers a **source deployment**, not the published npm version. The current source suite is **one main package plus eight subpackages**, with no bundled pet.
 
 ### Prepare and install
 
-You need a working **DSH 0.2 kernel** (including `0.2.0-rc.1/rc.2`), **Node.js >=22.12.0**, pnpm, the target host's CLI, and its actual data-directory / profile identifiers. Wallpaper Engine is optional if you use custom images / videos. Application wallpapers are unsupported.
+You need a working **DSH kernel** within the ranges declared in `package.json`'s `engines` (the 0.2 line qualifies), plus **Node.js** (range: `engines.node`), pnpm, the target host's CLI, and its actual data-directory / profile identifiers. Wallpaper Engine is optional if you use custom images / videos. Application wallpapers are unsupported.
 
-1. Download and extract the complete [review branch `official-pet-bridge-20261020`](https://github.com/Fish-under-sea/dsh-wallpaper-engine/tree/official-pet-bridge-20261020), not the fork's default branch.
+1. Download and extract the complete repository source; do not use only the main package, a subpackage or temporary links.
 2. Fully close the target DSH host. Open a terminal in the folder containing `package.json`.
 3. Replace the placeholder with that host's actual data directory, inspect the plan, then install:
 
@@ -142,7 +141,7 @@ Open **Settings → Wallpaper Engine → Library**, or pull the mascot cord. Cho
 
 Use JPG / PNG / MP4 uploads without Wallpaper Engine. macOS has no official WE client; existing project directories can also be used. Scene compatibility depends on assets and WebGL; a preview may be shown while preparing or after rendering failure. Rotation needs at least two playable candidates. Hiding a library item does not delete its source.
 
-**Theme-following is off by default.** Readability matters more than maximum transparency. Glass uses per-surface fallback rather than guaranteed compatibility with every third-party skin. System audio capture is output loopback, not the microphone. Online lyrics are opt-in and may send track information to LRCLIB.
+**Theme-following is off by default.** Readability matters more than maximum transparency. Glass uses per-surface fallback rather than guaranteed compatibility with every third-party skin. System audio capture is output loopback, not the microphone.
 
 ### Optional official pet integration
 
@@ -156,10 +155,10 @@ Before upgrading a former bundled-pet setup, close DSH and disable its old bundl
 
 General wallpaper settings persist in `~/.dsh-wallpaper-engine/config.json`. Environment variables may override paths. Pet selection and runtime tuning have a separate lifecycle: export tuning JSON before refresh. Cache files can be regenerated; uploaded originals need their own backups.
 
-For installation errors, verify the complete checkout, supported versions, and exact home / profile / CLI. For an empty library, check filters and Steam detection; `DSH_WE_STEAM_ROOT` points at the Steam root containing `steamapps`. For decoding errors, try H.264 MP4. See [troubleshooting](https://github.com/Fish-under-sea/dsh-wallpaper-engine/blob/official-pet-bridge-20261020/docs/TROUBLESHOOTING.md) and the [English README](README.en.md).
+For installation errors, verify the complete checkout, supported versions, and exact home / profile / CLI. For an empty library, check filters and Steam detection; `DSH_WE_STEAM_ROOT` points at the Steam root containing `steamapps`. For decoding errors, try H.264 MP4. See [troubleshooting](docs/TROUBLESHOOTING.md) and the [English README](README.en.md).
 
-Wallpapers stay local, but runtime downloads, repository statistics and opt-in lyric queries access external services. The plugin registers no model tools or prompt text, so it adds no model token overhead.
+Wallpapers stay local, but runtime downloads and repository statistics access external services. The plugin registers no model tools or prompt text, so it adds no model token overhead.
 
 ### Credits
 
-Official project and history: [elysia395](https://github.com/elysia395/dsh-wallpaper-engine). Current test-branch integration: **[生鱼 / Fish-under-sea](https://github.com/Fish-under-sea)**. Thank you to **[PC2005-cloud / dsh-pet](https://github.com/PC2005-cloud/dsh-pet)** for the public integration APIs, and Bilibili creator **[ZipZipPipe](https://space.bilibili.com/4168597)** for the **AI-girl fan-character designs used as the basis for our new mascots**. These are not official model-vendor characters; attribution does not relicense artwork under MIT. See [all credits](README.md#致谢) and [asset sources](assets/readme/SOURCES.md).
+Official project and history: [GitHub Contributors](https://github.com/elysia395/dsh-wallpaper-engine/graphs/contributors). Thank you to **[PC2005-cloud / dsh-pet](https://github.com/PC2005-cloud/dsh-pet)** for the public integration APIs, and Bilibili creator **[ZipZipPipe](https://space.bilibili.com/4168597)** for the **AI-girl fan-character designs used as the basis for our new mascots**. These are not official model-vendor characters; attribution does not relicense artwork under MIT. See [asset sources](assets/readme/SOURCES.md).

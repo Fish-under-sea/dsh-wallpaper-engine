@@ -13,13 +13,13 @@
  *   D) 内联产物        `lib/client.js` · `packages/<pkg>/lib/client.<x>.js` —— 单独一档（多数行为
  *      判据是隔着产物做的）。产物面**取发现层 `clientPackages`**（不写死清单），且把**整个产物
  *      集合**从「直接读的模块」列里移出 —— 主包产物与子包产物同档。
- *   E) **前缀族读法**  `scopeFiles('src/i18n-copy')` / `scopeText('src/i18n-copy')`
+ *   E) **前缀族读法**  `scopeFiles('src/i18n/i18n-copy')` / `scopeText('src/i18n/i18n-copy')`
  *      （`test/tools/src-scope.mjs` 的 API）—— 构建期内联族是"一族文件平铺进同一作用域"，
  *      于是"这条守卫管这一族"的自然写法就是**前缀**：路径以该前缀开头的模块全部算命中。
  *   F) **经共享族助手读**  `import { panelText } from './tools/src-scope.mjs'` + 真调用
  *      —— 守卫常常不写前缀字面量，而是调助手（`panelText()` / `styleText()` …），
- *      族口径封在 `test/tools/src-scope.mjs` 里。那个库**同时是守卫的库**（DEV-GUIDE §4.6：
- *      改它等于改判据），所以判据跟着走一层：解析助手体里的字面量前缀。
+ *      族口径封在 `test/tools/src-scope.mjs` 里。那个库**同时是守卫的库**（`docs/CODE-STRUCTURE.md` §12
+ *      文末「同时是守卫的库」；改它等于改判据），所以判据跟着走一层：解析助手体里的字面量前缀。
  *   G) **真源定位读**  `locate('COMPONENT_VISIBILITY')` / `locateFile('cordis.patch.yml')`
  *      / `locateCallSites('registerSettingsRoutes')`（`test/tools/source-locator.mjs` 的 API）
  *      —— 判据不再写死"实现在哪个文件"，而是问真源定位器"这个符号唯一声明在哪 / 这个调用点在哪"。
@@ -61,7 +61,7 @@ const relOf = (s) => String(s).replace(/\\/g, '/').replace(/^\.\//, '');
 
 /**
  * **产物面**（分母来自发现层，不是写死清单）：`clientPackages` = 主包 + 每个声明了浏览器半边
- * （`dsh.client` / `exports['./client']`）的 standalone 子包各一份。BUNDLE-SPLIT §7.2「每包一产物」。
+ * （`dsh.client` / `exports['./client']`）的 standalone 子包各一份。ADR-0014 S10.2「每包一产物」。
  * 写死清单的失败模式：新增一份产物后它**静默脱离**本映射 —— 守卫隔着的产物换了一茬，
  * 映射还指着老的那份，于是"改了哪个源文件该跑哪条守卫"给出错误答案。
  */
@@ -121,7 +121,7 @@ function packageDirs(root = ROOT) {
  * 磁盘上的模块面（`src/**` + `lib/**` + **`packages/<pkg>/{src,lib}/**`**，含 `lib/client.js`
  * —— 它是"隔着产物"的那一档）。
  *
- * ⚠️ P-A（BUNDLE-SPLIT §7.1 / §10.1 #8）之前这里只走主包两棵树：子包迁出后，`packages/<pkg>/src|lib/**`
+ * ⚠️ P-A（ADR-0014 S10.2 / §10.1 #8）之前这里只走主包两棵树：子包迁出后，`packages/<pkg>/src|lib/**`
  * 里的产品代码会**整片脱离**这张映射 —— 症状不是报错，而是这些文件既不进"零覆盖"表、也不会在
  * "改了 X 该跑哪几条"里出现（静默失去覆盖，正是本工具存在的理由）。
  */
@@ -238,7 +238,7 @@ function targetsOf(srcText, modules, helpers = familyHelpers(), anchors = NO_ANC
   //    它自己的例外表反而被掩盖）。左边界排除 `[\w$.\-/]`，右边界排除 `[\w$\-]`。
   // ⚠️ **产物面整集合单列**：守卫常经 `'client.js'` 常量或 URL 拼它，不走路径字面量；
   //    而它又是"隔着产物做模块断言"那一档的落点 ⇒ 单列判并在 `targets` 里带上它。
-  //    产物**不止一份**（BUNDLE-SPLIT §7.2「每包一产物」）⇒ 这里跳过的是**产物集合**，
+  //    产物**不止一份**（ADR-0014 S10.2「每包一产物」）⇒ 这里跳过的是**产物集合**，
   //    集合本身由发现层给出（写死一份的失败模式：新产物静默脱离本映射）。
   for (const m of modules) {
     if (artifacts.has(m)) continue;
@@ -388,7 +388,7 @@ function render(map) {
   out.push('> 由 `node test/tools/guard-targets.mjs --write` 重算；`test/verify-guard-map.mjs` 会重算并逐字比对。');
   out.push('> **怎么用**：改了 `src/` 或 `lib/` 的某个模块，在「模块 → 守卫」那张表里查该跑哪几条。');
   out.push('> 口径：只统计守卫**代码**里真正碰到的模块（先剥注释），并区分"直接读源文件"与"隔着产物 `lib/client.js`"。');
-  out.push('> 写法：字面量路径 / `join(...)` 拼接 / 唯一 basename / 产物配方 / **前缀族读法** `scopeFiles|scopeText(<前缀>)` / **经共享族助手读**（`import { panelText } from \'./tools/src-scope.mjs\'` + 真调用；族口径封在那个库里，见 DEV-GUIDE §4.6「同时是守卫的库」）/ **真源定位读**（`locate(\'符号\')` / `locateFile(\'文件名\')`，`test/tools/source-locator.mjs`：符号唯一声明在哪就是读了哪个模块）。');
+  out.push('> 写法：字面量路径 / `join(...)` 拼接 / 唯一 basename / 产物配方 / **前缀族读法** `scopeFiles|scopeText(<前缀>)` / **经共享族助手读**（`import { panelText } from \'./tools/src-scope.mjs\'` + 真调用；族口径封在那个库里，见 `docs/CODE-STRUCTURE.md` §12「同时是守卫的库」）/ **真源定位读**（`locate(\'符号\')` / `locateFile(\'文件名\')`，`test/tools/source-locator.mjs`：符号唯一声明在哪就是读了哪个模块）。');
   out.push('');
   out.push(`模块面 ${map.modules.length} 个 · 守卫 ${map.rows.length} 个`);
   out.push('');

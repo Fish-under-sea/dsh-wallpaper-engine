@@ -15,7 +15,7 @@
 | 文件 | 尺寸 | 用途 |
 |---|---|---|
 | `qq-group-dshwe-llm-702x852.png` | 702×852 | **QQ 群「DSHWE \| LLM 讨论群」** 群二维码（含图内标题）。对应 `lib/about/qq-group.png` / `ABOUT_QR_QQ_PATH` |
-| `douyin-group-dshwe-2-748x748.png` | 748×748 | **抖音群「dshwe 交流 2 群」**（群号 917001335502）二维码（含图内群名与群号）。对应 `lib/about/douyin-group.png` / `ABOUT_QR_DOUYIN_PATH`。2026-10-10 换码：旧码 `douyin-group-dsh-1044x1026.png`（「dsh 交流群」，群号 252729465001）已退役 |
+| `douyin-group-dshwe-2-748x748.png` | 748×748 | **抖音群「dshwe 交流 2 群」**（群号 917001335502）二维码（含图内群名与群号）。对应 `lib/about/douyin-group.png` / `ABOUT_QR_DOUYIN_PATH`。2026-10-10 换码：旧码「dsh 交流群」（群号 252729465001）已退役，原源图已移出仓库 |
 | `update-notice-star-1254x1254.png` | 1254×1254 | **v1.3.0 更新公告配图**「求个 star 喵！」GitHub 求星插画（原图）。对应 `lib/about/update-notice.jpg` / `NOTICE_ART_PATH`（缩到 720px + JPEG q88，Pillow LANCZOS） |
 
 > **派生版只取"码"那块**（裁掉图内的标题带 / 群名 / 群号），因为这些文字在页面里由**卡片自己的

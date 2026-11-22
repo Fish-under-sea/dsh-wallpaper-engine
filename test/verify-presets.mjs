@@ -331,18 +331,21 @@ const dispose = apply(mockCtx);
 const route = routes.find((r) => r.path && r.path.endsWith('/glass-presets'));
 check('整机快照族路由已注册（prefix）', Boolean(route), route && route.path);
 const routeSrc = readFileSync(join(root, 'lib', 'routes', 'presets.js'), 'utf8');
+// S1 纯搬移后存储层折出为 `lib/glass-presets-store.js`（路由文件只留 HTTP 面）：
+// 文本判据按「族文件 + 存储实现」的拼接面做，与拆分前单文件同一遍扫描。
+const presetsFamilySrc = routeSrc + '\n' + readFileSync(join(root, 'lib', 'glass-presets-store.js'), 'utf8');
 check('路由族文件在位：注册器与前缀路径的形状未漂移',
-  /export function registerGlassPresetsRoutes/.test(routeSrc)
-  && routeSrc.includes('`${BASE}/glass-presets`')
-  && /GLASS_PRESET_TOMBSTONE_TAG/.test(routeSrc));
+  /export function registerGlassPresetsRoutes/.test(presetsFamilySrc)
+  && presetsFamilySrc.includes('`${BASE}/glass-presets`')
+  && /GLASS_PRESET_TOMBSTONE_TAG/.test(presetsFamilySrc));
 // 本文件头旧决策已被 ADR-0011 D7 推翻。判据分两层：
 //   · **行为层**（真路由）：export / import 两条路都不得回 405 —— 这才是"这条路没被禁着"的证据；
 //   · **文本层**：文件头必须有一段把这条推翻讲清楚（旧句子只允许出现在"旧版这里写着"的引述里，
 //     不允许还挂在**断言当前状态**的位置上）。文本判据刻意宽松 —— 引用旧决策是 D7 明确要求的做法。
 check('文件头写明 import/export 已存在（D7 更正注释在位）',
-  /为什么 import \/ export 现在有/.test(routeSrc));
+  /为什么 import \/ export 现在有/.test(presetsFamilySrc));
 check('文件头不再把"没有 import\/export"当作**当前**决策来陈述（只允许作为被推翻的旧话引述）',
-  !/^\s*\*\s*没有 import \/ export\s*[:：]/m.test(routeSrc));
+  !/^\s*\*\s*没有 import \/ export\s*[:：]/m.test(presetsFamilySrc));
 
 // ★ 行为层判据（不靠正则读注释）见下方「端点存在性探针」段 —— 必须排在 callRoute 定义之后。
 
@@ -502,13 +505,15 @@ const OLD_TAG = 'dsh-we/glass-preset@1';
     // ★ 出厂预设不得替用户收窄**类型档**：套用一份外观预设不该顺手把壁纸库 / 轮播候选池切到
     //   单一分支（「作者自用」曾误设 `image` —— 用户看到的是"切个主题，壁纸列表突然只剩图片"）。
     //   值域同一套 id（`all` / `video` / `web` / `image` / `scene`），这里钉的是七套一律 `all`。
-    const narrowedOf = (m) => Object.entries(m).filter(([, v]) => v !== 'all');
+    // v8 起类型档是勾选集合：「不窄」= 勾满四档（顺序即规范顺序）。
+    const FULL_TYPES = ['video', 'web', 'image', 'scene'];
+    const narrowedOf = (m) => Object.entries(m).filter(([, v]) => JSON.stringify(v) !== JSON.stringify(FULL_TYPES));
     const narrowed = narrowedOf(types);
-    check('★ 七套出厂预设的类型档一律「全部」（外观预设不得替用户收窄壁纸分类）',
+    check('★ 七套出厂预设的类型档一律勾满四档（=「不限类型」；外观预设不得替用户收窄壁纸分类）',
       files.length === 7 && narrowed.length === 0,
       narrowed.length ? narrowed.map(([k, v]) => k + '=' + v).join(',') : JSON.stringify(types));
     check('  └ 负对照（同一条判据，喂被改窄的合成输入）：判得出 —— 判据有牙',
-      narrowedOf({ ...types, author: 'image' }).length === 1, '合成 author=image');
+      narrowedOf({ ...types, author: ['image'] }).length === 1, '合成 author=image');
   }
 
   // 创建用户预设：settings 段补齐成完整快照（100 键）
@@ -532,39 +537,92 @@ const OLD_TAG = 'dsh-we/glass-preset@1';
     [dup.__state.status, dupVariant.__state.status, dupBuiltin.__state.status].join('/'));
   check('409 带 error 信封（客户端显示处要原话）', typeof (bodyJson(dup) || {}).error === 'string');
 
-  // 上限 8：现在 8 个活跃（7 出厂 + 1 用户）⇒ 第 9 个 409
-  const overCap = await create('超出上限的预设');
-  check('上限 8：第 9 个活跃预设 409（错误文案点明可删除腾位）',
-    overCap.__state.status === 409 && /8/.test((bodyJson(overCap) || {}).error || ''),
-    (bodyJson(overCap) || {}).error);
+  // #219：上限只按**用户层**算 —— 七套出厂预设不占名额，清单也不再被截到 8 行。
+  // 此时用户层 1 个（preset-test-1）；把它和后面造的填充预设一起算。
+  const userCountOf = async () => ((await getList()).presets || []).filter((r) => r.origin === 'user').length;
+  check('上限拆分：7 套出厂 + 1 个用户都在清单里（用户名额 = 8，不是 8 - 7）',
+    (await userCountOf()) === 1 && (await getList()).presets.length === 8,
+    'users=' + (await userCountOf()));
+  const fillerIds = [];
+  for (let i = 2; i <= 8; i++) {
+    const id = 'preset-fill-' + i;
+    const r = await create('填充预设 ' + i, {}, id);
+    if (r.__state.status === 200) fillerIds.push(id);
+  }
+  list = await getList();
+  const userRowsFull = (list.presets || []).filter((r) => r.origin === 'user');
+  check('前置：用户层填满 8 个，清单 15 行（7 出厂 + 8 用户；出厂行不再挤占/触发截断）',
+    userRowsFull.length === 8 && list.presets.length === 15,
+    'users=' + userRowsFull.length + ' presets=' + list.presets.length);
 
-  // 删除一个出厂 ⇒ 腾出一格 ⇒ 创建放行（已删除的不占位）
+  // 第 9 个用户预设 ⇒ 409（文案点明"你自己的"，且不再叫"预设数量已达上限"）。
+  const overCap = await create('超出上限的预设');
+  const overCapErr = (bodyJson(overCap) || {}).error || '';
+  check('第 9 个用户预设 409（错误文案点明「你自己的预设」+ 8 个，并给出删除/隐藏两条出路）',
+    overCap.__state.status === 409 && /你自己的预设/.test(overCapErr) && /8/.test(overCapErr)
+    && /删除或隐藏/.test(overCapErr),
+    overCapErr);
+
+  // 出厂删除 = **隐藏**：清单少一行、用户层落墓碑、包内字节不变；`?hidden=1` 能看见它。
   const hide = await del('factory-frosted');
   list = await getList();
-  check('出厂删除 200（清单少一行、无 hidden 形态；包内字节不变）',
-    hide.__state.status === 200 && bodyJson(hide).origin === 'builtin'
-    && list.presets.length === 7 && !list.presets.some((r) => r.id === 'factory-frosted')
+  const hiddenRes = await callRoute(route, fakeReq('/wallpaper-engine/glass-presets?hidden=1', 'GET'));
+  const hiddenBody = bodyJson(hiddenRes) || {};
+  check('出厂删除 200 ⇒ 隐藏：清单少一行、默认响应仍无 hidden 字段、`?hidden=1` 列出它、包内字节不变',
+    hide.__state.status === 200 && (bodyJson(hide) || {}).origin === 'builtin'
+    && list.presets.length === 14 && !list.presets.some((r) => r.id === 'factory-frosted')
     && !('hidden' in list)
+    && Array.isArray(hiddenBody.hidden) && hiddenBody.hidden.some((r) => r.id === 'factory-frosted')
     && dirDigest(BUILTIN) === digestBefore,
-    'presets=' + list.presets.length);
-  const freed = await create('腾位后的新预设', {}, 'preset-freed-1');
-  check('删除腾位后创建放行（已删除的不占上限）', freed.__state.status === 200, 'status=' + freed.__state.status);
-  await del('preset-test-1'); // 释放旧位：腾位 + 同名测试要在 8 个活跃内完成
+    'presets=' + list.presets.length + ' hidden=' + ((hiddenBody.hidden || []).map((r) => r.id).join(',')));
 
-  // 删除期间名字放开：可以存一份叫「重磨砂」的（名字对比域只含活跃清单）
-  const nameFreed = await create('重磨砂', { glassAlpha: 50 }, 'preset-rename-1');
-  check('删除后出厂名字放开（同名创建 200）', nameFreed.__state.status === 200);
-  await del('preset-rename-1');
-  await del('preset-freed-1');
+  // 隐藏出厂**不**腾出用户名额（这正是 #219 的第一条诉求：两件事分开算）。
+  const stillFull = await create('隐藏出厂后仍然满额');
+  check('隐藏一套出厂**不**腾出用户名额（上限只按用户层算，与出厂几套无关）',
+    stillFull.__state.status === 409, 'status=' + stillFull.__state.status);
 
-  // 不可恢复（口径）：删墓碑 = 复活的那条通道已封 —— 再删一次 404，
-  // 清单依旧没有它；就算那个名字已经空出来，出厂预设也不会回来。
-  const restoreAttempt = await del('factory-frosted');
+  // 恢复：POST <id>/restore ⇒ 200 + 清单回来 + 墓碑文件消失。
+  const restored = await callRoute(route, fakeReq('/wallpaper-engine/glass-presets/factory-frosted/restore', 'POST'));
+  const restoredBody = bodyJson(restored) || {};
   list = await getList();
-  check('出厂删除即永久：再删一次 404、不复活（清单仍没有它）',
-    restoreAttempt.__state.status === 404
-    && list.presets.length === 6 && !list.presets.some((r) => r.id === 'factory-frosted'),
-    'status=' + restoreAttempt.__state.status + ' presets=' + list.presets.length);
+  const hiddenAfter = bodyJson(await callRoute(route, fakeReq('/wallpaper-engine/glass-presets?hidden=1', 'GET'))) || {};
+  check('restore 200：{ ok, restored, origin=builtin }，清单回到 15 行，墓碑文件被删、hidden 清空',
+    restored.__state.status === 200 && restoredBody.ok === true
+    && restoredBody.restored === 'factory-frosted' && restoredBody.origin === 'builtin'
+    && list.presets.some((r) => r.id === 'factory-frosted') && list.presets.length === 15
+    && !existsSync(userFilePath('factory-frosted'))
+    && !(hiddenAfter.hidden || []).some((r) => r.id === 'factory-frosted'),
+    'status=' + restored.__state.status);
+
+  // 负对照：没隐藏过的出厂 restore ⇒ 409 reason=not-hidden（不是笼统 404/500）。
+  const restoreNoop = await callRoute(route, fakeReq('/wallpaper-engine/glass-presets/factory-night/restore', 'POST'));
+  check('未隐藏时 restore ⇒ 409 且 reason=not-hidden（客户端能区分"本来就没隐藏"）',
+    restoreNoop.__state.status === 409 && (bodyJson(restoreNoop) || {}).reason === 'not-hidden',
+    'status=' + restoreNoop.__state.status + ' reason=' + ((bodyJson(restoreNoop) || {}).reason || '-'));
+
+  // 删一个用户预设 ⇒ 腾出一格 ⇒ 创建放行（用户层计数真的减了）。
+  await del('preset-test-1');
+  const freed = await create('腾位后的新预设', {}, 'preset-freed-1');
+  check('删除用户预设腾位后创建放行（用户层 8 → 7 → 8）',
+    freed.__state.status === 200, 'status=' + freed.__state.status);
+
+  // 删除期间名字放开：先腾一格，再存一份叫「重磨砂」的（名字对比域只含活跃清单；
+  // 隐藏的出厂不在活跃清单里 ⇒ 名字也放开）。
+  await del('preset-freed-1');
+  const hideForName = await del('factory-frosted');
+  const nameFreed = await create('重磨砂', { glassAlpha: 50 }, 'preset-rename-1');
+  check('隐藏一出厂后它的名字放开（同名创建 200）',
+    hideForName.__state.status === 200 && nameFreed.__state.status === 200,
+    'hide=' + hideForName.__state.status + ' create=' + nameFreed.__state.status);
+  await del('preset-rename-1');
+
+  // 不可恢复的旧口径已作废：隐藏之后再删同一份 ⇒ 404，且 restore 能把它放回来（上面已测）。
+  const hideAgain = await del('factory-frosted');
+  list = await getList();
+  check('同一份出厂二次删除 ⇒ 404（已是墓碑），清单仍没有它',
+    hideAgain.__state.status === 404
+    && list.presets.length === 13 && !list.presets.some((r) => r.id === 'factory-frosted'),
+    'status=' + hideAgain.__state.status + ' presets=' + list.presets.length);
   // 墓碑的 tag 值永不许改（改了会让删过的出厂预设复活）—— 值 + 落盘文件双向核对。
   check('墓碑 tag 值原样不动（D6 连带约束）',
     schema.GLASS_PRESET_TOMBSTONE_TAG === 'dsh-we/glass-preset-tombstone@1'
@@ -572,14 +630,14 @@ const OLD_TAG = 'dsh-we/glass-preset@1';
     schema.GLASS_PRESET_TOMBSTONE_TAG);
 
   // 用户预设删除 / 404 / 路径安全（形状不变）
-  await del('factory-night');           // 删除腾位（不影响包内字节）
+  await del('factory-night');           // 再隐藏一套（不影响包内字节）
   const mk2 = await create('删除语义用的预设', {}, 'preset-test-2');
   const delUser = await del('preset-test-2');
   const delGone = await del('preset-test-2');
   const missing = await get1('preset-nope');
   const escape = await callRoute(route, fakeReq('/wallpaper-engine/glass-presets/..%2F..%2Fconfig.json', 'GET'));
   const badId = await callRoute(route, fakeReq('/wallpaper-engine/glass-presets/not%20a%20valid%20id!', 'GET'));
-  const nightGone = await del('factory-night'); // 已删除的出厂：再删仍 404（不可恢复）
+  const nightGone = await del('factory-night'); // 已隐藏的出厂：再删仍 404
   check('用户删除 200；再删 404；unknown 404；穿越与非法 id 4xx；出厂二次删除仍 404',
     mk2.__state.status === 200 && delUser.__state.status === 200 && bodyJson(delUser).origin === 'user'
     && delGone.__state.status === 404 && missing.__state.status === 404
@@ -588,6 +646,11 @@ const OLD_TAG = 'dsh-we/glass-preset@1';
     [mk2.__state.status, delUser.__state.status, delGone.__state.status, missing.__state.status,
       escape.__state.status, badId.__state.status, nightGone.__state.status].join('/'));
   check('包内目录全程字节不变（删除只落用户层墓碑）', dirDigest(BUILTIN) === digestBefore);
+
+  // 清掉本段造的用户预设（③c 的前提是用户层空出来）。
+  for (const r of (await getList()).presets || []) {
+    if (r.origin === 'user') await del(r.id);
+  }
 }
 
 // ── ③b 旧 tag 一律作废（D6）══════════════════════════════════════════════════
@@ -655,16 +718,16 @@ section('③b 旧 tag 作废：422 + reason 点明版本作废、清单标 broke
 // ── ③c 坏预设必须可删（captain 实测出的阻断级缺陷）══════════════════════════
 section('③c 坏预设可删 + 坏行计入上限（既存得进也清得掉，不许死锁）');
 {
-  const countOf = async () => ((await getList()).presets || []).length;
+  const countOf = async () => ((await getList()).presets || []).filter((r) => r.origin === 'user').length;
   const countBefore = await countOf();
   writeUserFile('preset-stuck-old', { $schema: OLD_TAG, id: 'preset-stuck-old', name: '升级留下的坏行', values: {} });
   const withBad = await getList();
   const badRow = (withBad.presets || []).find((r) => r.id === 'preset-stuck-old');
-  check('坏行计入活跃清单（这就是死锁的来源，钉住"坏行占位"这个事实）',
+  check('坏行计入**用户层**上限（这就是死锁的来源，钉住"坏行占位"这个事实）',
     Boolean(badRow) && badRow.broken === 'version-obsolete'
-    && (withBad.presets || []).length === countBefore + 1,
-    '清单 ' + countBefore + ' → ' + (withBad.presets || []).length);
-  // 把现场推到边界：填到 8 个活跃（含那条坏行）。
+    && (withBad.presets || []).filter((r) => r.origin === 'user').length === countBefore + 1,
+    '用户层 ' + countBefore + ' → ' + (withBad.presets || []).filter((r) => r.origin === 'user').length);
+  // 把现场推到边界：用户层填到 8 个（含那条坏行）。
   let guard = 0;
   while ((await countOf()) < 8 && guard++ < 12) {
     const n = 'filler-' + (await countOf());
@@ -672,10 +735,10 @@ section('③c 坏预设可删 + 坏行计入上限（既存得进也清得掉，
     if (r.__state.status !== 200) break;
   }
   const fullList = await getList();
-  check('前置：清单已达上限 8（含那条坏行）', (fullList.presets || []).length === 8,
+  check('前置：用户层已达上限 8（含那条坏行）', (fullList.presets || []).filter((r) => r.origin === 'user').length === 8,
     (fullList.presets || []).filter((r) => r.broken).length + ' 条坏行');
   const blockedCreate = await create('坏行挡路的创建', {}, 'preset-blocked');
-  check('满额时创建 409（坏行占位 ⇒ 这正是缺陷的表现）',
+  check('用户层满额时创建 409（坏行占位 ⇒ 这正是缺陷的表现）',
     blockedCreate.__state.status === 409, 'status=' + blockedCreate.__state.status);
   // ★ 核心：坏行必须**删得掉**（缺陷版返回 404 unknown preset ⇒ 永远删不掉）。
   const delBad = await del('preset-stuck-old');
@@ -1035,8 +1098,8 @@ section('③d 资产段：install-assets 落盘与 applied 语义、export→imp
       JSON.stringify(iaPoint.applied));
     for (const id of ['preset-point-whale', 'preset-point-both', 'preset-point-bad']) await del(id);
     // 复位（同 ① 段末尾）：把带内嵌字节的那份重新应用 —— 后面的判据还要按 PNG1 字节数立绘。
-    // ⚠️ 落盘文件名**每次安装都重新分配**（`landImage` 生成新名，见 `lib/routes/presets.js:929` /
-    //   回执 `applied.mascot.file` 见 `lib/routes/presets.js:931`）⇒ 收尾判据不能拿"复位前那个名字"
+    // ⚠️ 落盘文件名**每次安装都重新分配**（`landImage` 生成新名，见 `lib/routes/presets.js` 的
+    //   `landImage` / 回执 `applied.mascot.file`）⇒ 收尾判据不能拿"复位前那个名字"
     //   去比（那会把正常的重新落盘判成副作用，是台架自己造的假红）。判据改为：立绘族**恰好一份**，
     //   且就是这次复位回执点名的那一份 —— 既钉住"没有多出来的残留文件"，又不依赖随机名。
     const restore = bodyJson(await installAssetsCall('preset-embed-1')) || {};
@@ -1147,8 +1210,8 @@ section('③d 资产段：install-assets 落盘与 applied 语义、export→imp
     // 结构判据：两阶段必须在**源码序**上成立 —— 所有 assetOverBudget 调用都在第一条
     // landImage 之前（预检阶段），落盘循环里不再出现超限判定（否则又会落一半）。
     {
-      const fnAt = routeSrc.indexOf('async function installAssets(');
-      const fnBody = fnAt >= 0 ? routeSrc.slice(fnAt, routeSrc.indexOf('\n}', fnAt) + 2) : '';
+      const fnAt = presetsFamilySrc.indexOf('async function installAssets(');
+      const fnBody = fnAt >= 0 ? presetsFamilySrc.slice(fnAt, presetsFamilySrc.indexOf('\n}', fnAt) + 2) : '';
       const lastOver = fnBody.lastIndexOf('assetOverBudget(');
       const firstLand = fnBody.indexOf('landImage(');
       check('结构判据：installAssets 的字节闸预检全部在落盘（landImage）之前 —— 源码序钉死两阶段',
@@ -1212,7 +1275,7 @@ section('③d 资产段：install-assets 落盘与 applied 语义、export→imp
     bigCreate.__state.status === 413, 'status=' + bigCreate.__state.status);
   // 结构判据：import 的总闸必须由单份闸**推出来**（单份一改就自动跟上，不是两处手抄数字）。
   {
-    const src = stripComments(routeSrc);
+    const src = stripComments(presetsFamilySrc);
     const reDecl = /const PRESET_IMPORT_MAX_BYTES\s*=\s*([^;]+);/;
     const decl = src.match(reDecl);
     check('结构判据：PRESET_IMPORT_MAX_BYTES 由单份闸推导（不是写死的第二个数字）',
@@ -1357,7 +1420,8 @@ section('③e #199：随包层旧 tag ⇒ 422「版本已作废」（不是 404�
 section('④ 客户端形态棘轮：新编排链（合并→落盘→reapplyAll→emit）/ 失败滚回 / 无第二持久化');
 {
   const storeSrc = readFileSync(join(root, 'src', 'preset-store.js'), 'utf8');
-  const panelSrc = readFileSync(join(root, 'src', 'glass-panel.js'), 'utf8');
+  const panelSrc = [readFileSync(join(root, 'packages', 'glass', 'src', 'glass-presets-panel.js'), 'utf8'),
+    readFileSync(join(root, 'packages', 'glass', 'src', 'glass-panel.js'), 'utf8')].join('\n');
   const storeCode = stripComments(storeSrc);
   const panelCode = stripComments(panelSrc);
 
@@ -1433,8 +1497,8 @@ section('④ 客户端形态棘轮：新编排链（合并→落盘→reapplyAll
     const putCount = writeMethods.filter((m) => /PUT/.test(m)).length;
     const postCount = writeMethods.filter((m) => /POST/.test(m)).length;
     const delCount = writeMethods.filter((m) => /DELETE/.test(m)).length;
-    check('写请求只有 POST×3（create / install-assets / import）与 DELETE×1 —— 无 PUT、无 activate',
-      putCount === 0 && postCount === 3 && delCount === 1,
+    check('写请求只有 POST×4（create / install-assets / import / restore）与 DELETE×1 —— 无 PUT、无 activate',
+      putCount === 0 && postCount === 4 && delCount === 1,
       'POST=' + postCount + ' DELETE=' + delCount + ' PUT=' + putCount);
     // 负对照：同一条计数对"多一条 PUT"的合成源码必须判出（证明不是恒真）。
     const synth = 'a({ method: "POST" }) b({ method: "POST" }) c({ method: "DELETE" }) d({ method: "PUT" })';
@@ -1456,8 +1520,8 @@ section('④ 客户端形态棘轮：新编排链（合并→落盘→reapplyAll
     && /这不是预设文件/.test(storeCode) && /PROFILE_PRESET_SCHEMA_TAG/.test(storeCode));
   check('出厂预设名字走 weT 词表（就地字面量，不是数据直出）',
     /"factory-default": weT\("黑客绿\(Fish\)"\)/.test(panelSrc));
-  check('删除按钮文案按 origin 分语义（出厂=永久删除 / 用户=删除）',
-    /删除这个出厂预设（不可恢复）/.test(panelSrc) && /删除这个预设（会再问一次）/.test(panelSrc));
+  check('删除按钮文案按 origin 分语义（出厂=隐藏可恢复 / 用户=真删）',
+    /隐藏这个出厂预设（可恢复：之后从「已隐藏」区放回来）/.test(panelSrc) && /删除这个预设（会再问一次）/.test(panelSrc));
   // ADR-0011 D6 连带要求：broken 文案必须**点明版本作废**并给出重存出路，按 origin 分口径。
   check('broken 文案按 origin 分：出厂点名"版本已作废"+ 重存出路（不是笼统读不出来）',
     /这份出厂预设的版本已作废/.test(panelSrc) && /从预设栏重新保存一份/.test(panelSrc)
@@ -1517,51 +1581,87 @@ section('④ 客户端形态棘轮：新编排链（合并→落盘→reapplyAll
       handlers.concat('onNoSuchHandler').some((h) => !new RegExp('\\b' + h + '\\b').test(qpAll)));
   }
 
-  // ── 「作者自用」推广弹窗（PresetIntroDialog，用户口径：更新后一次性二选一）──
-  // 组件挂在 RopeDock 根上（渲染台够不到）⇒ 源码级判据，与 verify-about ⑤ 公告守卫同思路。
+  // ── 首次安装自动套用「深色 + 作者自用」（取代原来的推广弹窗，用户口径）──────
+  // 口径：新装默认就是作者在用的那套观感，不再弹窗问"要不要试试"。
+  // 判据钉四件事：① 弹窗确实**下线**了（组件/挂载/哨兵都不留）；② 触发点是
+  // 「宿主无存档 **且** 本机无本地存档」；③ 预设携带深色的**唯一出口**是宿主 theme 服务；
+  // ④ factory-author 真的声明了 dark。
   {
-    const introSrc = stripComments(readFileSync(join(root, 'src', 'client.js'), 'utf8'));
-    check('弹窗组件存在，且在 RopeDock 两处挂载（隐藏分支 + 主返回树，与公告同位）',
-      /function PresetIntroDialog\(\)/.test(introSrc)
-      && (introSrc.match(/React\.createElement\(PresetIntroDialog, null\)/g) || []).length === 2,
-      (introSrc.match(/React\.createElement\(PresetIntroDialog, null\)/g) || []).length + ' 处挂载');
-    check('门控三件齐：hostLoaded + 未答过（localStorage 哨兵）+ 公告已处理（先公告后弹窗，不同屏）',
-      /sel\.hostLoaded && !seen && sel\.noticeSeen === NOTICE_VERSION/.test(introSrc)
-      && /PRESET_INTRO_SEEN_KEY = "dsh-wallpaper-engine:preset-intro-seen"/.test(introSrc));
-    // A 键：走预设卡片同一条 applyPreset 整快照链（settings 合并 + 资产落位 + 失败滚回），
-    // 且**成功才记已读** —— 失败留弹窗可重试，"答过了"不能伪装成"应用过了"。
-    const aGuard = (s) => /applyPreset\("factory-author"\)/.test(s)
-      && /if \(ok\) markSeen\(\); else setFailed\(true\);/.test(s);
-    check('A 键 = applyPreset("factory-author") 整快照链，成功才记已读（失败留弹窗）', aGuard(introSrc));
-    check('negative control: 把"成功才记已读"改成"总是记已读"会被判出（判据有牙）',
-      !aGuard(introSrc.replace('else setFailed(true);', 'else markSeen();')));
-    check('B 键只记已读不碰设置（onClick: markSeen 恰一处；A 键走 accept）',
-      (introSrc.match(/onClick: markSeen/g) || []).length === 1,
-      (introSrc.match(/onClick: markSeen/g) || []).length + ' 处');
-    // 哨兵住 localStorage ⇒ **不许**进 settings-schema（进了 schema 就会出现在 sanitize
-    // 输出与 golden 夹具里，两套"每机状态"口径打架；对照：noticeSeen 走 settings 是历史先例）。
-    const introSchemaSrc = readFileSync(join(root, 'lib', 'settings-schema.js'), 'utf8');
-    check('哨兵是 localStorage 口径（键定义在 client.js；settings-schema 无 preset-intro 痕迹）',
-      /dsh-wallpaper-engine:preset-intro-seen/.test(introSrc) && !/preset-intro/.test(introSchemaSrc));
-    // ── #199 窗口期门控：开之前先探一次宿主**正文**路由（与公告美术闸同思路）──
-    //    探针打的是**这一份**预设的正文（清单 200 只说明路由挂着，说明不了它读得懂 ——
-    //    旧后端读新 tag 文件正是读不懂）；判定按**模块级**缓存（页面级事实，多面板只探一轮）；
-    //    非 ok（404/405/422/断网）一律不渲染：A 键在那个后端上必然失败，不值得打扰用户。
-    const probeGate = (s) => /let presetIntroProbeVerdict = "";/.test(s)
-      && /if \(presetIntroProbeVerdict\) \{ setProbe\(presetIntroProbeVerdict\); return undefined; \}/.test(s)
-      && /if \(!eligible\) return undefined;/.test(s)
-      && /gpJson\(glassPresetUrl\("factory-author"\)\)\.then\(\(r\) => \{/.test(s)
-      && /presetIntroProbeVerdict = r\.ok && !r\.error \? "ok" : "no";/.test(s)
-      && /if \(!eligible \|\| probe !== "ok"\) return null;/.test(s);
-    check('★ #199 窗口期：弹窗开之前先探 GET /glass-presets/factory-author，非 ok 一律不渲染',
-      probeGate(introSrc));
-    check('negative control: 把门放宽成"eligible 就渲染"（不看探针结论）会被判出（判据有牙）',
-      !probeGate(introSrc.replace('if (!eligible || probe !== "ok") return null;', 'if (!eligible) return null;')));
-    check('★ #199：探针结论缓存在**模块级**（页面级事实，多面板只探一轮；刷新即重探）',
-      /let presetIntroProbeVerdict = "";/.test(introSrc)
-      && /const \[probe, setProbe\] = React\.useState\(presetIntroProbeVerdict \|\| "pending"\);/.test(introSrc));
-    check('★ #199：探针归 "no" 的路径上**不写**已看哨兵（窗口期保持安静，重启后照常弹一次）',
-      !/presetIntroProbeVerdict = r\.ok && !r\.error \? "ok" : "no";[\s\S]{0,200}markSeen/.test(introSrc));
+    const clientSrc = stripComments(readFileSync(join(root, 'src', 'client.js'), 'utf8'));
+    const persistenceSrc = stripComments(readFileSync(join(root, 'src', 'persistence.js'), 'utf8'));
+    const presetStoreSrc = stripComments(readFileSync(join(root, 'src', 'preset-store.js'), 'utf8'));
+    const schemaSrc = readFileSync(join(root, 'lib', 'settings-schema.js'), 'utf8');
+
+    // ① 弹窗彻底下线：组件、挂载点、localStorage 哨兵都不许留。
+    const dialogGone = (s) => !/PresetIntroDialog/.test(s)
+      && !/PRESET_INTRO_SEEN_KEY/.test(s) && !/preset-intro-seen/.test(s);
+    check('推广弹窗已整体下线（组件 / 挂载点 / localStorage 哨兵都不留）', dialogGone(clientSrc));
+    check('negative control: 把组件名塞回去会被判出（判据有牙）',
+      !dialogGone(clientSrc + ' function PresetIntroDialog() {}'));
+
+    // ② 触发点：`loadPersisted()` 的「宿主无存档」分支，且要求**本机也无本地存档**。
+    //    只判 `hostOk` 会把"宿主文件被删但本地还在"的老用户一起套用 —— 那是覆盖用户设置。
+    const firstRunGate = (s) => /else if \(!stale\) \{[\s\S]{0,700}firstRunAdopt\(/.test(s)
+      && /if \(parsedLocal\) pushPersisted\(\);\s*\n\s*else if \(!stale\)/.test(s);
+    check('首次安装判据 = 宿主无存档 **且** 本机无本地存档（升级用户不受影响）',
+      firstRunGate(persistenceSrc));
+    check('negative control: 去掉"本机也无存档"这半条会被判出（会把老用户盖掉）',
+      !firstRunGate(persistenceSrc.replace('if (parsedLocal) pushPersisted();', '')));
+
+    // ③ 预设携带深色的唯一出口：宿主 theme 服务，且**只在声明了才写、失败不回滚**。
+    const themeLeg = (s) => /assets\.theme/.test(s) && /themeFollowApplyPreference\(themeSeg\.preference\)/.test(s)
+      && /try \{ themeFollowApplyPreference/.test(s);
+    check('预设的 theme 段经 themeFollowApplyPreference 写宿主服务（失败不回滚已落好的段）',
+      themeLeg(presetStoreSrc));
+    check('negative control: 把主题腿写成"失败就 return false"（会连设置段一起回滚）会被判出',
+      !themeLeg(presetStoreSrc.replace('try { themeFollowApplyPreference', 'if (!themeFollowApplyPreference')));
+
+    // ④ 消毒面：只认 dark / light，别的写法整段丢掉（不猜 auto/system）。
+    const themeSanitize = (s) => /const PREFERENCE_VALUES = \['dark', 'light'\]/.test(s)
+      && /PREFERENCE_VALUES\.includes\(pref\)/.test(s);
+    check('theme 段白名单只有 dark / light（auto / system 不猜，猜了就是空操作）',
+      themeSanitize(schemaSrc));
+
+    // ⑤ 预设有声明：factory-author 携带 `preference: "dark"`，其余出厂预设**不携带**
+    //   （缺席 = 不动对方主题；七套全声明会让"套紫色心情"也强行改深浅）。
+    const author = JSON.parse(readFileSync(join(root, 'lib', 'glass-presets', 'factory-author.json'), 'utf8'));
+    check('factory-author 声明 assets.theme.preference = "dark"',
+      author && author.assets && author.assets.theme && author.assets.theme.preference === 'dark',
+      JSON.stringify(author && author.assets && author.assets.theme));
+    const others = ['factory-default', 'factory-frosted', 'factory-night', 'factory-readable', 'factory-vivid', 'purple-mood']
+      .map((id) => ({ id, json: JSON.parse(readFileSync(join(root, 'lib', 'glass-presets', id + '.json'), 'utf8')) }))
+      .filter((x) => x.json && x.json.assets && x.json.assets.theme);
+    check('其余六套出厂预设不携带 theme 段（缺席 = 不动对方主题）',
+      others.length === 0, others.map((x) => x.id).join(' ') || '六套均未携带');
+
+    // ⑥ **宿主 GET 的白名单必须放行 theme 段**（实测事故：作者自用声明了 dark，
+    //    但 `publicAssets()` 只白名单 font/mascot/avatar ⇒ theme 在宿主侧被整个丢掉，
+    //    客户端收不到 ⇒ 套用预设永远不切深色，而且**不报错**）。
+    //    这条判据盯的是"声明存在"与"能穿过宿主白名单"之间那个缝 —— 光有 ⑤ 不够。
+    const presetsRouteSrc = readFileSync(join(root, 'lib', 'routes', 'presets.js'), 'utf8')
+      + '\n' + readFileSync(join(root, 'lib', 'glass-presets-store.js'), 'utf8');
+    const publicAssetsOk = (s) => {
+      const at = s.indexOf('function publicAssets(');
+      if (at < 0) return false;
+      const body = s.slice(at, s.indexOf('\n}', at) + 2);
+      return /assets\.theme/.test(body) && /out\.theme\s*=/.test(body);
+    };
+    check('theme 段能穿过宿主 publicAssets 白名单（漏了 = 静默不切主题）',
+      publicAssetsOk(presetsRouteSrc));
+    check('negative control: 把 publicAssets 里的 theme 分支删掉会被判出（判据有牙）',
+      !publicAssetsOk(presetsRouteSrc.replace(/const th = assets\.theme;/, 'const th = null;')));
+
+    // ⑦ **端到端**：真实 GET /glass-presets/factory-author 的响应体里必须带 theme 段。
+    //    ⑥ 只证明"源码里有那个分支"；这一条证明"请求真的拿到它" —— 中间还隔着
+    //    readPresetAt → sanitizePresetAssets → publicAssets 三道，任何一道丢段都在这里红。
+    {
+      const res = await get1('factory-author');
+      const body = bodyJson(res) || {};
+      const seg = body && body.assets && body.assets.theme;
+      check('★ 端到端：GET /glass-presets/factory-author 响应携带 assets.theme.preference = "dark"',
+        seg && seg.preference === 'dark',
+        'status=' + res.__state.status + ' theme=' + JSON.stringify(seg || null));
+    }
   }
 }
 
@@ -1595,10 +1695,10 @@ section('④b 行为判据：删除令牌链 + broken 行禁用与可删 + 勾�
       ] };
     },
     swatchRow: (label) => ({ type: 'swatch', label }),
-    // ⚠️ glass-panel.js 在 bundle 里与 src/client.js（`ROPE_FORMS` 定义在 `src/client.js`）和
+    // ⚠️ glass-panel.js 在主 bundle 里曾与 src/client.js（`ROPE_FORMS` 定义在 `src/client.js`）和
     //   lib/settings-schema.js（`ROPE_FORM_VALUES` 定义在 `lib/settings-schema.js`）**同处一个
-    //   作用域**（build 把各 src 文件顺序拼成一个 lib/client.js；`src/glass-panel.js` 的
-    //   `ROPE_FORMS[k].label` 早就是同一形态的既有用法）。单独 eval 时这两个模块作用域符号必须由
+    //   作用域**（build 把各 src 文件顺序拼成一个 lib/client.js）。ADR-0016 第二刀出户后它住 packages/glass/src/glass-panel.js，
+    //   `ROPE_FORMS[k].label` 是同一形态的既有用法；单独 eval 时这两个模块作用域符号必须由
     //   台架按**真实形状**补上，否则渲染第一步就 ReferenceError —— 判据根本跑不到（本仓最忌的
     //   "台架自己造字段"：这里只补作用域，不替代任何被判定为真的字段）。
     //   值域**从真源读**（本文件已把 `lib/settings-schema.js` 取成 `schema`）—— 手抄一份必然
@@ -1612,7 +1712,8 @@ section('④b 行为判据：删除令牌链 + broken 行禁用与可删 + 勾�
       glm: 'GLM', grok: 'Grok', kimi: 'Kimi', qwen: 'Qwen',
     }).map(([k, label]) => [k, { label }])),
   };
-  const gpSrc = readFileSync(join(root, 'src', 'glass-panel.js'), 'utf8')
+  const gpSrc = [readFileSync(join(root, 'packages', 'glass', 'src', 'glass-presets-panel.js'), 'utf8'),
+    readFileSync(join(root, 'packages', 'glass', 'src', 'glass-panel.js'), 'utf8')].join('\n')
     .replace(/export\s*\{[^}]*\};?/g, '');
   const makeBlock = new Function(...Object.keys(gpStub), gpSrc + ';return { renderGlassPresetsBlock };');
   const { renderGlassPresetsBlock } = makeBlock(...Object.keys(gpStub).map((k) => gpStub[k]));
@@ -1661,8 +1762,8 @@ section('④b 行为判据：删除令牌链 + broken 行禁用与可删 + 勾�
   const tree1 = renderGlassPresetsBlock(baseCtx({ armedId: armed }));
   check('行为判据台架：渲染出删除按钮（出厂 + 用户 + 坏行）', findButtons(tree1).length >= 6,
     findButtons(tree1).length + ' 个按钮');
-  const delFactory = findButtons(tree1).find((b) => b.props.title && String(b.props.title).includes('删除这个出厂预设'));
-  check('出厂行的 × 在场（永久删除语义文案）', Boolean(delFactory));
+  const delFactory = findButtons(tree1).find((b) => b.props.title && String(b.props.title).includes('隐藏这个出厂预设'));
+  check('出厂行的 × 在场（**可恢复的隐藏**语义文案）', Boolean(delFactory));
   // ★ t8：坏行也有 ×（且 armed 后给确认行 —— 见下方 broken 判据组）。
   const delBroken = findButtons(tree1).find((b) => String(b.props.title || '').includes('删除这个预设'));
   check('坏行 / 用户行的 × 都在（删掉坏文件是唯一出路）', Boolean(delBroken));
@@ -1671,8 +1772,8 @@ section('④b 行为判据：删除令牌链 + broken 行禁用与可删 + 勾�
   check('点 × 走 onArmDelete 并记下**裸 id**（族前缀已剥）', armed === 'factory-a', armed);
   const tree2 = renderGlassPresetsBlock(baseCtx({ armedId: armed }));
   const confirm2 = findConfirm(tree2);
-  check('带令牌重渲染后确认行在场，且问句是**不可恢复**语义', Boolean(confirm2)
-    && String(confirm2.question).includes('删除出厂预设') && String(confirm2.question).includes('不可恢复'),
+  check('带令牌重渲染后确认行在场，且问句是**隐藏可恢复**语义（#219 改口径）', Boolean(confirm2)
+    && String(confirm2.question).includes('隐藏出厂预设') && String(confirm2.question).includes('放回来'),
     confirm2 && String(confirm2.question).slice(0, 40));
   const tree3 = renderGlassPresetsBlock(baseCtx({ armedId: 'user-1' }));
   const confirm3 = findConfirm(tree3);
@@ -1886,7 +1987,7 @@ section('④b 行为判据：删除令牌链 + broken 行禁用与可删 + 勾�
 // ── ④c #199 失败文案：真跑分类函数 + 词表对齐 ═════════════════════════════════
 section('④c #199 失败文案：404 不再把宿主英文原句直落上屏，窗口期出路口径在词表里');
 {
-  const copyText = scopeText('src/i18n-copy');
+  const copyText = scopeText('src/i18n/i18n-copy');
   const storeCode = stripComments(readFileSync(join(root, 'src', 'preset-store.js'), 'utf8'));
   // 真跑 `src/preset-store.js` 里的 `glassPresetFailureReason()`：按花括号配平提取具名函数、喂桩执行。
   // grep 到 `reason` 三个字符串**不算**证据 —— 把分类改回"一句到底"它照样能匹配到。
@@ -1929,7 +2030,7 @@ section('④c #199 失败文案：404 不再把宿主英文原句直落上屏，
       'missing=' + String(missing404).slice(0, 24) + ' tomb=' + String(tomb404).slice(0, 24));
     // 词表对齐：文案的**唯一**来源是词表键（中文原文作键），客户端不许出现未登记的散句。
     const dictOk = (keys) => keys.every((k) => dictEn(k).trim().length > 0 && dictEn(k) !== k);
-    check('词表对齐：「重启 DSH」那条在 src/i18n-copy 里、英文非空且不是中英同形',
+    check('词表对齐：「重启 DSH」那条在 src/i18n/i18n-copy 里、英文非空且不是中英同形',
       dictEn(RESTART).trim().length > 0 && dictEn(RESTART) !== RESTART,
       dictEn(RESTART).slice(0, 44) || '词表里找不到这条键');
     // ★ 因果三分（#199 的 P2）：路由**在**、预设真没了 ⇒ 出路不是"重启 DSH"（重启没用）。
@@ -1939,7 +2040,7 @@ section('④c #199 失败文案：404 不再把宿主英文原句直落上屏，
     check('★ #199-P2：三条出路两两不同（窗口期 / 真不存在 / 已删除，不许并成一句）',
       threeWay({ missing: missing404, tomb: tomb404 }),
       'missing=' + String(missing404).slice(0, 22) + ' tomb=' + String(tomb404).slice(0, 22));
-    check('★ #199-P2：三条出路都在 src/i18n-copy 里，英文非空且不是中英同形',
+    check('★ #199-P2：三条出路都在 src/i18n/i18n-copy 里，英文非空且不是中英同形',
       dictOk([RESTART, missing404, tomb404]),
       [RESTART, missing404, tomb404].map((k) => (dictOk([k]) ? 'ok' : '缺/同形')).join(','));
     // 负对照：把 reason 两分整块拿掉（回到 #199 原文的"一句到底"）⇒ 上面两条必须判红。

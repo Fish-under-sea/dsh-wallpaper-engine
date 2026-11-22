@@ -4,9 +4,9 @@
  * 落点 = 字体子包的**宿主半边**（ADR-0014 S3.4）：
  *   · 搬进来的：字体系统的**两条宿主路由族** —— `fontsets`（字体集 /fontsets）与
  *     `system-fonts`（本机字体清单 /system-fonts），见 ./routes/*.js。
- *   · P-C（2026-10-16）之后**浏览器半边也随包走**：入口 `src/client.js` + 外观页签第六节
- *     「全局字体」渲染器 `src/appearance-font-section.js` + 字体集编辑器 `src/fontset-editor.js`，
- *     产物 `lib/client.fonts.js` ⇒ 本包**声明** `dsh.client` 且清单里有 `exports['./client']`
+ *   · P-C之后**浏览器半边也随包走**：入口 `src/client.js` + 外观页签第六节
+ *     「全局字体」渲染器 `packages/fonts/src/appearance-font-section.js` + 字体集编辑器 `packages/fonts/src/fontset-editor.js`，
+ *     产物 `packages/fonts/lib/client.fonts.js` ⇒ 本包**声明** `dsh.client` 且清单里有 `exports['./client']`
  *     （ADR-0014 S3.4 的两向判据）。
  *   · **仍然不搬**：`src/fontset-store.js`、`src/system-fonts.js`、`src/font/apply.js`、
  *     `src/font/typography.js`、`src/font/color-roles.js`、`src/font/components.js`
@@ -60,10 +60,10 @@ export const inject = ['webServer', 'wallpaperEngineHost'];
  * 宿主半边入口。`ctx` 是 cordis 的插件上下文（`new apply(ctx)` 形态），`config` 来自 patch 行的 config
  * （本包今天不使用：路由路径/键名都是定死的，要求行为零回归）。
  *
- * @returns {() => void} 拆卸函数（同时已交 `ctx.effect`；mock ctx 无 effect 时退回返回值，见 host-boot.js:188-197）。
+ * @returns {() => void} 拆卸函数（同时已交 `ctx.effect`；mock ctx 无 effect 时退回返回值，见 `lib/host-boot.js` 的 `handOffTeardown`）。
  */
 export function apply(ctx, _config) {
-  const webServer = ctx && ctx.webServer;
+  let webServer = ctx && ctx.webServer;
   // provider 缺席（主包没起 / 没有 webServer）：与 about-notice 同口径 —— 静默退回空拆卸，
   // 不抛异常炸掉整行（行级失败静默）。
   if (!webServer || typeof webServer.register !== 'function') return () => {};
@@ -75,8 +75,10 @@ export function apply(ctx, _config) {
   // host.http，由下方传给两条路由的 register。
   const keys = host.keys('fonts', ctx);
   assertFontsKeys(host.keyNames('fonts'), keys);
+  // issue #267：注册面容错（原地升级撞 1.3.3 残留路由时不整条抛错）。
+  webServer = keys.tolerantWebServer(webServer);
 
-  // 拆卸句柄数组：照主包 lib/kernel/host-session.js:190/:257 的口径（一个数组、插入顺序、
+  // 拆卸句柄数组：照主包 lib/kernel/host-session.js 的口径（一个数组、插入顺序、
   // 逐条兜错），两条路由族的 register 都往它 push。
   const disposers = [];
   // 两个调用点各自给**自己那一族**的键集：`...keys` 是冻结表（唯一真源），`disposers` 是共用
@@ -90,7 +92,7 @@ export function apply(ctx, _config) {
       disposers,
       schema: host.schema,
       http: host.http,
-      // 落盘缓存路径与主包同式（本文件 :94；出户前 = 主包 lib/index.js:383）：pluginDataDir()/system-fonts.json。
+      // 落盘缓存路径与主包同式（本文件的 `cachePath` 实参；出户前是主包门面的同名入参）：pluginDataDir()/system-fonts.json。
       cachePath: () => join(keys.pluginDataDir(), 'system-fonts.json'),
     });
   } catch (error) {
@@ -119,7 +121,7 @@ function assertFontsKeys(required, keys) {
 }
 
 /**
- * 逐条兜错的拆卸：**插入顺序**、单条抛错不影响其余（与 lib/kernel/host-session.js:257 逐字同口径）。
+ * 逐条兜错的拆卸：**插入顺序**、单条抛错不影响其余（与 lib/kernel/host-session.js 的 teardown 逐字同口径）。
  * `splice(0)` 让重复调用成 no-op（teardown 可能被 ctx.effect + 调用方各跑一次）。
  */
 function disposeAll(disposers) {

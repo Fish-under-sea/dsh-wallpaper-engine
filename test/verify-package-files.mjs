@@ -20,7 +20,7 @@ import { readFileSync, readdirSync, statSync, existsSync, mkdirSync, writeFileSy
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { join, relative, sep, dirname, resolve } from 'node:path';
-import { builtinModules } from 'node:module';
+import { builtinModules, createRequire } from 'node:module';
 // 剥注释：共享的字符串感知实现（test/tools/js-text.mjs）。
 import { stripComments, blankStringLiterals } from './tools/js-text.mjs';
 // 拿子进程输出的唯一方式（沙箱禁管道 ⇒ 走文件）：见该文件头。
@@ -184,6 +184,125 @@ async function main() {
       'required=' + required.length + ' absent=[' + absent.join(', ') + '] unlisted=[' + unlisted.join(', ') + ']');
   }
 
+  // ── P3b: 客户端声明的 /rope-art/*.png 与发布 allowlist 双射 ────────────────
+  // 这些图 2026-10-30 起从 bundle 内联改为宿主路由直出：少一张随包发布，
+  // 构建和现有守卫都不会红，安装后只是某个立绘 404。判据从**客户端声明**出发
+  // （而不是硬编码文件名），这样新增角色时漏加 assets/rope 也会被抓住。
+  {
+    const clientSrc = readFileSync(join(ROOT, 'src/client.js'), 'utf8');
+    const declared = [...clientSrc.matchAll(
+      /const ROPE_IMG_[A-Z0-9_]+ = BASE \+ ["']\/rope-art\/([a-z0-9_-]+\.png)["'];/g,
+    )].map((m) => m[1]);
+    const ropePngs = walkFiles(join(ROOT, 'assets/rope'))
+      .filter((rel) => /\.png$/.test(rel))
+      .map((rel) => rel.split('/').pop());
+    const missingOnDisk = declared.filter((name) => !ropePngs.includes(name));
+    const uncoveredPngs = ropePngs.filter((name) => !files.some((e) => coveredBy('assets/rope/' + name, e)));
+    const strayPngs = ropePngs.filter((name) => !declared.includes(name));
+    check('P3b /rope-art declarations ↔ assets/rope/*.png ↔ `files` allowlist (no missing/stray PNG)',
+      declared.length > 0 && missingOnDisk.length === 0 && uncoveredPngs.length === 0 && strayPngs.length === 0,
+      'declared=' + declared.length + ' onDisk=' + ropePngs.length
+        + ' missingOnDisk=[' + missingOnDisk.join(', ') + ']'
+        + ' uncovered=[' + uncoveredPngs.join(', ') + ']'
+        + ' stray=[' + strayPngs.join(', ') + ']');
+  }
+
+  // ── P9: 插件详情文档链（DSH 0.2.2 插件页读 locale meta.detail，缺声明才回退 README）──
+  // DSH 的插件详情页正文 = 包根 `locale/<lang>.json` 里 `meta.detail` 指向的 Markdown
+  // （宿主 `readPackageDocument`：按语言链找首个声明，文件缺失即报 invalid；没声明才回退
+  // 包根 README）。声明写坏 / 正文没随包 / 正文里的图没随包，在仓库里都不会红 ——
+  // 只有在用户机器上变成空白详情或破图，故这里按宿主口径复刻一遍。
+  {
+    const localeDir = join(ROOT, 'locale');
+    const locales = existsSync(localeDir)
+      ? readdirSync(localeDir).filter((name) => name.endsWith('.json')).sort().map((name) => 'locale/' + name)
+      : [];
+    // 宿主 detailPath：非空、`/` 分隔、不得离开包根、必须是 Markdown。
+    const detailOf = (value) => {
+      if (typeof value !== 'string' || value.trim() === '') return undefined;
+      if (value.includes('\\') || /^[A-Za-z][A-Za-z\d+.-]*:/u.test(value)) return undefined;
+      if (value.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')) return undefined;
+      return /\.(?:md|markdown)$/iu.test(value) ? value : undefined;
+    };
+    const problems = [];
+    const details = [];
+    for (const rel of locales) {
+      if (!/^locale\/[a-z]{2,8}(?:-[a-z0-9]{1,8})*\.json$/u.test(rel)) {
+        problems.push(rel + ': filename must be a language id');
+        continue;
+      }
+      let meta;
+      try {
+        meta = JSON.parse(readFileSync(join(ROOT, rel), 'utf8')).meta;
+      } catch (error) {
+        problems.push(rel + ': ' + error.message);
+        continue;
+      }
+      const detail = detailOf(meta && meta.detail);
+      if (detail === undefined) {
+        if (meta && meta.detail !== undefined) problems.push(rel + ': meta.detail is not an in-package Markdown path');
+        continue;
+      }
+      details.push(detail);
+      if (!existsSync(join(ROOT, detail))) {
+        problems.push(detail + ' named by ' + rel + ' does not exist');
+        continue;
+      }
+      if (!files.some((entry) => coveredBy(detail, entry))) problems.push(detail + ' is not shipped by `files`');
+      const markdown = readFileSync(join(ROOT, detail), 'utf8');
+      for (const image of markdown.matchAll(/!\[[^\]]*\]\(([^)\s]+)/gu)) {
+        const written = image[1];
+        if (/^(?:[a-z][a-z\d+.-]*:|\/\/|#)/iu.test(written)) continue;
+        let decoded;
+        try {
+          decoded = decodeURIComponent(written.replace(/[?#].*$/u, ''));
+        } catch {
+          problems.push(detail + ' names a malformed image ' + written);
+          continue;
+        }
+        const imageRel = decoded.startsWith('/')
+          ? decoded.slice(1)
+          : join(dirname(detail), decoded).split(sep).join('/');
+        if (imageRel.startsWith('..')) problems.push(detail + ' references an image outside the package ' + written);
+        else if (!existsSync(join(ROOT, imageRel))) problems.push(detail + ' references a missing image ' + written);
+        else if (!files.some((entry) => coveredBy(imageRel, entry))) problems.push(detail + ' references an unshipped image ' + written);
+      }
+    }
+    check('P9 plugin detail chain (locale meta.detail → shipped Markdown → shipped images)',
+      locales.length >= 2 && locales.includes('locale/en.json')
+        && details.length === locales.length && problems.length === 0,
+      'locales=[' + locales.join(', ') + '] details=' + details.length
+        + ' problems=[' + problems.join('; ') + ']');
+    // 负对照：同一条路径验证器必须拒绝越界 / 绝对 / 非 Markdown，并接受包内相对 Markdown。
+    const rejected = ['../x.md', '/x.md', 'C:\\x.md', 'https://x/x.md', 'x.txt', 'x/../y.md', 'a\\\\b.md', ''];
+    check('P9 negative control: meta.detail validator rejects escaping/absolute/non-Markdown paths',
+      rejected.every((value) => detailOf(value) === undefined)
+        && detailOf('plugin-detail.zh.md') === 'plugin-detail.zh.md',
+      'rejected=' + rejected.length + ' accepted=plugin-detail.zh.md');
+    // 插件列表的标题/描述走宿主 `readPluginMeta`：它按 `${specifier}/locale/en.json` 做模块解析，
+    // 根包一旦声明了 `exports` 却漏掉 `./locale/*.json`，解析抛 ERR_PACKAGE_PATH_NOT_EXPORTED 后被
+    // 静默忽略，列表回退到 package.json 的英文 description（详情正文走 files.read 不受影响，所以很难发现）。
+    const allowsLocaleExport = (exportsField, rel) => {
+      if (!exportsField || typeof exportsField !== 'object') return false;
+      if (exportsField['./locale/*.json'] !== './locale/*.json') return false;
+      return /^locale\/[a-z]{2,8}(?:-[a-z0-9]{1,8})*\.json$/u.test(rel);
+    };
+    const requireFromHere = createRequire(import.meta.url);
+    const unresolved = locales.filter((rel) => {
+      try { requireFromHere.resolve(pkg.name + '/' + rel); return false; } catch { return true; }
+    });
+    check('P9 locale subpaths resolve through package `exports` (plugin list title/description)',
+      allowsLocaleExport(pkg.exports, 'locale/en.json') && locales.length > 0 && unresolved.length === 0,
+      'name=' + pkg.name + ' exports[./locale/*.json]=' + String(pkg.exports && pkg.exports['./locale/*.json'])
+        + ' unresolved=[' + unresolved.join(', ') + ']');
+    check('P9 negative control: exports gate rejects missing / wrong-target / exact-key-only locale exports',
+      !allowsLocaleExport({}, 'locale/en.json')
+        && !allowsLocaleExport({ './locale/*.json': './lib/*.json' }, 'locale/en.json')
+        && !allowsLocaleExport({ './locale/en.json': './locale/en.json' }, 'locale/en.json')
+        && allowsLocaleExport({ './locale/*.json': './locale/*.json' }, 'locale/en.json'),
+      'negative control: 3 rejected / 1 accepted');
+  }
+
   // ── P6: 每个 lib/ 运行时模块都能被解析（语法 / 早期错误；`lib/` 里还有 .swift/LICENSE/.html，不参与）─────────────────────────
   // 为什么要 `node --check`：`export { parsePkg }` 而 parsePkg 未定义这种**再导出**错误让
   // 模块根本加载不起来，而没有任何守卫 import 它时整条链仍是绿的。只解析、不执行
@@ -345,8 +464,9 @@ async function main() {
     // `handOffTeardown` 必须早于 `apply()` 体内任何注册点，中途抛错时 fiber 才拿得到 teardown；
     // 硬档依据 = 后果是"路由整族残留在宿主表里、开关再也关不干净"）。
     //  再：verify 70→71 / docs 7→6 —— `verify-guard-chain`（链的形状自检）由 docs 软档升 hard
-    // （ADR-0004：链的形状属**发布面** —— 静默掉一条守卫 = 一条硬档判据无声脱离 PR 门禁，而 CI 对
-    // `verify:docs` 是 `continue-on-error`，软档拦不住；R-4。它另含 R-5「脱链必须有代码内理由」⑤）。
+    // （ADR-0004：链的形状属**发布面** —— 静默掉一条守卫 = 一条硬档判据无声脱离 PR 门禁；旧 CI 对
+    // `verify:docs` 曾是 `continue-on-error`，正是它拦不住的原因；R-4。它另含 R-5「脱链必须有代码内理由」⑤）。
+    // 现在内务已移到定时 housekeeping，full 链无软档，但这条升 hard 的历史理由仍成立。
     // all 不变（组内搬家）。
     //  再：verify 71→72 / all 84→85 —— 新增 `test/verify-ci-steps.mjs`（R-7：CI 步骤表自身无判据时，
     // 删掉 `verify:static` / `verify:bridge` 步不会让任何判据变红；硬档依据 = 后果是"一整类门禁静默
@@ -374,8 +494,27 @@ async function main() {
     // 补齐表情广播、侧栏诊断与玻璃几何三条离线硬门禁。
     // 完整源码部署与发布清单回归新增一条硬门禁。
     // 官方桥接取代内置与私有运动面：退役八步、新增正式排播一步，净减七步。
-    const CHAIN_FLOOR = { verify: 89, docs: 6, smoke: 6, all: 102 };
-    /** 地板表与 GROUPS 的对齐体检：键名必须与**组名**逐一对齐（纯函数 ⇒ 负对照可直接喂）。 */
+    // 公告快通道守卫（verify-notice-routing）+ 预设弹窗浏览器实测各加一步：verify 90 → 91，all 103 → 104。
+    // 事前认领审批门禁增加一条硬档；推广弹窗下线时其浏览器实测同步删除（净回到 91 / 104）。
+    // 发布集**字节**守卫（`test/verify-release-set.mjs`）加一步：verify 91 → 92，all 104 → 105。
+    // ：合流 upstream v1.4.0（sync/upstream-1.4.0）后按**本树**实测重取 —— 上游步骤集
+    // （桌宠/发布/治理/浏览器等）与本地 P-D 的两条（verify-layer-ownership / verify-token-domain）
+    // 并存：verify 92→94、all 105→107（docs / smoke 仍各 6）。地板只许抬、不许降。
+    // 再：verify 94→95 / all 107→108 —— 新增 `test/verify-occlusion-debounce.mjs`（#288 可见性防抖契约）。
+    // 再：verify 95→96 / all 108→109 —— 新增 `test/verify-tolerant-register.mjs`（#267 升级重复路由容错）。
+    // 再：verify 96→97 / all 109→110 —— 新增 `test/verify-resume-repaint.mjs`（#274 遮挡恢复重绘契约）。
+    // 再：verify 97→98 / all 110→111 —— 新增 `test/verify-lazy-engine-dir.mjs`（#218 运行期依赖惰性解析）。
+    // 再：verify 98→99 / all 111→112 —— 新增 `test/verify-cache-keys.mjs`（#208 缓存键短哈希、与 checkout 深度解耦）。
+    // 再：verify 99→100 / all 112→113 —— 新增 `test/verify-titlebar-anchor.mjs`（#235 标题栏运行时锚点探针）。
+    // 再：verify 100→102 / all 113→115 —— 新增 `test/verify-slides.mjs` 与
+    //     `test/verify-slideshow-client.mjs`（#223 图集清单路由与客户端过场层两条硬档）。
+    // 再：verify 102→103 / all 115→116 —— 新增 `test/verify-pet-link.mjs`（performer T4 收口：
+    //     面板旋钮真消费 + 双 provider 离线夹具 + 引导图路由冒烟，四条旧豁免改由本汇总入口在链上跑）。
+    // 再：verify 104→105 / all 117→118 —— 新增 `test/verify-we-folders.mjs`（#264 WE「已安装」文件夹）。
+    // 再：verify 105→106 / all 118→119 —— 新增 `test/verify-url-import-route.mjs`（#320 URL 导入路由守卫）。
+    // 再：verify 106→107 / all 119→120 —— 新增 `test/verify-media-size.mjs`（#304 方向筛选的
+    //     图片文件头 / MP4 tkhd 宽高解析）。
+    const CHAIN_FLOOR = { verify: 109, docs: 6, smoke: 6, all: 122 };    /** 地板表与 GROUPS 的对齐体检：键名必须与**组名**逐一对齐（纯函数 ⇒ 负对照可直接喂）。 */
     const floorGaps = (groups, floors) => groups.map(([, g]) => g).filter((g) => !Number.isInteger(floors[g]));
     const problems = floorGaps(GROUPS, CHAIN_FLOOR).map((g) => '地板表缺组 ' + g
       + '（键名要写**组名**：`verify`/`docs`/`smoke`/`all`，不是脚本键名 `verify:docs`/`verify:all`）');

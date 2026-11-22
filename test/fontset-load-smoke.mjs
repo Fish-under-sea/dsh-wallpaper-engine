@@ -212,7 +212,7 @@ const waitBoot = () => new Promise((r) => { setTimeout(r, 50); });
 
 (async () => {
   // ── 场景 A：正常宿主 —— 值被整套采用，顺序正确 ──────────────────────────────
-  console.log('A. 正常宿主：settings → 字体集(list → 活动那份) → 库存');
+  console.log('A. 正常宿主：settings → 字体集(list → 活动那份) → 库存（字体集清单在 apply 入口预取；库存排在首帧后）');
   const shared = {}; // 跨场景共享的 localStorage（第二个场景要看得见第一个写下的缓存）
   const a = mount({ fetchImpl: goodHost, store: shared });
   await waitBoot();
@@ -222,8 +222,16 @@ const waitBoot = () => new Promise((r) => { setTimeout(r, 50); });
   const iOne = order.findIndex((x) => x.includes('/fontsets/compact'));
   const iInv = order.findIndex((x) => x.includes('/inventory'));
   check('启动链取了 /fontsets 与活动那份', iList >= 0 && iOne >= 0, order.join(' | '));
-  check('顺序 = settings → 字体集清单 → 活动那份 → 库存',
-    iSettings >= 0 && iSettings < iList && iList < iOne && iOne < iInv, 'idx=' + [iSettings, iList, iOne, iInv].join(','));
+  // 2026-10-30 启动性能：字体集清单在 apply 入口先发（`prefetchFontSetList`）。
+  // #158（2026-11-10）：库存冷扫改到**首帧之后**（`afterFirstPaint`）—— 大库上它要等整轮
+  // 扫描，插件激活期就发会跟宿主启动抢 I/O。这台 vm 没有 requestAnimationFrame ⇒ 门立即放行，
+  // 于是顺序回到「settings → 清单 → 活动那份 → inventory」，但**关键不变量**是：
+  // 清单仍早于 settings，库存仍不挡活动字体集。
+  check('预取：字体集清单在 settings 之前发出；库存冷扫排在 settings 之后（#158 首帧后）',
+    iInv >= 0 && iList >= 0 && iSettings >= 0 && iList < iSettings && iInv > iSettings,
+    'idx=' + [iSettings, iList, iOne, iInv].join(','));
+  check('应用顺序：清单 → 活动那份；活动那份在 settings 之后（库存冷扫不挡它）',
+    iList < iOne && iSettings < iOne, 'idx=' + [iSettings, iList, iOne, iInv].join(','));
   const cacheA = JSON.parse(shared[CACHE_KEY] || 'null');
   check('宿主那份被整套采用（本地缓存 = 活动 id + 全部字体键，与宿主逐键相同）',
     cacheA && cacheA.id === 'compact'
@@ -236,6 +244,34 @@ const waitBoot = () => new Promise((r) => { setTimeout(r, 50); });
     a.requests.filter((r) => r.method === 'PUT' && r.url.includes('/settings'))
       .every((r) => !/themeColors|themeSize|themeWeight|themeFamily|globalFamily|componentFonts|themeDarkSeparate/.test(String(r.body || ''))),
     a.requests.filter((r) => r.method === 'PUT').map((r) => r.url).join(' | ') || '(无 PUT)');
+
+  // ── 场景 A2：预取第一次网络失败 —— 必须回退到启动链自己的请求 ────────────────
+  // 反例：`apiFetch` 不抛错，瞬断会变成一份已兑现的失败结果；若 loadFontSet/loadInventory
+  // 无条件消费它，原本排在 settings 之后（宿主通常已就绪）的那次请求就永远不发。
+  console.log('A2. 预取首次网络失败：回退到启动链自己的请求（不把瞬断当成最终结果）');
+  let flakyInv = 0;
+  let flakyList = 0;
+  const flakyFirstHost = (url) => {
+    const u = String(url);
+    if (u.includes('/inventory') && ++flakyInv === 1) {
+      return Promise.resolve({ ok: false, status: 0, error: 'network' });
+    }
+    if (u.endsWith('/wallpaper-engine/fontsets') && ++flakyList === 1) {
+      return Promise.resolve({ ok: false, status: 0, error: 'network' });
+    }
+    return goodHost(url);
+  };
+  const a2 = mount({ fetchImpl: flakyFirstHost, store: {} });
+  await waitBoot();
+  const order2 = a2.requests.map((r) => r.method + ' ' + r.url.replace('http://localhost', ''));
+  check('预取失败后 /inventory 与 /fontsets 都重新发了一次（不消费失败预取）',
+    flakyInv === 2 && flakyList === 2,
+    'inventory=' + flakyInv + ' fontsets=' + flakyList + ' | ' + order2.join(' | '));
+  const cacheA2 = JSON.parse(a2.store[CACHE_KEY] || 'null');
+  check('回退请求成功 ⇒ 宿主那份仍被整套采用（缓存 = compact + 全部字体键）',
+    cacheA2 && cacheA2.id === 'compact'
+      && JSON.stringify(cacheA2.values) === JSON.stringify(HOST_VALUES),
+    JSON.stringify(cacheA2 && { id: cacheA2.id, size: cacheA2.values && Object.keys(cacheA2.values).length }));
 
   // ── 场景 B：宿主读不出来 —— 不写回、不编造（缓存保持上次那份）────────────────
   console.log('B. 字体集读不出来：保留上次那份，不写回、不编造');
@@ -377,7 +413,7 @@ const waitBoot = () => new Promise((r) => { setTimeout(r, 50); });
    *
    * ⚠️ `fileInput` **不许**用 `find(第一个 accept 含 .json 的 input)` —— 那是个会漂的假设：
    *    预设块（「玻璃 UI」节，排在「全局字体」节**之前**）也有一枚 `accept` **完全相同**
-   *    的导入 input（`src/glass-panel.js` 的 `gp-import-input`），于是"第一个"拿到的是预设
+   *    的导入 input（packages/glass/src/glass-panel.js 的 gp-import-input），于是"第一个"拿到的是预设
    *    那一枚 ⇒ 喂给它的文件走进预设导入、`/fontsets/import` 永远收不到 POST，而这类失败
    *    看起来像"导入功能坏了"而不是"台架取错了对象"。
    *    ⇒ 先把树**按容器分组**，取含「导入字体集…」按钮的那一支，再在这一支里取 input：

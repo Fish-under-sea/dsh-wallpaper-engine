@@ -71,7 +71,7 @@ const WRITES = /(?:setTransient\(|setSetting\(|setFontValues\(|(?<![\w.$])select
  * 覆盖本仓真实用到的全部形态：`async function name(` / `function name(` / `const name = (…) =>` /
  * `onXxx:` 条目 / `const|let|var name = (…) {` / `onXxx(…) {` 方法简写。
  * ⚠️ 少认一种形态 = 那批处理器在**处理器级**与**分支级**两条判据里一起静默隐身
- *（实测 `async function` 形态最容易漏：`src/client.js:1602 changeUploadDir`、`:1633 changeCacheDir`、
+ *（实测 `async function` 形态最容易漏：`src/client.js changeUploadDir`、`:1633 changeCacheDir`、
  * `:1671 changeWeAssetsDir` 三个都必须被扫到）。
  */
 export const DEF = /^(\s*)(?:async\s+function\s+([\w$]+)\s*\(|function\s+([\w$]+)\s*\(|const\s+([\w$]+)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>|(on[A-Z][\w$]*)\s*:|(?:const|let|var)\s+([\w$]+)\s*=\s*(?:async\s*)?(?:function\s*)?\([^)]*\)\s*(?:=>|\{)|((?:on[A-Z]|set[A-Z]|change[A-Z]|toggle[A-Z])[\w$]*)\s*\([^)]*\)\s*\{)/;

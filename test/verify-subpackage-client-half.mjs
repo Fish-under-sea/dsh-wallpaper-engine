@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * verify-subpackage-client-half.mjs -- BUNDLE-SPLIT 7.6(2) 浏览器半边在场（P-A 子包族）
+ * verify-subpackage-client-half.mjs -- ADR-0014 S3/S5 浏览器半边在场（P-A 子包族）
  *
  * 故障形态（2.2 + C2）：浏览器半边只能被"活动的 Loader 行"发现 -- 行不在某个已选中 bundle 的
  * patch 里、或包没有 dsh.client / exports["./client"] 时，客户端拿不到那份代码，宿主不报任何错。
@@ -214,9 +214,11 @@ check('packages/ 下至少有一个子包（P-A 未落判红）', pkgs.length > 
 check('每个子包 manifest 可解析', usable.length === pkgs.length, pkgs.filter((p) => p.error).map((p) => p.dir + '：' + p.error).join('；'));
 
 // P-C 契约 §1 / ADR-0014 S3.1：字体包的浏览器半边**不再是"明确排除"**，而是必被覆盖。
+// P-D S3a起壁纸子包（packages/media-bridge）也出浏览器半边（「自定义壁纸」节），
+// 同属必被覆盖。
 // 棘轮（有意硬编码）：这张清单只许随契约显式改动；每个包名都必须在 packages/ 下命中真实目录，
 // 否则改名/搬家会让棘轮**静默失效**（判据变成恒真）—— 命中 0 处即红。
-const REQUIRED_CLIENT_HALF = ['dsh-plugin-wallpaper-engine-fonts'];
+const REQUIRED_CLIENT_HALF = ['dsh-plugin-wallpaper-engine-fonts', 'dsh-plugin-wallpaper-engine-media-bridge'];
 
 const requiredDirs = [];
 for (const n of REQUIRED_CLIENT_HALF) {
@@ -261,6 +263,120 @@ if (browserHalfNoDecl.length > 0) console.log('    · 有浏览器半边但未�
 check('必被覆盖清单里的包不出现在"有浏览器半边但停在主 bundle"信息行里（两个触点同向）',
   !browserHalfNoDecl.some((x) => REQUIRED_CLIENT_HALF.indexOf(x.name) >= 0),
   browserHalfNoDecl.map((x) => x.text).join(' / ') || '（信息行为空）');
+
+// ── D-7（P-D S3a / P3-lite 第二刀）：子包申报键 ⊆ 主 bundle 提供键（机械反向对账）──────
+// 每个声明 dsh.client 的子包在 src/client.js 里有一张 *_HOST_REQUIRED **空表**：源码面只留
+// `const X_HOST_REQUIRED = [];`，真正的键数组由构建期从紧随其后的 `const { … } = host;` 解构
+// 逐键派生（scripts/build-client.mjs 的 deriveHostRequiredTable），产物里才看得见。
+// ⇒ 单一真源 = 解构名单（「哪些键是必须的」与「解构了哪些键」本来就是同一件事，旧版手抄两遍）。
+// 本段判据就是这条机械化的闸门：
+//   ① 申报表必须还是空表（有人手工填键 = 又冒出第二真源）；
+//   ② 解构名 ⊆ 主 bundle 键集（只堵"子包要了、主包没给"这一向；主包多给没人用的死键由 verify-client 管）；
+//   ③ 产物里派生出的键数组与源码解构**逐键同序**（证明构建真的派生过、也没人绕过构建手改产物）；
+//   ④ 运行期防版本错配的响亮检查仍在（九包独立发版，构建期断言管不到用户机器上的版本错配）。
+const declaredKeyViolations = ({ declarations, hostKeys }) => {
+  const bad = [];
+  const hosts = new Set(hostKeys);
+  for (const d of declarations) {
+    for (const k of d.keys) {
+      if (!hosts.has(k)) {
+        bad.push(d.dir + '（' + d.name + '）解构键 "' + k + '" 不在主 bundle HOST_BRIDGE_BINDINGS 里');
+      }
+    }
+  }
+  return bad;
+};
+const HOST_BRIDGE_SRC = 'src/host-bridge.js';
+const hostBridgeKeysOf = () => {
+  const src = stripComments(read(HOST_BRIDGE_SRC));
+  const at = src.indexOf('const HOST_BRIDGE_BINDINGS = {');
+  if (at < 0) throw new Error('主包 ' + HOST_BRIDGE_SRC + ' 里找不到 `const HOST_BRIDGE_BINDINGS = {`');
+  const end = src.indexOf('\n};', at);
+  if (end < 0) throw new Error('HOST_BRIDGE_BINDINGS 没有收尾 `\\n};`');
+  const keys = [...src.slice(at, end).matchAll(/^ {2}([A-Za-z_$][\w$]*):\s*\(\)\s*=>/gm)].map((m) => m[1]);
+  if (keys.length === 0) throw new Error('HOST_BRIDGE_BINDINGS 解析出 0 个键（形状变了？）');
+  return keys;
+};
+/** 解构名单 = 申报键真源。别名 `a: b` 取左侧（左侧才是 host 上的键名）。 */
+const destructuredHostKeysOf = (text) => {
+  const m = text.match(/const\s*\{([\s\S]*?)\}\s*=\s*host\s*;/);
+  if (!m) return [];
+  return m[1]
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => s.split(':')[0].trim());
+};
+/** 产物里那张派生表的规范形状（与 scripts/build-client.mjs 的拼法逐字同源）。 */
+const derivedTableOf = (d) => 'const ' + d.constName + ' = [' + d.keys.map((k) => "'" + k + "'").join(', ') + '];';
+const artifactTableViolations = (decls) => decls.filter((d) => d.artText === null || !d.artText.includes(derivedTableOf(d)));
+const hostDeclarationsOf = () => {
+  const out = [];
+  for (const p of usable) {
+    const text = readAbs(join(ROOT, p.dir, 'src', 'client.js'));
+    if (text === null) continue;
+    const stripped = stripComments(text);
+    const m = stripped.match(/const\s+([A-Z][A-Z0-9_]*_HOST_REQUIRED)\s*=\s*\[\s*\]\s*;/);
+    if (!m) continue;
+    const artRel = Object.keys(artifacts).find((k) => k.startsWith(p.dir + '/') && /\/lib\/client\.[^/]+\.js$/.test(k)) || null;
+    out.push({
+      dir: p.dir,
+      name: p.manifest.name,
+      constName: m[1],
+      keys: destructuredHostKeysOf(stripped.slice(m.index + m[0].length)),
+      artRel,
+      artText: artRel ? artifacts[artRel] : null,
+    });
+  }
+  return out;
+};
+const hostKeys = hostBridgeKeysOf();
+const declarations = hostDeclarationsOf();
+const nonEmptyTables = [];
+for (const p of usable) {
+  const text = readAbs(join(ROOT, p.dir, 'src', 'client.js'));
+  if (text === null) continue;
+  if (/const\s+[A-Z][A-Z0-9_]*_HOST_REQUIRED\s*=\s*\[\s*'/.test(stripComments(text))) nonEmptyTables.push(p.dir);
+}
+// 单一真源钉子：键表只许住 src/host-bridge.js。两边各留一份 = 改一处、另一处静默过期
+// （且产物里后声明者静默胜出），所以"正文里还有一张表"必须当场红。
+check('D-7 单一真源：HOST_BRIDGE_BINDINGS 表只在 ' + HOST_BRIDGE_SRC + '，src/client.js 不再复制一份',
+  !stripComments(read('src/client.js')).includes('const HOST_BRIDGE_BINDINGS = {'),
+  'src/client.js 里又出现了第二份 HOST_BRIDGE_BINDINGS 定义');
+check('D-7 申报表只剩空壳：*_HOST_REQUIRED 由构建期从解构派生，手工填键就是第二真源',
+  nonEmptyTables.length === 0,
+  nonEmptyTables.join(' / ') + '：把数组改回 [] 即可（构建期会从下面的 `} = host;` 派生）');
+check('D-7：至少解析出一张子包申报表（0 张 = 判据空转）',
+  declarations.length >= 1,
+  declarations.map((d) => d.dir + '（' + d.constName + '）').join(' / '));
+check('D-7 解构非空：每张申报表后都有非空 `} = host;` 解构',
+  declarations.every((d) => d.keys.length > 0),
+  declarations.filter((d) => d.keys.length === 0).map((d) => d.dir + '（' + d.constName + '）').join(' / '));
+check('D-7 反向对账：子包解构键 ⊆ 主 bundle HOST_BRIDGE_BINDINGS（'
+  + declarations.length + ' 张申报表 / ' + hostKeys.length + ' 个 host 键）',
+  declaredKeyViolations({ declarations, hostKeys }).length === 0,
+  declaredKeyViolations({ declarations, hostKeys }).join('\n      '));
+check('D-7 产物同形：产物里派生的键数组与源码解构逐键同序（未构建时先跑 npm run build）',
+  artifactTableViolations(declarations).length === 0,
+  artifactTableViolations(declarations)
+    .map((d) => d.dir + '（' + d.constName + '）产物 ' + (d.artRel || '缺失') + ' 里的派生表与解构不一致')
+    .join('\n      '));
+// 负对照四条（+ 一条"删申报不制造假红"）：同一条判据必须两向都有牙。
+check('D-7 负对照：某张申报表删掉一个键（其余键都在）⇒ 仍 0 违反（删申报不制造假红）',
+  declaredKeyViolations({
+    declarations: declarations.map((d) => ({ ...d, keys: d.keys.slice(0, 1) })),
+    hostKeys,
+  }).length === 0);
+check('D-7 负对照：主 bundle 少给一个被解构的键 ⇒ 判红',
+  declaredKeyViolations({ declarations, hostKeys: hostKeys.filter((k) => k !== declarations[0].keys[0]) })
+    .some((s) => s.includes(declarations[0].keys[0])));
+check('D-7 负对照：子包解构了主包没有的键 ⇒ 判红',
+  declaredKeyViolations({
+    declarations: [{ dir: 'packages/fake', name: 'dsh-plugin-wallpaper-engine-fake', keys: ['definitelyNotAKey'] }],
+    hostKeys,
+  }).some((s) => s.includes('definitelyNotAKey')));
+check('D-7 负对照：产物里的派生表比解构少键 ⇒ 判红',
+  artifactTableViolations([{ ...declarations[0], artText: 'const ' + declarations[0].constName + ' = [];', artRel: 'lib/fake.js' }]).length === 1);
 
 // -- 负对照 ------------------------------------------------------------------
 const okDshClient = rootDshClient || { platform: 'web', immediately: true, inject: [] };

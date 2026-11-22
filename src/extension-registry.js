@@ -5,7 +5,7 @@
  *   一号 自定义会话头像（src/ext-avatar.js + src/avatar-layer.js）留在主包；
  *   二号 点击效果与拖尾（packages/fx）、三号 3D 视差（packages/parallax）各自是一个**独立包**，
  *   三份 bundle 的**求值顺序不保证**，唯一的共同作用域是宿主经 loader 的 `require` 提供的
- *   主 bundle 导出面（BUNDLE-SPLIT §6.2「宿主注入显式键集」）。
+ *   主 bundle 导出面（ADR-0014 S5.1 / S5.4「宿主注入显式键集」）。
  * 于是"谁登记了什么"必须落在一张**共享注册表**上，而不是一个按数组顺序 import 的静态清单：
  *   · panel-tabs 的 `extensionModules()` 只问注册表（屏上顺序 = (order, 注册序)）；
  *   · client.js 的挂载期只问注册表（每层的 `sync` 接 store 订阅、`dispose` 交 fiber 拆卸）。

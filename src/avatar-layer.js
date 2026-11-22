@@ -35,8 +35,11 @@
  *     （内联后 prelude 早于 `src/client.js` 正文求值，顶层读它必撞 TDZ）。
  *   · **关掉 = 逐字节回到原生**：摘掉所有注入的头像节点、抹掉加在消息行上的标记属性、
  *     断开观察者、撤掉 body 上的开关属性与两个变量。宿主 DOM 上不留任何痕迹。
- *   · **只碰消息行**：只给 `user` / `steering` / `assistant-step` 三种 kind 补头像
- *     （工具调用、思考过程、压缩标记、turn 尾巴一律不碰 —— 那些不是"好友发的消息"）。
+ *   · **只碰消息行**：只给 `user` / `steering` / `assistant-step` 三种 kind 补头像；
+ *     过程组（`[data-step-process-body]`）里的 `assistant-step` 步骤行**照常补、照常按间隔露脸**
+ *     （用户口径：间隔参数就是为 CoT 过程中控制头像频率而设）；只有不露脸的**续行**才由行标记
+ *     `data-we-avatar-cont` 把该行退化成单列，隐藏的头像移出 grid 流，正文不再被空列顶到右边。
+ *     工具调用、压缩标记、turn 尾巴一律不碰（那些不是"好友发的消息"）。
  *   · **出现频率（issue #231）**：助手侧**每个回合都露脸**，且长回合不会"一张脸滚出屏幕后整页
  *     再没有"。口径是三条叠加：① 回合的**第一条可见**助手行露脸（宿主会把思考 / 工具调用折叠成
  *     `hidden` / `data-turn-process-hidden`，折叠行不占这个位置，否则整轮一张脸都不剩）；
@@ -47,6 +50,11 @@
  *     折叠掉几十条后脸会被判成"早该出现"而挤在一起。用户侧口径不变：连续的用户行只显示第一条。
  *   · **幂等**：同一个消息行只补一次（`data-we-avatar-row` 是标记）；设置变化时**就地更新**
  *     已补节点的图与形状，不重建 DOM（否则每改一次滑块，整屏消息的头像都要重挂一遍）。
+ *   · **不假设头像是行首**：第三方插件也会往这一行里塞东西，而且常常是插到最前面
+ *     （dsh-meme 把「表情: 描述」换成 `<img>` 后执行 `row.insertBefore(img, row.firstChild)`）
+ *     ⇒ 头像节点会退到第二位。找节点一律按属性扫**直接子元素**，否则下一次 sweep 会把
+ *     "首个子节点不是头像"误判成"节点没了"，再补一张脸（两张头像并排）；左右位次由
+ *     styles.js 里 `.we-avatar` 的 `grid-column` 决定，与 DOM 先后无关。
  *   · **观察者的开销有硬界**：流式输出时消息内部每帧都在插节点 ⇒ 回调里对**不是消息行**
  *     的插入只做一次 `closest('[data-we-avatar-row]')` 判定（已在装饰过的行里就直接放行），
  *     绝不逐个 `querySelectorAll` 扫子树。
@@ -113,12 +121,26 @@ function avatarAiRepeatRows(selLike) {
 /** 注入标记：`data-we-avatar-row="<side>"` 加在消息行上，`we-avatar` 是注入节点（那张脸）自己的类。 */
 const AVATAR_ROW_ATTR = 'data-we-avatar-row';
 const AVATAR_NODE_CLASS = 'we-avatar';
+// 第三方提到行首的图（dsh-meme 的表情）由装饰层收进这一个横排容器：
+//   · 有文本时它排在内容后面 ⇒ 文本先出完，表情另起一行（仍在内容列里）；
+//   · 没文本时内容根是 display:none、不占格 ⇒ 它自然落在第 1 行、紧跟头像。
+// 不包这一层就无法既让表情**成组横排**、又让它们整体落到正文下面（grid 的每个直接子项
+// 会各占一行，三张表情会竖着排）。
+const AVATAR_MEDIA_CLASS = 'we-avatar-media';
+/** 这一行有没有可见文本；没有时表情包要跟头像同一行，不能落到空正文下面一行。 */
+const AVATAR_NO_TEXT_ATTR = 'data-we-avatar-no-text';
 const AVATAR_NODE_ATTR = 'data-we-avatar-node';
 /**
  * 「连续同侧消息的后续行」标记（issue #191 问题 2）：加在**头像节点**上。
- * CSS 里只做 `visibility: hidden` —— 节点与它的框都还在，缩进对齐与 flex 几何逐字节不变。
+ * CSS 里只做 `visibility: hidden` —— 节点始终留在 DOM 里（摘节点会踩 issue #154 的锚点塌陷）。
  */
 const AVATAR_CONT_CLASS = 'we-avatar--cont';
+/**
+ * 同一件事在**行**上的标记：只给助手侧的续行加。
+ * 头像隐藏后若仍保留 40px 的 auto 列 + 8px gap，整条思考链会右移；这个属性让该行
+ * 退化为单列、列间距归零，正文回到与折叠头同一条左边缘。用户侧不塌列（气泡本来就靠右）。
+ */
+const AVATAR_CONT_ROW_ATTR = 'data-we-avatar-cont';
 /** 开关属性与两个观感变量（styles.js 的「自定义会话头像」段读它们）。 */
 const AVATAR_ATTR = 'data-we-avatar';
 const AVATAR_VAR_SIZE = '--we-avatar-size';
@@ -253,37 +275,204 @@ function avatarFillNode(node, side) {
   }
 }
 
+/**
+ * 这一行里**本层注入的头像节点**（不假设它在行首）。
+ *
+ * 行首可能被别的插件占用：dsh-meme 把 `[表情: x]` 换成 `<img>` 后执行
+ * `row.insertBefore(img, row.firstChild)`，于是我们的节点退到第二位。若仍按
+ * `firstElementChild` 判"节点没了"，下一次 sweep 会再补一张脸（两张头像并排）。
+ * 真实 DOM 与验证替身都有 `children`；没有它就退回 `firstElementChild`。
+ */
+function avatarNodeOf(row) {
+  if (!row) return null;
+  const kids = row.children;
+  if (kids && typeof kids.length === 'number') {
+    for (let i = 0; i < kids.length; i++) {
+      const kid = kids[i];
+      if (kid && kid.classList && typeof kid.classList.contains === 'function'
+        && kid.classList.contains(AVATAR_NODE_CLASS)) return kid;
+    }
+    return null;
+  }
+  const first = row.firstElementChild;
+  return first && first.classList && first.classList.contains(AVATAR_NODE_CLASS) ? first : null;
+}
+
 /** 给一条消息行补头像（已补过则只做就地更新）。返回是否动过 DOM。 */
+/** 本层注入的表情横排容器（只找直接子元素）。 */
+function avatarMediaOf(row) {
+  if (!row || !row.children) return null;
+  for (let i = 0; i < row.children.length; i++) {
+    const kid = row.children[i];
+    if (kid && kid.classList && typeof kid.classList.contains === 'function'
+      && kid.classList.contains(AVATAR_MEDIA_CLASS)) return kid;
+  }
+  return null;
+}
+
+/**
+ * 这一行有没有**看得见的正文文本**（表情包容器与头像里的字不算）。
+ *
+ * dsh-meme 把 `[表情: x]` 提成行首 `<img>` 后，正文往往只剩一个空的/被 `display:none`
+ * 藏掉的文本层。此时若仍按"先正文、后表情"排，表情会落在空正文的下一行、头像下面 ——
+ * 用户要的是"没有文本时表情直接跟在头像右侧"。用 `checkVisibility` 同时排除
+ * `display:none` / `visibility:hidden` / `opacity:0` 的文本层。
+ *
+ * ⚠️ 性能（issue #385）：`checkVisibility` / `getClientRects` 是**强制布局查询**。原实现在
+ * 每个文本节点上各调一次，且调用点紧跟在插入头像节点之后 —— DOM 已失效，于是每次都要
+ * 触发一次整页样式重算。实测 840 次调用累计 480ms，把整段历史加载拖慢到秒级，推迟到
+ * `requestAnimationFrame` 也救不回来（rAF 里刚写完 DOM，同样失效）。
+ *
+ * 现在的顺序是「先便宜地判有没有文本，再只对**可见的**候选做查询」：
+ *   · 没有非空白文本 ⇒ 一次 `textContent` 判定即返回，零布局查询；
+ *   · 有文本 ⇒ 从第一个候选开始查可见性：可见就停，被藏掉就继续看下一个。
+ *     不能因为第一个候选被藏就断定这行没有正文 —— 折叠的思考过程常排在正文前面。
+ */
+function avatarHasVisibleText(row) {
+  let root;
+  try {
+    root = row.querySelector && row.querySelector('[data-slot="conversation.chat.node"]');
+  } catch { root = null; }
+  if (!root) root = row;
+
+  // ① 便宜的早退：整段没有非空白文本 ⇒ 判定"没有可见文本"，不触发布局。
+  let text;
+  try { text = root.textContent; } catch { text = ''; }
+  if (typeof text !== 'string' || text.replace(/\s+/g, '') === '') return false;
+
+  // ② 有文本时，才需要确认它没有被 CSS 藏起来。只对第一个候选取证。
+  if (typeof document.createTreeWalker !== 'function') return true;
+  let walker;
+  try { walker = document.createTreeWalker(root, 4 /* SHOW_TEXT */); } catch { walker = null; }
+  if (!walker) return true;
+  let n;
+  try {
+    while ((n = walker.nextNode())) {
+      const v = n.nodeValue;
+      if (!v || !v.trim()) continue;
+      const p = n.parentElement;
+      if (!p) continue;
+      try {
+        if (p.closest && (p.closest('.' + AVATAR_NODE_CLASS) || p.closest('.' + AVATAR_MEDIA_CLASS)
+          || p.closest('[aria-hidden="true"],button,[role="button"]'))) continue;
+      } catch { /* ignore */ }
+      // 第一个**可见**的非空白文本节点才是答案：被藏起来的候选不算，但也别因为
+      // 第一个候选被藏就说整行没有正文（折叠的思考过程就排在正文前面）。
+      if (typeof p.checkVisibility === 'function') {
+        let vis = true;
+        try { vis = p.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }); } catch { vis = true; }
+        if (!vis) continue;
+      } else if (p.getClientRects) {
+        let rects = 1;
+        try { rects = p.getClientRects().length; } catch { rects = 1; }
+        if (rects === 0) continue;
+      }
+      return true;
+    }
+    // 走完一圈都没有可见候选 ⇒ 确实没有可见正文。
+    return false;
+  } catch { return true; }
+}
+
+function avatarSyncNoText(row) {
+  if (!row) return false;
+  const noText = !avatarHasVisibleText(row);
+  const had = !!(row.hasAttribute && row.hasAttribute(AVATAR_NO_TEXT_ATTR));
+  if (noText === had) return false;
+  try {
+    if (noText) row.setAttribute(AVATAR_NO_TEXT_ATTR, '');
+    else row.removeAttribute(AVATAR_NO_TEXT_ATTR);
+  } catch { return false; }
+  return true;
+}
+
+/**
+ * 把行里被第三方提到行首的 `<img>` 收进一个横排容器。
+ *
+ * 只动**直接子元素**里的 IMG（dsh-meme 的 `row.insertBefore(img, row.firstChild)`）；
+ * 正文里的图（在内容根里面）不受影响。返回是否改过 DOM。
+ *
+ * ⚠️ 顺序（issue #385）：先看这行有没有表情图，没有就直接返回 —— `avatarSyncNoText` 要调
+ * `avatarHasVisibleText`，后者做 `checkVisibility`（强制布局）。而 `AVATAR_NO_TEXT_ATTR`
+ * 的唯一用途就是「表情没有文本可排在其后」，**没有表情图的行读不读它都不影响排版**。
+ * 绝大多数流式消息行没有表情图，这个早期返回把最贵的查询从热路径上摘掉：
+ * 实测 42 行的 sweep 从 478ms 降到 3ms。
+ */
+function avatarSyncMedia(row) {
+  if (!row || !row.children) return false;
+  let media = avatarMediaOf(row);
+  const imgs = [];
+  for (let i = 0; i < row.children.length; i++) {
+    const kid = row.children[i];
+    if (kid && kid !== media && kid.tagName && String(kid.tagName).toUpperCase() === 'IMG') imgs.push(kid);
+  }
+  // 没有待收拢的图、也没有残留容器 ⇒ 这行与表情排版无关，不必判断文本可见性。
+  if (imgs.length === 0 && !media) return false;
+  let changed = avatarSyncNoText(row);
+  if (imgs.length === 0) {
+    // 图已经在容器里（不是行的直接子元素）⇒ 保留；只有容器真的空了才撤。
+    if (media.children && media.children.length > 0) return changed;
+    try { media.remove(); } catch { /* ignore */ }
+    return true;
+  }
+  if (!media) {
+    media = document.createElement('div');
+    media.className = AVATAR_MEDIA_CLASS;
+    try { row.appendChild(media); changed = true; } catch { return false; }
+  }
+  for (const img of imgs) {
+    try { media.appendChild(img); changed = true; } catch { /* ignore */ }
+  }
+  // 第三方的图可能被 dedupe / 清理摘走：容器空了就撤掉，别留一条空白行。
+  if (media.children && media.children.length === 0) {
+    try { media.remove(); } catch { /* ignore */ }
+    changed = true;
+  }
+  return changed;
+}
+
+/** 关掉时把容器里的图放回行里，再摘容器（"逐字节回原生"的最后一环）。 */
+function avatarUnwrapMedia(media) {
+  if (!media || !media.parent) return;
+  const parent = media.parent;
+  // 第三方（dsh-meme）本来就是把图提到行首；按原顺序插回行首，别留在容器原来的行尾。
+  const kids = [];
+  for (let i = 0; i < (media.children ? media.children.length : 0); i++) kids.push(media.children[i]);
+  for (let i = kids.length - 1; i >= 0; i--) {
+    try { parent.insertBefore(kids[i], parent.firstChild); } catch { /* ignore */ }
+  }
+  try { media.remove(); } catch { /* ignore */ }
+}
+
 function avatarDecorateRow(row) {
   if (!row || typeof row.getAttribute !== 'function') return false;
   const side = AVATAR_FLOW_SIDES[row.getAttribute('data-chat-flow-kind')];
   if (!side) return false;
   const marked = row.getAttribute(AVATAR_ROW_ATTR);
-  if (marked === side) {
-    const node = row.firstElementChild;
-    if (node && node.classList && node.classList.contains(AVATAR_NODE_CLASS)) {
-      avatarFillNode(node, side);
-      return false;
-    }
-    // 标记在、节点却没了（宿主重建过这一行的子节点）⇒ 当作没补过，重补一次。
-    row.removeAttribute(AVATAR_ROW_ATTR);
-  } else if (marked) {
-    // 同一行换了另一方（kind 变了）：先摘旧的，再按新的一方补。
-    const old = row.firstElementChild;
-    if (old && old.classList && old.classList.contains(AVATAR_NODE_CLASS)) {
-      try { old.remove(); } catch { /* ignore */ }
-    }
-    row.removeAttribute(AVATAR_ROW_ATTR);
+  const existing = avatarNodeOf(row);
+  if (existing && marked === side) {
+    avatarFillNode(existing, side);
+    return avatarSyncMedia(row);
+  }
+  // 旧节点先摘掉：同一行换了另一方（kind 变了），或标记已丢但节点还在。
+  if (existing) {
+    try { existing.remove(); } catch { /* ignore */ }
+  }
+  if (marked) row.removeAttribute(AVATAR_ROW_ATTR);
+  // 旧行可能带着上一轮的“续行塌列”标记；重建时先清掉，等分组重算再按新状态写。
+  if (row.hasAttribute && row.hasAttribute(AVATAR_CONT_ROW_ATTR)) {
+    try { row.removeAttribute(AVATAR_CONT_ROW_ATTR); } catch { /* ignore */ }
   }
   const node = document.createElement('div');
   node.className = AVATAR_NODE_CLASS + ' ' + AVATAR_NODE_CLASS + '--' + side;
   node.setAttribute(AVATAR_NODE_ATTR, side);
   node.setAttribute('aria-hidden', 'true');
   avatarFillNode(node, side);
-  // 插到行的**最前面**：助手行是 `flex-direction: row`（头像在最左），
-  // 用户行是 `row-reverse`（最前面的子元素落在最右）—— 一份插入顺序同时满足两侧（见 styles.js）。
+  // 插到行的**最前面**只是习惯位次：左右由 styles.js 的 grid 列决定（助手第 1 列、
+  // 用户第 2 列），插入位置不再承担左右语义。第三方插件把图提到行首也不会把头像挤到另一侧。
   row.setAttribute(AVATAR_ROW_ATTR, side);
   try { row.insertBefore(node, row.firstChild); } catch { /* ignore */ }
+  avatarSyncMedia(row);
   return true;
 }
 
@@ -335,14 +524,13 @@ function avatarRowHidden(row) {
  *     正是 issue #231 说的"太频繁"来的那一侧）；不同回合（`data-chat-turn` 变了）重新起算；
  *   · 折叠窗口里的行不计数也不露脸（看不见的图不占位），展开 / 收起时重算；
  *   · 用户开口（user / steering）⇒ 助手侧重新从"第一条可见"起算。
- * 用户侧仍是"连续同侧只显示第一条"，但**任何非用户行都会断开连续段**（issue #231 已证实：
- * 过程行曾被跳过 ⇒ 跨过工具调用后第二条用户消息也共用上一张脸）。
+ * 用户侧仍是"连续同侧只显示第一条"，但**任何非用户行都会断开连续段**（issue #231：
+ * 过程行若被跳过，跨过工具调用后第二条用户消息会共用上一张脸）。
  *
  * ⚠️ 做法是给不露脸的行**头像节点加一个 `--cont` 修饰类**（CSS 里 `visibility: hidden`），
- * **绝不摘掉节点**：节点在、框还占着 ⇒ 缩进对齐与 flex 几何**逐字节不变**。
- * 那正是 issue #154 那个坑的规避方式 —— 摘掉头像节点会让宿主那层 `display: contents`
- * 锚点下的内容退回 `flex: 0 1 auto`，收起的思考行固有宽为 0 ⇒ 整条消息连入口一起消失
- *（见 src/styles.js 头像段的血泪注释与 test/verify-scene-live.mjs 的假 DOM 判据）。
+ * **绝不摘掉节点**：节点在，锚点下内容的宽度约束就不会塌（issue #154）。
+ * 助手侧续行同时给**行**加 `data-we-avatar-cont`，CSS 让该行退化为单列、列间距归零 ——
+ * 脸不露，但正文也不再多缩进 48px（用户截图里思考链"层次不齐"的根因）。
  */
 function avatarApplyGrouping() {
   if (!avatarActive || typeof document.querySelectorAll !== 'function') return;
@@ -364,9 +552,12 @@ function avatarApplyGrouping() {
     }
     const side = AVATAR_FLOW_SIDES[row.getAttribute('data-chat-flow-kind')];
     const hidden = avatarRowHidden(row);
-    if (!side) {
+    const node = avatarNodeOf(row);
+    // 没头像节点的行（工具调用、回合头等不属于 AVATAR_FLOW_SIDES 的条目）：
+    // 看得见就计一条可见流内容，但不消耗 aiFacePending —— 否则额度会被不是“好友消息”的行花掉。
+    if (!side || !node) {
       prevSide = '';
-      if (!hidden) aiSince++;   // 工具调用 / 思考过程 / 回合头等：看得见就算一条
+      if (!hidden) aiSince++;
       continue;
     }
     let cont;
@@ -384,11 +575,15 @@ function avatarApplyGrouping() {
       aiFacePending = true;
       aiSince = 0;
     }
-    const node = row.firstElementChild;
-    if (node && node.classList && node.classList.contains(AVATAR_NODE_CLASS)
-      && typeof node.classList.toggle === 'function') {
+    if (typeof node.classList.toggle === 'function') {
       try { node.classList.toggle(AVATAR_CONT_CLASS, cont); } catch { /* ignore */ }
     }
+    // 助手续行：把行退化成单列（头像仍留在 DOM 里、只是不可见），正文不再被空列顶到右边。
+    // 只点头侧的续行；用户侧连续消息保持原 grid，气泡靠右不受影响。
+    try {
+      if (cont && side === 'ai') row.setAttribute(AVATAR_CONT_ROW_ATTR, '');
+      else if (row.hasAttribute(AVATAR_CONT_ROW_ATTR)) row.removeAttribute(AVATAR_CONT_ROW_ATTR);
+    } catch { /* ignore */ }
   }
 }
 
@@ -418,17 +613,60 @@ function avatarOnMutations(records) {
   let decorated = false;
   let regroup = false;
   for (const r of records) {
-    if (r.type === 'attributes') { regroup = true; continue; }
+    if (r.type === 'attributes') {
+      regroup = true;
+      // dsh-meme 用 style/class 把纯表情消息的文本层藏起来；藏完"有没有文本"就变了，
+      // 得重新决定表情排第一行还是第二行（不订这条，隐藏发生在收图之后时会漏）。
+      const t = r.target;
+      const row = t && t.closest && t.closest('[' + AVATAR_ROW_ATTR + ']');
+      if (row && avatarSyncMedia(row)) decorated = true;
+      continue;
+    }
+    // 流式输出/停写：正文文本节点在变，而"有没有文本"决定表情包排第一行还是第二行。
+    if (r.type === 'characterData') {
+      const p = r.target && r.target.parentElement;
+      const row = p && p.closest && p.closest('[' + AVATAR_ROW_ATTR + ']');
+      if (row) {
+        // 已经判定有文本、且这次变化仍留着非空白文本 ⇒ 结论不变，不必重扫整段正文。
+        const v = r.target && r.target.nodeValue;
+        if (!(v && v.trim() && !row.hasAttribute(AVATAR_NO_TEXT_ATTR))) {
+          if (avatarSyncMedia(row)) decorated = true;
+        }
+      }
+      continue;
+    }
+    // 第三方把图从横排容器里摘走（dedupe / 清理）⇒ 容器空了就撤，别留空白行。
+    const removed = r.removedNodes;
+    if (removed && removed.length && r.target && r.target.classList
+      && r.target.classList.contains(AVATAR_MEDIA_CLASS)) {
+      const row = r.target.closest && r.target.closest('[' + AVATAR_ROW_ATTR + ']');
+      if (row && avatarSyncMedia(row)) decorated = true;
+    }
     const added = r.addedNodes;
     if (!added || !added.length) continue;
     for (const n of added) {
-      if (!n || n.nodeType !== 1) continue;
+      if (!n) continue;
+      if (n.nodeType === 3) {
+        const p = n.parentElement;
+        const row = p && p.closest && p.closest('[' + AVATAR_ROW_ATTR + ']');
+        if (row && row.hasAttribute(AVATAR_NO_TEXT_ATTR) && avatarSyncMedia(row)) decorated = true;
+        continue;
+      }
+      if (n.nodeType !== 1) continue;
       try {
         if (n.matches && n.matches(AVATAR_ROW_SELECTOR)) {
           if (avatarDecorateRow(n)) decorated = true;
           continue;
         }
-        if (n.closest && n.closest('[' + AVATAR_ROW_ATTR + ']')) continue; // 已在装饰过的行里
+        const hostRow = n.closest && n.closest('[' + AVATAR_ROW_ATTR + ']');
+        if (hostRow) {
+          // dsh-meme 后续补图时仍按 row.insertBefore(img, row.firstChild) 直插行首；
+          // 看到新 IMG 就收进横排容器，别让它单独占一行。纯表情行里新增的文本节点 /
+          // 元素会把"无正文"改成"有正文"，也要重新排（否则表情一直停在第 1 行）。
+          if ((n.tagName && String(n.tagName).toUpperCase() === 'IMG'
+            || hostRow.hasAttribute(AVATAR_NO_TEXT_ATTR)) && avatarSyncMedia(hostRow)) decorated = true;
+          continue;
+        }
       } catch { continue; }
       let inner;
       try { inner = n.querySelectorAll ? n.querySelectorAll(AVATAR_ROW_SELECTOR) : []; } catch { inner = []; }
@@ -460,12 +698,20 @@ function avatarStop() {
   }
   // 摘掉所有注入的头像节点与行标记（"关掉 = 逐字节回到原生"）。
   if (typeof document.querySelectorAll !== 'function') return;
+  // 第三方图先放回行里，再摘横排容器；最后才摘头像与行标记。
+  let mediaNodes = [];
+  try { mediaNodes = document.querySelectorAll('.' + AVATAR_MEDIA_CLASS); } catch { /* ignore */ }
+  for (const m of mediaNodes) avatarUnwrapMedia(m);
   let nodes = [];
   try { nodes = document.querySelectorAll('[' + AVATAR_NODE_ATTR + ']'); } catch { /* ignore */ }
   for (const n of nodes) { try { n.remove(); } catch { /* ignore */ } }
   let rows = [];
   try { rows = document.querySelectorAll('[' + AVATAR_ROW_ATTR + ']'); } catch { /* ignore */ }
-  for (const row of rows) { try { row.removeAttribute(AVATAR_ROW_ATTR); } catch { /* ignore */ } }
+  for (const row of rows) {
+    try { row.removeAttribute(AVATAR_ROW_ATTR); } catch { /* ignore */ }
+    try { row.removeAttribute(AVATAR_NO_TEXT_ATTR); } catch { /* ignore */ }
+    try { row.removeAttribute(AVATAR_CONT_ROW_ATTR); } catch { /* ignore */ }
+  }
 }
 
 /**
@@ -499,11 +745,11 @@ function syncAvatarLayer() {
     try {
       avatarObserver = new MutationObserver(avatarOnMutations);
       avatarObserver.observe(body, {
-        childList: true, subtree: true,
+        childList: true, subtree: true, characterData: true,
         // 折叠 / 展开过程窗口会改这些属性，而"哪条助手行可见"决定这一轮的脸贴在哪条上
         // （issue #231）⇒ 只订这四枚，别的属性变化（包括本层自己加的 class）一概不惊动。
         attributes: true,
-        attributeFilter: ['hidden', AVATAR_FOLD_ATTR, AVATAR_TURN_ATTR, 'data-chat-flow-kind'],
+        attributeFilter: ['hidden', AVATAR_FOLD_ATTR, AVATAR_TURN_ATTR, 'data-chat-flow-kind', 'style', 'class', 'data-meme-hidden'],
       });
     } catch { avatarObserver = null; }
   }

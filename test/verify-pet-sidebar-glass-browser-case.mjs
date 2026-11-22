@@ -4,6 +4,13 @@ export async function verifyPetSidebarGlassBrowser({ send, evaluate, until, chec
   const b = bundle.indexOf('  }, [hidden, petOfficialMode]);', a);
   if (a < 0 || b <= a) throw Error('构建产物缺少真实侧栏控制面');
   const controller = bundle.slice(a, b) + '  }, [hidden, petOfficialMode]);';
+  // 控制器把「开 / 合」交回宿主自己的接口：下面的夹具提供 `wallSidebarOpen` / `wallSidebarClose`
+  // 两个桩，调用点是 `begin()` 的两处出口。这条判据盯住那个调用点 —— 控制器一旦不再调它们，
+  // 两个桩就成了零引用声明（`verify-dead-declarations` 判红），而且"开合真的回到宿主侧"这件事
+  // 再没有任何判据在看（夹具里 `toggle` 只被这两个桩调用）。
+  check('控制器把开合交回宿主接口（切片里保有 wallSidebarOpen / wallSidebarClose 调用点）',
+    /if \(expanded\) wallSidebarOpen\(\); else wallSidebarClose\(\);/.test(controller),
+    controller.length + ' 字符切片');
   await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 820, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: 'about:blank' });
   await until('document.readyState === "complete"');

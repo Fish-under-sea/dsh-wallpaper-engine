@@ -1,0 +1,77 @@
+{
+  "entry": "src/client.js",
+  "artifact": "lib/client.glass.js",
+  "inline": [
+    {
+      "file": "src/glass-css.js",
+      "why": "玻璃样式表（ADR-0016 第四刀）：ADR-0016 第四刀迁入：CSS_GLASS 由入口的 ensureGlassCss() 在求值期注入独立 <style data-plugin-css> 标签（主包 sheet 之后）",
+      "markers": [
+        "const READABILITY_FLOOR = 0.45;",
+        "const CSS_GLASS = `",
+        "/* ── 左侧栏液态玻璃"
+      ]
+    },
+    {
+      "file": "src/glass-surfaces.js",
+      "why": "统一表面策略、安全载体、动态几何与可撤销生命周期（ADR-0016 迁入）；weGlassSurfaceStatus 经入口的 registerGlassStatus 登记回主包（外观 ctx 的诊断投影）",
+      "markers": [
+        "function weResolveSurface(",
+        "function syncGlassSurfaces(",
+        "function disposeGlassSurfaces("
+      ]
+    },
+    {
+      "file": "src/glass.js",
+      "why": "玻璃后端：取值解析 / 各面釉层变量 / 门控属性（无条件写，值槽位与开关正交；ADR-0016 第三刀迁入）",
+      "markers": [
+        "const toRgbTriple = (hex) => {",
+        "function applyGlass(selection, s) {",
+        "const glassValue = (surface, param, profileValue, globalValue) =>"
+      ]
+    },
+    {
+      "file": "src/glass-extra.js",
+      "why": "「额外补雾化的选择器」（#200）：把用户点名的选择器编译成 ::before 载体规则，写进本通道自己的 <style>（ADR-0016 迁入）",
+      "markers": [
+        "const EXTRA_GLASS_TAG_ID = ",
+        "function weExtraGlassCss(",
+        "function syncExtraGlassCss(",
+        "function disposeExtraGlassCss("
+      ]
+    },
+    {
+      "file": "src/glass-market-sticky.js",
+      "why": "插件市场（dsh-market）吸顶条下的内容裁切：按 body 门控属性 data-we-market-sticky 给被吸顶行盖住的那几层（卡片墙 / 加载更多 / 最近收录）写 mask-image 渐隐，并在关掉 / 卸载时把宿主元素上的内联样式还回去；只读属性、不读 settings（读谁在 glass.js 决定）",
+      "markers": [
+        "const MARKET_STICKY_ATTR = \"data-we-market-sticky\";",
+        "function syncMarketStickyClip() {",
+        "function stopMarketStickyClip() {"
+      ]
+    },
+    {
+      "file": "src/glass-layer.js",
+      "why": "玻璃行为层（ADR-0016 第三刀新落点）：主包 src/effects.js 的玻璃段（全局玻璃量 / 染色地板写入 / 思考块门控 / 胶囊 / 侧栏跟随 / 软渲染钩子）+ clearEffects 的玻璃摘除清单逐字迁入，组成 registerLayerHooks('glass') 的 sync/dispose；detectSoftwareRender（#95）随之从主包 src/client.js 迁入",
+      "markers": [
+        "function detectSoftwareRender() {",
+        "function applyGlassLayer() {",
+        "function disposeGlassLayer() {"
+      ]
+    },
+    {
+      "file": "src/glass-presets-panel.js",
+      "why": "「主题预设」独立节的渲染器（2026-11-07 从 glass-panel.js 纯搬移折出）：出厂名字走词表、破坏性动作两步确认、坏预设禁用但可删、资产勾选对话框；只画界面，数据与网络全经 gp ctx。",
+      "markers": [
+        "let gpImportInput = null;",
+        "function renderGlassPresetsBlock(gp) {"
+      ]
+    },
+    {
+      "file": "src/glass-panel.js",
+      "why": "「玻璃 UI」节的渲染器外壳（ADR-0016 迁入；S3 起「主题预设」块在 glass-presets-panel.js）：四件套旋钮 + 外观节组装、注册表驱动（GLASS_CHILDREN + childGlassKey）、只读 ctx、动作经 on* 处理器",
+      "markers": [
+        "function renderGlassSurfaceControls(ctx) {",
+        "function renderAppearanceGlassSection(ctx) {"
+      ]
+    }
+  ]
+}

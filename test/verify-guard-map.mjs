@@ -88,10 +88,19 @@ const ZERO_COVERAGE_WHY = {
   [M('packages', 'parallax', 'lib', 'index.js')]: '同上（3D 子包宿主入口，P-A 拆包）：覆盖来源与 fx 逐条相同 —— verify-subpackage-boot 的双射对账 + verify-subpackage-toggle-roundtrip 的逐行装载与拆卸',
   [M('packages', 'fx', 'src', 'client.js')]: '子包浏览器半边入口（P-A 拆包）：注入键契约由 verify-subpackage-client-half 隔产物断言，宿主键集与包间纯度由 verify-subpackage-purity 动态扫 packages/*/src 覆盖，产物侧由 verify-scene-live / verify-client 在同一 vm 里真求值，本工具只认字面量路径 ⇒ 按口径算零覆盖',
   [M('packages', 'parallax', 'src', 'client.js')]: '同上（3D 子包浏览器半边入口，P-A 拆包）：覆盖来源与 fx 逐条相同 —— verify-subpackage-client-half 的隔产物断言 + verify-subpackage-purity 的动态扫面 + verify-scene-live / verify-client 的真求值',
-  // ── PR #5（可选桌宠联动）：2026-10-15 收口成一般形态（自出浏览器半边产物）──
-  //    词条表 `src/i18n-copy-pet-link.js` 已按 fonts 惯例归主包 src/（verify-i18n 的整族词表对账覆盖它）
+  // ── PR #5（可选桌宠联动）：收口成一般形态（自出浏览器半边产物）──
+  //    词条表 `src/i18n/i18n-copy-pet-link.js` 已按 fonts 惯例归主包 src/（verify-i18n 的整族词表对账覆盖它）
   //    ⇒ 旧的那条例外登记随之删除（登记了反而会被判"例外表空转"）。
   [M('packages', 'pet-link', 'src', 'client.js')]: '桌宠联动浏览器半边入口（收口成一般形态后自出 packages/pet-link/lib/client.pet-link.js）：注入键契约由 verify-subpackage-client-half 隔产物断言（dsh.client / exports["./client"] / 产物 id / 构建期 require 主包），宿主键集与包间纯度由 verify-subpackage-purity 动态扫 packages/*/src 覆盖，行为面由 test/verify-pet-*.mjs 那组离线回归与 verify-scene-live 的真求值覆盖，本工具只认字面量路径 ⇒ 按口径算零覆盖',
+  // ── P-D S3a：壁纸子包自出浏览器半边（「自定义壁纸」节搬出主 bundle）──
+  [M('packages', 'media-bridge', 'src', 'client.js')]: '壁纸子包浏览器半边入口（P-D S3a 起自出 packages/media-bridge/lib/client.media-bridge.js）：缺键自检与 library 节登记由 verify-scene-live（按包内源文件真 import + installExtensionRegistry 登记）与 verify-client（在同一 vm 里真求值产物）覆盖，注入键契约由 verify-subpackage-client-half 隔产物断言（含 D-7「申报键 ⊆ hostBridgeKeys」反向对账），宿主键集与包间纯度由 verify-subpackage-purity 动态扫 packages/*/src 覆盖；本工具只认字面量路径 ⇒ 按口径算零覆盖',
+  // ── ADR-0016 玻璃子包（四刀落地：状态路由 + 浏览器半边出产物）：行为级覆盖，与 fx / media-bridge 同口径 ──
+  [M('packages', 'glass', 'lib', 'index.js')]: '玻璃子包宿主入口（ADR-0016 四刀落地后自带 glass-row 状态路由族）：注册期只做键表校验 + runComponent/handOffTeardown 接线，路由运行期对账由 verify-route-index 与 verify-inject-contracts 覆盖；装载顺序与逐行拆卸由 verify-subpackage-boot（按 packages/* 目录与 patch 行双向对账）与 verify-subpackage-toggle-roundtrip（关→开→再关零残留）覆盖；本工具只认字面量路径 ⇒ 按口径算零覆盖',
+  [M('packages', 'glass', 'lib', 'routes', 'glass-row.js')]: '玻璃行状态路由族（ADR-0016「行开关即时生效」的宿主信号）：运行期注册 / 撤销随宿主 fiber 生命周期，路由表对账由 verify-route-index（真跑 apply 逐条比对）与 verify-inject-contracts（DEPS 冻结表）覆盖，行为面由 verify-glass-* 与 verify-softrender 的玻璃产物求值覆盖；本工具只认字面量路径 ⇒ 按口径算零覆盖',
+  // ── 2026-10-30 启动性能：立绘从主产物 base64 内联改为「assets/rope 随包 + 只读路由直出」──
+  // ── 官方安装引导（#305 重写）：只读探测，无守卫直读 ──
+  [M('packages', 'pet-link', 'lib', 'pet-install', 'state-probe.js')]: '官方安装引导的只读探测：只探测 dsh-pet-dshwe 的安装位点与 state 响应形态，被 packages/pet-link/lib/index.js 经 DI（deps.probePetInstall）注入而非常规 import，本工具只认字面量路径 ⇒ 按口径算零覆盖；行为面由 test/verify-pet-install.mjs 与 test/verify-pet-optional-probe.mjs 覆盖',
+  [M('lib', 'routes', 'rope-art.js')]: '立绘静态只读路由族（启动性能外置资产）：注册/撤销与路由表对账由 verify-route-index（真跑 apply 逐条比对）与 verify-inject-contracts（DEPS 冻结表）覆盖，发布面（assets/rope 随 npm 包）由 verify-package-files 的 files 覆盖判据兜住，构建期声明↔文件对账由 scripts/build-client.mjs 的 checkRopeArtDeclarations 把关；本工具只认字面量路径 ⇒ 按口径算零覆盖',
 };
 
 /**
@@ -104,9 +113,9 @@ const ZERO_COVERAGE_WHY = {
  * 允许**第三类**的守卫 —— **可枚举 + 每条有理由**。
  */
 const NO_MODULE_TARGET_WHY = {
+  'verify-issue-claim-policy.mjs': '验证 GitHub Actions 的事前受理审批、权限豁免与可信工作流接线；目标是 .github 下的仓库治理脚本，不属于 lib/src 运行时模块',
   'verify-deployment.mjs': '验证源码安装器与发布集构建器的行为、持久依赖和显式目标安全边界；目标是 scripts 下的部署流程，不属于本映射枚举的 lib/src 运行时模块',
   'verify-dead-declarations.mjs': '管的是**声明孤儿**（跨全部独立脚本面），不针对某个模块',
-  'verify-route-families.mjs': '管的是**路由族触发线**（枚举口径经 `test/tools/host-route-index.mjs` 的 `buildIndex()` 重算）',
   'compat-harness-live.mjs': '真 harness 安装/启动探活（不读源文件）',
   'compat-harness-pages.mjs': '无头浏览器逐页 DOM 断言（不读源文件）',
   'compat-harness-surfaces.mjs': 'UI 面清单棘轮 + sidebar 源码活判据（读的是已安装的 harness 包）',
@@ -118,7 +127,7 @@ const NO_MODULE_TARGET_WHY = {
   // 不再是"零模块目标"的元守卫 ⇒ 原例外条目已被元守卫表判为"登记了却已有目标，该删"。
   'verify-bridge-ci.mjs': '管的是 **CI 桥接面**（工作流/脚本接线，不读源模块）',
   'verify-undefined-refs.mjs': '管的是**未定义引用**（"用了但没 import/声明"的非全局内置名），扫 lib/src/scripts 全树按 AST 判，目标不是某个模块',
-  // D-G1 收口（2026-10-16）：行尾契约是**字节级**的，判的是"整棵入库树"，不指向某个模块。
+  // D-G1 收口：行尾契约是**字节级**的，判的是"整棵入库树"，不指向某个模块。
   'verify-eol.mjs': '管的是**行尾契约**（`.gitattributes` 的 `* text=auto eol=lf`）：扫 `git ls-files` 的全部入库文件，判"文本文件字节里零 `0x0D`"，目标是"整棵入库树必须是 LF"，不针对某个模块',
   // PR #5：可选桌宠联动离线回归的**聚合入口**（逐个 spawn 上面那批 `verify-pet-*.mjs`，自身不读源文件）。
   'verify-pet-link.mjs': '管的是**可选桌宠联动离线回归的整组**（聚合入口：按清单 spawn `test/verify-pet-*.mjs`，自身不直读任何源模块）；组内每条各自在链上，入口只是手动/包内便利入口',

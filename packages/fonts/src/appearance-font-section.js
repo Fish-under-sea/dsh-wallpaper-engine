@@ -1,7 +1,7 @@
 /**
  * appearance-font-section.js — 外观页签第六节「全局字体」的渲染器（P-C 搬出）。
  *
- * 原来住在 src/panel-tabs-appearance.js 的 54-420 行，**函数体逐字未改**，只是换了住处。
+ * 从 src/panel-tabs/appearance.js 按域拆出（ADR-0013/ADR-0014 子包出户）；渲染逻辑与主包版本同源。
  *
  * 跨包形状（契约 §2.1 / §2.2）：
  *   · 本文件**只画界面**：稳定零件（React / weT / switchRow / ctlText / sectionHead /
@@ -384,6 +384,6 @@
   }
 
 // 独立文件形态下必须有导出：本文件被内联进产物时这一行会被构建器剥掉
-// （scripts/build-client.mjs 的 EXPORT_BLOCK，同 packages/fonts/src/fontset-editor.js:205 的先例），
+// （scripts/build-client.mjs 的 EXPORT_BLOCK，同 fontset-editor.js 的导出块先例），
 // 但渲染挂载台（test/verify-scene-live.mjs 等）是**按文件 import** 的，没有它就取不到渲染器。
 export { renderAppearanceFontSection };

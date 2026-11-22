@@ -6,9 +6,12 @@ name: verify
 #   · 其它一切（代码、schema、依赖、CI 接线、生成契约、未知、取不到差异）⇒ `full` 完整链；
 #   · `ci/result` 是**唯一**的分支保护勾：用 test/tools/ci-routing.mjs 的 judgeResult 核验
 #     "这次该跑的作业真的 success"—— 失败、取消、缺失、意外跳过、未知 mode 都不放行。
-# 分类器全部 fail-closed：分类失败 = full（阻断），绝不"默认文档"（判据见 docs/wip/CI-GATE-SIMPLIFICATION-PLAN.md）。
+# 分类器全部 fail-closed：分类失败 = full（阻断），绝不"默认文档"（判据见 test/tools/ci-routing.mjs 与 test/verify-ci-steps.mjs）。
 on:
+  # 只在 main 的 push 上跑；功能分支的同仓 PR 由 pull_request 覆盖，避免同一次 push
+  # 同时产生 push + pull_request 两条 full 链（2026-10-27 审计：同仓分支双跑是主要噪音源之一）。
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -19,15 +22,34 @@ jobs:
   changes:
     name: 变更分类（changes）
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       mode: ${{ steps.classify.outputs.mode }}
     steps:
       # 分类要取 merge-base(base, head) 的**整段 PR 差异**；浅克隆看不见 merge-base ⇒
       # "完整差异"就变成"看不见差异"。fetch-depth: 0 是分类正确性的前提（判据：checkout-depth）。
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+          persist-credentials: false
+      # 信任边界：判定脚本必须来自 **base 分支**，不能执行 PR 树里的同名文件。
+      # 否则一个改了代码的 PR 只要同时改 `scripts/ci-routing.mjs`（或它 import 的
+      # `test/tools/ci-routing.mjs` / `src-scope.mjs`），就能让分类器/汇总器输出 docs/success，
+      # 从而完全跳过 full 链 —— 这是 2026-10-27 CI 审计的 P0。
+      - name: 取受信判定脚本（base 分支，覆盖 PR 树里的同名文件）
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${{ github.event.pull_request.base.ref }}" ]; then
+            git fetch --no-tags origin "${{ github.event.pull_request.base.ref }}"
+            BASE=FETCH_HEAD
+          else
+            BASE="${{ github.sha }}"
+          fi
+          for f in scripts/ci-routing.mjs test/tools/ci-routing.mjs test/tools/src-scope.mjs; do
+            git show "$BASE:$f" > "$f"
+          done
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
       # 判据：`--github-output` 严格解析；取不到差异 / 参数错误 ⇒ 本作业红 ⇒ ci/result 不放行
@@ -82,17 +104,19 @@ jobs:
       matrix:
         os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
       - name: 平台（判据按平台分支，日志里要能一眼看出这条腿断言了哪一半）
         run: node -e "console.log(process.platform + '/' + process.arch + ' @ ' + process.version)"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
+          cache: npm
 
       # 只装运行期依赖 `webwallgl`（宿主运行期从 node_modules 供给渲染引擎，verify-scene-live 要读它）：
       # `--omit=peer` 跳过宿主 peer，避免 peer 解析带来与改动无关的红灯；`--ignore-scripts` 不跑安装钩子。
@@ -134,15 +158,9 @@ jobs:
       - name: smoke —— 节点级冒烟
         run: npm run smoke
 
-      # 软档（仓库内务 / 账本自洽 / 一次性清理的验收判据）：照跑、照打印 ✓/✗，但 **不拦 PR** ——
-      # 详见 docs/DEV-GUIDE.md §4.2。`continue-on-error` 是这一档的定义本身，不是权宜：
-      # 硬档的门槛是"能说出用户侧后果"，说不出后果的判据不该决定别人的改动能不会被合。
-      # `verify:docs` 内部已经用 `test/warn-only.mjs` 把每条守卫的退出码降级并打印原码；
-      # 这里再加一层是**双保险**（CI 上若有人改坏了那层包装，这步仍不会变红）。
-      # 判据：soft-tier —— continue-on-error 只允许且必须出现在这一步。
-      - name: verify:docs —— 软档（不拦 PR，只看结论）
-        continue-on-error: true
-        run: npm run verify:docs
+      # 仓库内务（原 `verify:docs` 软档）不再跑在每次 full 链上：它既不是文档检查，也不该
+      # 为代码 PR 增加 6 条软步骤。现在由 `.github/workflows/housekeeping.yml` 每周定时 +
+      # 手动触发；ADR-0017 已取消文档/内务类门禁。本地仍可用 `npm run verify:docs`。
 
       # 产物出库（v1.4 起）：`lib/client.js` 不再入库 —— 分发路径（npm / Release tgz）
       # 由 prepack 打包时构建，开发路径（link:）先 `npm run build`。因此这里判"没有被跟踪"
@@ -201,14 +219,14 @@ jobs:
           echo "ok: 被跟踪文件（.md / assets 除外）无行尾空白，且无冲突标记"
 
   # 文档快通道：`changes` 判定纯文档时**只**跑文档检查。边界（判据：docs-fast-path）：
-  #   · 核心步是**真 docs CLI**（`node scripts/ci-routing.mjs docs`），不是六步 warn-only
+  #   · 核心步是**真 docs CLI**（`node scripts/ci-routing.mjs docs`），不是 warn-only
   #     内务 `npm run verify:docs` —— 内务拦不住冲突标记/断链/素材问题，快通道的存在目的
   #     就是这份检查，拦 PR 的必须是它；
   #   · 与 changes **同一份 PR 差异**再分类一遍：docs 于 full 差异 ⇒ exit 3 拒绝（不假成功）；
   #   · 不装依赖 —— 文档检查零裸依赖（P5），装依赖既慢又给了快通道新的失败面；
   #   · 有路径 if 守卫 —— 没有它这份检查就会在每条路径上乱跑。
-  # 这一步**不带** continue-on-error（判据：soft-tier 只允许它出现在 full 链的 verify:docs）：
-  # 崩溃级失败必须拦下 PR；六步内务的"软"由 npm run verify:docs 内部的 warn-only 降级承担，
+  # 这一步**不带** continue-on-error（full 链已无软档；内务已移到定时 housekeeping）：
+  # 崩溃级失败必须拦下 PR；内务已移到 housekeeping 定时任务，本链不再有软档。
   # step 级双保险留在 full 链上。
   # PR 事件取 merge-base 档的完整差异；push 取 before/after 精确范围（exact 档：force-push
   # 后 before 非祖先，merge-base 会漏算 before 独有的代码删除）；workflow_dispatch 无事件
@@ -219,14 +237,31 @@ jobs:
     if: needs.changes.outputs.mode == 'docs' || needs.changes.outputs.mode == 'docs-assets'
     needs: [changes]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       # checkout 显式 ref 到 --head 同一提交：保证被审计的 head 树与实际工作树一致
       # （PR 默认 checkout 可能是 merge commit，树与 head.sha 不同 ⇒ 审错差异）。
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+          persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.event.after || github.sha }}
-      - uses: actions/setup-node@v4
+      # 与 changes 同一信任边界：文档审计跑的是 **base 分支**的判定脚本，head 树只作为
+      # 被审计数据；这样 PR 无法通过改 `scripts/ci-routing.mjs` 让 docs 腿假成功。
+      - name: 取受信 docs 判定脚本（base 分支）
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${{ github.event.pull_request.base.ref }}" ]; then
+            git fetch --no-tags origin "${{ github.event.pull_request.base.ref }}"
+            BASE=FETCH_HEAD
+          else
+            BASE="${{ github.sha }}"
+          fi
+          for f in scripts/ci-routing.mjs test/tools/ci-routing.mjs test/tools/src-scope.mjs; do
+            git show "$BASE:$f" > "$f"
+          done
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
       - name: docs —— 同一差异二次分类 + 文档审计（冲突标记 / 断链 / 素材）
@@ -241,18 +276,90 @@ jobs:
           fi
           node scripts/ci-routing.mjs docs "${BASE_ARGS[@]}"
 
-  # 固定汇总作业：**唯一**该被分支保护要求的勾。if: always()（**作业级**）—— docs/full 按设计
-  # 会有一条跳过，汇总必须在跳过的情况下也跑起来，用 judgeResult 核验"这次该跑的作业真的
-  # success"：失败、取消、缺失、**意外跳过**、mode 未登记（outputs 没接上）都不放行
+  # 公告快通道：`changes` 判定"改动全落在两个公告文件内"时**只**跑内容级判定。
+  # 边界（判据：test/verify-notice-routing.mjs 36 条 + test/tools/ci-routing.mjs 的 judgeNoticeEdit）：
+  #   · 核心步是**真 notice CLI**（`node scripts/ci-routing.mjs notice`），它自己会再分类一遍
+  #     ——差异不是纯公告 ⇒ exit 3 明确拒绝，不是假成功；
+  #   · 判定是**内容级**的：公告文件的 `UPDATE NOTICE COPY` 区块**之外**逐字节一致、
+  #     区块**之内**代码骨架一致（只许改引号里的字）。增删条目 / 改 props / 加分支都会
+  #     让骨架变 ⇒ exit 1 ⇒ `ci/result` 不放行 ⇒ 作者必须回去跑 `npm run verify:all`；
+  #   · **允许只改单文件**（改中文措辞时英文常可原样复用）；漏译另有一条定向检查：
+  #     区块内每个 `weT("原文")` 都必须在词表族里有键（跨域查，含 i18n-copy-core.js）；
+  #   · 不装依赖、不跑任何 `npm run` 步 —— 这条通道的全部价值就是"不跑重活"，
+  #     而内容判据本身零依赖（纯字符串比对）；
+  #   · 必须 `fetch-depth: 0` + checkout 到 head 树：判据要 `git show <base>:<path>` 取**旧版内容**，
+  #     浅克隆取不到 ⇒ 判据 fail-closed 阻断（不是静默放行）。
+  notice:
+    name: 公告快通道（notice）
+    if: needs.changes.outputs.mode == 'notice'
+    needs: [changes]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.event.after || github.sha }}
+      # 与 changes 同一信任边界：公告判定脚本来自 base 分支，PR 树只作为被判定数据。
+      - name: 取受信 notice 判定脚本（base 分支）
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${{ github.event.pull_request.base.ref }}" ]; then
+            git fetch --no-tags origin "${{ github.event.pull_request.base.ref }}"
+            BASE=FETCH_HEAD
+          else
+            BASE="${{ github.sha }}"
+          fi
+          for f in scripts/ci-routing.mjs test/tools/ci-routing.mjs test/tools/src-scope.mjs; do
+            git show "$BASE:$f" > "$f"
+          done
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: notice —— 内容级判定（区块外逐字节一致 · 区块内代码骨架一致）
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.pull_request.base.sha }}" ]; then
+            BASE_ARGS=(--base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}" --base-mode merge-base)
+          elif [ -n "${{ github.event.before }}" ]; then
+            BASE_ARGS=(--base "${{ github.event.before }}" --head "${{ github.event.after }}" --base-mode exact)
+          else
+            BASE_ARGS=(--base "${{ github.sha }}" --head "${{ github.sha }}" --base-mode exact)
+          fi
+          node scripts/ci-routing.mjs notice "${BASE_ARGS[@]}"
+
+  # 固定汇总作业：**唯一**该被分支保护要求的勾。if: always()（**作业级**）—— docs/notice/full
+  # 按设计会各跳过几条，汇总必须在跳过的情况下也跑起来，用 judgeResult 核验"这次该跑的作业
+  # 真的 success"：失败、取消、缺失、**意外跳过**、mode 未登记（outputs 没接上）都不放行
   # （判据：test/tools/ci-routing.mjs 的 judgeResult；CLI：scripts/ci-routing.mjs judgeResult）。
   result:
     name: ci/result
     if: always()
-    needs: [changes, docs, full]
+    needs: [changes, docs, notice, full]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # 汇总器也来自 base 分支：否则 PR 可改 `judgeResult` 让自己永远放行（P0）。
+      - name: 取受信汇总脚本（base 分支）
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${{ github.event.pull_request.base.ref }}" ]; then
+            git fetch --no-tags origin "${{ github.event.pull_request.base.ref }}"
+            BASE=FETCH_HEAD
+          else
+            BASE="${{ github.sha }}"
+          fi
+          for f in scripts/ci-routing.mjs test/tools/ci-routing.mjs test/tools/src-scope.mjs; do
+            git show "$BASE:$f" > "$f"
+          done
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
       - name: ci/result —— 汇总核验（fail-closed）
@@ -261,5 +368,6 @@ jobs:
             --mode "${{ needs.changes.outputs.mode }}" \
             --changes "${{ needs.changes.result }}" \
             --docs "${{ needs.docs.result }}" \
+            --notice "${{ needs.notice.result }}" \
             --full "${{ needs.full.result }}" \
             --github-output

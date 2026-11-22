@@ -560,8 +560,15 @@ section('⑥ 组件行（P2-1/P2-2，逐行数据驱动）：patch 子行 ⇄ ex
     // `files` 条目是**相对清单所在目录**的：未出户时清单在仓库根 ⇒ 与仓库相对路径同形；
     // 已出户后清单在 `packages/<sub>/` ⇒ 比对前必须把包前缀剥掉，否则整包都判"未覆盖"。
     const prefix = pkgRoot + '/';
+    // P-D S3a：组件行也可以有自己的**浏览器半边**（packages/media-bridge 是第一个：client.build.json
+    // 配方 + src/*.js 构建输入 ⇒ lib/client.<short>.js 产物）。构建输入按设计**不进** npm tarball
+    // 的 `files`（字体包先例：files 只列 lib/ cordis.patch.yml locale/ icon.png package.json），
+    // 产物本身由 `lib/` 覆盖 ⇒ 这里对"有声明的浏览器半边"的包豁免配方与 src/ 两类文件。
+    const hasBrowserHalf = Boolean(own.exports && own.exports['./client'])
+      || Boolean(own.dsh && own.dsh.client);
     for (const f of componentFiles.filter((x) => x.startsWith(prefix))) {
       const ownPath = ownRel === 'package.json' ? f : f.slice(prefix.length);
+      if (hasBrowserHalf && (ownPath === 'client.build.json' || ownPath.startsWith('src/'))) continue;
       if (!coveredBy(own.files, ownPath)) uncovered.push(f);
     }
   }
@@ -754,6 +761,11 @@ section('⑥ 组件行（P2-1/P2-2，逐行数据驱动）：patch 子行 ⇄ ex
   };
   const disposeMain = typeof applyFn === 'function' ? applyFn(mock) : undefined;
   const afterMain = registered.length;
+  // S5d 刀3：宿主服务面第七键 `apply`（token 域视图）由主门面 `apply()` 的**惰性访问器**提供。
+  // 夹具需要与运行期同一份服务值（`apply:` 源型从它取 token 域实例），因此从刚才真跑过的 ctx 上取，
+  // 而不是手搓 stub（`createSubpackageHost()` 不带 options 时 `apply` 恒为 null ⇒ 包行会取到 undefined）。
+  // `applyView` 惰性求值 ⇒ 服务构造时视图还没建好也不影响（与运行期同一个时序）。
+  const liveHostService = mock && mock.wallpaperEngineHost;
   let unknownErr = null;
   try { applyComponentFn(mock, undefined, 'no-such-component'); } catch (e) { unknownErr = e; }
   check('未知组件名仍然抛（绝不静默返回，且注册面没被污染）',
@@ -807,9 +819,13 @@ section('⑥ 组件行（P2-1/P2-2，逐行数据驱动）：patch 子行 ⇄ ex
   const countIssues = [];
   const sharedIssues = [];
   // P-F：出户的组件入口不再直取主包模块，改为 `ctx.wallpaperEngineHost` 取冻结键面 ⇒ 走入口那条
-  // 路径的 mock 必须提供**真宿主服务**（`createSubpackageHost()`，与运行期同一个工厂），否则
-  // `apply()` 在取服务那一步就抛，两条装载路径一致性 / 账本两条判据都会误红。
-  const hostService = createSubpackageHost();
+  // 路径的 mock 必须提供**真宿主服务**（与运行期同一份工厂产出），否则 `apply()` 在取服务那一步
+  // 就抛，两条装载路径一致性 / 账本两条判据都会误红。
+  // S5d 刀3：服务面第七键 `apply`（刀2 的 apply 视图）由**门面 `apply()` 的惰性访问器**提供 ——
+  // 上面已经真跑过 `applyFn(mock)`，它 provide 的同值就落在 `mock.wallpaperEngineHost` 上（与运行期
+  // 完全同一份，不是手搓 stub：`apply:` 源型要从这里取 token 域实例）。夹具里没有门面可用时才回落到
+  // 工厂直造（那份没有 apply 视图，仅够 `kernel:`/`schema:` 源型）。
+  const hostService = liveHostService || createSubpackageHost();
   // 出户的组件既是**子包行**（真名、有清单）又是**组件行**（声明面里的一员）；下面那段子包循环
   // 会按 `SUBPACKAGE_MODULES` 跑一遍全部真名包，若不在那里跳过它们，同一个 mock 上会重复注册，
   // 并集对账（Σ 行声明 vs 并集）会撑出重复项。组件这条路径更严（逐组件计数 + 两条路径一致性），
@@ -957,7 +973,7 @@ section('⑥ 组件行（P2-1/P2-2，逐行数据驱动）：patch 子行 ⇄ ex
   // 它调用的路由族的条数之和（`rowRegistrationCounts`）。单点真源 = 这张行清单 × 那份族表。
   //
   // 写死的快照数字会烂：行清单或族表一变它就过期 ⇒ 判据恒红（且红得没有信息量）。
-  // 现算出来的期望 = 门面 34 + about-notice 2 + mascot-avatar 2 + media-bridge 5 = 43；
+  // 现算出来的期望 = 门面 34 + about-notice 2 + mascot-avatar 2 + wallpaper 5 = 43；
   // 并集 43、跨行零重复、无孤儿 ⇒ 与"多注册"是两回事：真出事时并集会大于 Σ 行声明。
   // ⚠️ 这条对账同时覆盖**门面**的注册数（原先只有组件行逐行对账，门面的 34 条只被总数隐性约束）。
   const rowExpected = MAIN_MODULES.map((rel) => ({ rel, ...rowRegistrationCounts(rel, routeMods) }));
@@ -1105,6 +1121,12 @@ section('⑧ 组件行取服务的 inject 姿势 + 装载账本三态（真机�
   const bootMod = await import(pathToFileURL(join(ROOT, 'lib', 'host-boot.js')).href);
   const facade = await import(pathToFileURL(facadePath).href);
   const applyComponentFn2 = facade.applyComponent || (facade.default && facade.default.applyComponent);
+  // S5d 刀3：宿主服务面第七键 `apply`（token 域视图）由主门面 `apply()` 惰性 provide ⇒ 本段每个
+  // ctx 都得带**真**服务值（`apply:` 源型从它取 token 域实例；手搓 stub 的 `apply` 恒为 null，
+  // 包行会在取键那一步抛，测不到 `runComponent` 的记账）。用一次 disposable 的门面 apply 捕获
+  // 同一份值（脚本末尾 `process.exit(0)`，无需收尾；门面 apply 在本会话不挂定时器）。
+  const serviceScratch = { webServer: { register() { return () => {}; }, tapIndex() { return () => {}; } } };
+  const liveHostService = typeof facade.apply === 'function' ? (facade.apply(serviceScratch), serviceScratch.wallpaperEngineHost) : null;
   const badTarget = subs8[subs8.length - 1];
   const BOOM = 'P2-5C 探针夹具：注册面必抛';
   bootMod.failedComponents.clear();
@@ -1112,7 +1134,10 @@ section('⑧ 组件行取服务的 inject 姿势 + 装载账本三态（真机�
   let thrown = null;
   try {
     applyComponentFn2(
-      { webServer: { register() { throw new Error(BOOM); }, tapIndex() { return () => {}; } } },
+      {
+        webServer: { register() { throw new Error(BOOM); }, tapIndex() { return () => {}; } },
+        wallpaperEngineHost: liveHostService,
+      },
       undefined, badTarget);
   } catch (e) { thrown = e; }
   const failedMsg = bootMod.failedComponents.get(badTarget);
@@ -1137,7 +1162,9 @@ section('⑧ 组件行取服务的 inject 姿势 + 装载账本三态（真机�
       bootMod.startedComponents.clear();
       // ⚠️ `let d = null` 的初值读不到（catch 里直接 return false）⇒ 声明不带初值。
       let d;
-      try { d = applyComponentFn2({}, undefined, badTarget); } catch { return false; }
+      // webServer 缺失是合法早退路径 —— 但宿主服务仍须在场（真 cordis 里服务由主行 provide，
+      // 与 `webServer` 是两条独立通道；S5d 起包行取 `apply:` 键也要它）。
+      try { d = applyComponentFn2({ wallpaperEngineHost: liveHostService }, undefined, badTarget); } catch { return false; }
       const okDispose = typeof d === 'function';
       if (okDispose) { try { d(); } catch { /* 收尾失败不影响判定 */ } }
       return okDispose && !bootMod.failedComponents.has(badTarget) && bootMod.startedComponents.has(badTarget);
@@ -1182,28 +1209,34 @@ section('⑧ 组件行取服务的 inject 姿势 + 装载账本三态（真机�
   };
   // fiber 的模拟：`effect(cb)` 立刻调 cb、收下它的返回值（cordis 的 safeCollect 语义）；`unload()`
   // 逆序跑收集到的 disposer（= fiber 卸载）。
-  // P-F：⑧ 的两个往返夹具都要给组件入口补上宿主服务（`inject: ['webServer', 'wallpaperEngineHost']`）。
-  const hostService = createSubpackageHost();
+  // P-F/S5d：宿主服务（七键，其中 `apply` 是刀2 的 token 域视图）由**门面自己**提供 —— `apply:`
+  // 源型要从 `ctx.wallpaperEngineHost.apply` 取实例，手搓 stub 拿不到 ⇒ 夹具对每一行先在同一 fiber
+  // ctx 上装门面（与运行期 cordis 的装载顺序一致：主行先挂服务，行再从 ctx 取），再装被测行。
+  const FACADE_LABEL = 'lib/index.js';
   const makeFiber = (webServer) => {
     const collected = [];
     return {
-      ctx: { webServer, wallpaperEngineHost: hostService, effect(cb) { const d = cb(); if (typeof d === 'function') collected.push(d); return d; } },
+      ctx: { webServer, effect(cb) { const d = cb(); if (typeof d === 'function') collected.push(d); return d; } },
       unload() { while (collected.length) collected.pop()(); },
     };
   };
   // **模拟 cordis 的构造分支：返回值丢掉** —— 只有 `ctx.effect` 能救回 teardown。
   const loadDroppingReturn = (applyFn, ctx) => { applyFn(ctx); };
+  const loadRow = (p, ctx) => {
+    if (p.label !== FACADE_LABEL) loadDroppingReturn(facadeApply, ctx);
+    loadDroppingReturn(p.apply, ctx);
+  };
   const trips = [];
   for (const p of plugins) {
     const t = makeTable();
     const f1 = makeFiber(t.webServer);
-    try { loadDroppingReturn(p.apply, f1.ctx); } catch (e) { trips.push(p.label + '：首次装载抛 ' + e.message); continue; }
+    try { loadRow(p, f1.ctx); } catch (e) { trips.push(p.label + '：首次装载抛 ' + e.message); continue; }
     const first = t.table.size;
     if (first === 0) trips.push(p.label + '：首次装载没注册任何路由（夹具失效）');
     f1.unload();
     if (t.table.size !== 0) trips.push(p.label + '：卸载后仍留 ' + t.table.size + ' 条路由（teardown 没进 fiber）');
     let reloadErr = null;
-    try { loadDroppingReturn(p.apply, makeFiber(t.webServer).ctx); } catch (e) { reloadErr = e; }
+    try { loadRow(p, makeFiber(t.webServer).ctx); } catch (e) { reloadErr = e; }
     if (reloadErr) trips.push(p.label + '：关掉再打开抛 ' + reloadErr.message);
     else if (t.table.size !== first) trips.push(p.label + '：重装载注册 ' + t.table.size + ' 条 ≠ 首次 ' + first + ' 条');
   }
@@ -1268,7 +1301,7 @@ section('⑧ 组件行取服务的 inject 姿势 + 装载账本三态（真机�
       const ctx = new Context();
       // P-F：组件入口现在 `inject: ['webServer', 'wallpaperEngineHost']`，服务由主包 `apply()` 提供；
       // 本夹具只装单个组件入口模块，所以在这里把同一份服务补上（与运行期同一条 provide 路径）。
-      provideSubpackageHost(ctx);
+      provideSubpackageHost(ctx, { applyView: () => (liveHostService ? liveHostService.apply : null) });
       ctx.plugin(StubWebServer);
       await settle();
       const mod = await import(pathToFileURL(join(ROOT, e.rel)).href + '?cordis9=' + Date.now());

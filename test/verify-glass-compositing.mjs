@@ -19,7 +19,7 @@
 //   G1  the carrier inventory is derived from the stylesheet itself: every rule
 //       declaring a non-none `backdrop-filter` names a glass carrier, and the
 //       required carriers ([data-composer-card] incl. its ::before,
-//       [class*="_bubble"], and the plugin's own glass panels) are all present.
+//       [class*="_bubble_"], and the plugin's own glass panels) are all present.
 //   G2  no rule introduces `mix-blend-mode` (other than `normal`),
 //       `isolation: isolate`, `filter:` / `-webkit-filter:` (other than `none`),
 //       or `opacity:` < 1 ON a glass carrier or on one of its pseudo-elements.
@@ -56,6 +56,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { cssBodyOf } from './tools/src-scope.mjs';
+import { readabilityFloors } from './tools/readability-floors.mjs';
 
 const results = [];
 function check(name, ok, detail) {
@@ -67,15 +68,17 @@ const CLIENT = process.argv[2] || fileURLToPath(new URL('../lib/client.js', impo
 const SRC = readFileSync(CLIENT, 'utf8');
 
 // ── source → the stylesheet the plugin injects ──────────────────────────────
-const FLOOR = {
-  light: Number((SRC.match(/const READABILITY_FLOOR = ([\d.]+);/) || [])[1]),
-  dark: Number((SRC.match(/const READABILITY_FLOOR_DARK = ([\d.]+);/) || [])[1]),
-};
-// ⚠️ 锚点锚在行首且容忍缩进（产物把内联模块整段缩进过）：散文里出现同样的声明字面量会把锚点带偏。
+// 可读性下限常量随玻璃 CSS 出户（ADR-0016 第四刀）⇒ 从玻璃包源读（test/tools/readability-floors.mjs，
+// match 失败即 throw）。旧写法从主产物 `SRC` 取 ⇒ 取到 undefined ⇒ NaN 被插进求值后的样式表，
+// 判据对着一份不是插件真正注入的样式报绿（P1 修复前的实害）。
+const FLOOR = readabilityFloors();
+// （helper 的取数锚点同样行首锚定并容忍缩进：散文里出现同样的声明字面量不会把锚点带偏。）
 // （刀3）：样式表由单个 CSS 模板拆成 8 个域模板 + 组装点 ⇒ 取文改走 cssBodyOf
 // （按声明顺序把族内每个域模板拼回一份 CSS 体）。与旧单模板取文**逐字节相同**（实测 276,804 B），
 // 且一个模板都取不到时会**抛错**，不再像旧写法那样静默返回空串让本文件全部判据恒真。
-const CSS_BODY = cssBodyOf(SRC);
+// ADR-0016 第四刀：玻璃段随玻璃包产物 ⇒ CSS 取文 = 主产物 + 玻璃产物（顺序 = 运行时注入序）。
+const GLASS_BUNDLE = readFileSync(new URL('../packages/glass/lib/client.glass.js', import.meta.url), 'utf8');
+const CSS_BODY = cssBodyOf(SRC + GLASS_BUNDLE);
 let CSS = '';
 let cssError = null;
 try {
@@ -303,7 +306,7 @@ function main() {
   // ── G1: carrier inventory, derived from the stylesheet ───────────────────
   const REQUIRED = [
     { label: 'composer card / its ::before', token: '[data-composer-card]' },
-    { label: 'message bubble', token: '[class*="_bubble"]' },
+    { label: 'message bubble', token: '[class*="_bubble_"]' },
     // 轨迹（trajectory）视图的内容区：模块自带零 backdrop-filter（实测 289 条规则里没有一条），
     // 它的容器只有 --dsw-alias-bg-layer-1 给的**半透明底** ⇒ 在壁纸上是一层平涂的纱。
     // 这三条选择器是给它补霜的那条规则（用户口径："轨迹内容区域也同样做玻璃化"）。
@@ -343,7 +346,7 @@ function main() {
 
   // ── G5: the two required carriers keep their blur (default build) ────────
   const composer = blurCarrierRule(rules, '[data-composer-card]', '::before');
-  const bubble = blurCarrierRule(rules, '[class*="_bubble"]', '');
+  const bubble = blurCarrierRule(rules, '[class*="_bubble_"]', '');
   const readsBoth = (bf) => /var\(--we-blur\b/.test(bf) && /var\(--we-saturate\b/.test(bf);
   check('G5 composer ::before and message-bubble blur expressions are present, non-none and read --we-blur AND --we-saturate in the no-flag build',
     !!composer && !!bubble && readsBoth(composer.blur) && readsBoth(bubble.blur),
@@ -439,7 +442,9 @@ function main() {
   // 跟随的实现**不是把数值抄过去**，而是把侧栏那一套变量**指向**全局三件套（var() 惰性替换）
   // ⇒ 判据也只能这么判：把跟随映射代进两侧栏的声明里，归一化之后必须**逐字相等**
   //（同一层下限 + 同一个染色源 + 同一个色染权重）。
-  const followBranch = SRC.match(/if \(selection\.sidebarFollowGlobal\) \{([\s\S]*?)\} else \{/);
+  // ADR-0016 第三刀：跟随分支随玻璃层出户 ⇒ 从双工件拼接面提取（CSS 仍只住主包产物）。
+  const JS_FACE = SRC + readFileSync(new URL('../packages/glass/lib/client.glass.js', import.meta.url), 'utf8');
+  const followBranch = JS_FACE.match(/if \(selection\.sidebarFollowGlobal\) \{([\s\S]*?)(?:\} else \{|else document\.body\.removeAttribute\("data-we-sidebar-follow"\))/);
   const followBody = followBranch ? followBranch[1] : '';
   const FOLLOW_MAP = [
     ['--we-sidebar-blur', 'var(--we-blur)'],
@@ -449,7 +454,7 @@ function main() {
   ];
   const declaredFollow = FOLLOW_MAP.every(([k, v]) => followBody.includes('setProperty("' + k + '", "' + v + '")'));
   check('S1a 跟随全局那一支把侧栏变量指向全局三件套（模糊 / 饱和 / 色染权重 / 底色四处，引用而非拷贝）',
-    declaredFollow && /data-we-sidebar-follow/.test(SRC),
+    declaredFollow && /data-we-sidebar-follow/.test(JS_FACE),
     declaredFollow ? FOLLOW_MAP.map((x) => x[0]).join(' ') + ' · 另有 body 属性' : '跟随分支缺失或不完整');
 
   /** 把「跟随态」的映射代进声明，再去掉 fallback 与空白 —— 便于逐字比较。 */
@@ -567,6 +572,21 @@ function main() {
   check('TB1 负对照：死锚点要被判红、正常选择器要放行（判据有牙）',
     hasDeadAnchor(['html[data-windows-titlebar] body[data-we-titlebar-glass] ' + deadAnchor]) === false
       && hasDeadAnchor(['html[data-windows-titlebar] div[class*="pI_x6G_frame"]']) === true);
+  // #235：锚点不许再依赖宿主 CSS-module 的**构建哈希**（pI_x6G_ / BynINW_ …）：宿主一升级就
+  // 静默失效，而两道硬门都还在 ⇒「开关怎么点都没反应」。只认运行时探针打的属性。
+  const HASH_FRAME_SELECTOR = /div\[class\*="[A-Za-z0-9_]+_frame"\]/;
+  // 只判"打到顶栏容器上"的选择器（::before/::after 那几条）；纯变量声明行（body[data-we-titlebar-glass]）
+  // 本来就不需要锚点。
+  const tbFrameSelectors = tbSelectors.filter((s) => /::(?:before|after)/.test(s));
+  check('TB1b 标题栏选择器统一走运行时锚点 [data-we-titlebar-anchor]，不含宿主构建哈希子串（#235）',
+    tbFrameSelectors.length > 0
+      && tbFrameSelectors.every((s) => s.includes('[data-we-titlebar-anchor]'))
+      && !tbSelectors.some((s) => HASH_FRAME_SELECTOR.test(s)),
+    'frame selectors=' + tbFrameSelectors.length + ' · 缺锚点=' + tbFrameSelectors.filter((s) => !s.includes('[data-we-titlebar-anchor]')).length
+      + ' · hash-anchor hits=' + tbSelectors.filter((s) => HASH_FRAME_SELECTOR.test(s)).length);
+  check('TB1b 负对照：旧的哈希锚点会被同一判据判红、新锚点放行',
+    HASH_FRAME_SELECTOR.test('div[class*="pI_x6G_frame"]') === true
+      && HASH_FRAME_SELECTOR.test('[data-we-titlebar-anchor]') === false);
   const tbLightRule = tbRules.find((r) => r.header.includes('::before')
     && !r.header.includes('data-ds-dark-theme') && !r.header.includes('glass-fallback')
     && /background-color\s*:/.test(r.body)); // 排除 @supports not 里那两条 background 简写
@@ -685,7 +705,9 @@ function main() {
   //    两边都不重映射**（落回宿主）——"都没写"也要计入六条清单的比对：将来只给暗档顶栏
   //    补上其中一条就会与暗档左栏产生色差，本判据立刻抓到。
   const s2cLeftColDarkRule = rules.find((r) => r.header.includes('div:has(> [data-slot="sidebar"])')
-    && r.header.includes('data-ds-dark-theme') && declValue(r.body, 'background-color'));
+    && r.header.includes('data-ds-dark-theme') && !/@media|max-width/.test(r.header)
+    && /--we-readability-floor/.test(r.body)
+    && declValue(r.body, 'background-color'));
   const tbDarkColorDecls = COLOR_DECLS.filter((k) => k !== 'background-image');
   const tbDarkNorm = (s) => tbNorm(s)
     .replace(/--we-surface-tint-light/g, 'TINT').replace(/--we-surface-tint-dark/g, 'TINT')
@@ -784,7 +806,9 @@ function main() {
       + ' · 变异体=' + String(declValue(primaryBtnMutated, 'color')));
 
   // ── D1: Task-1 contract — saturation is decoupled from the blur slider ───
-  const satTernary = SRC.match(
+  // ADR-0016 第三刀：--we-saturate 写入随玻璃层出户 ⇒ 三元表达式从双工件面提取；
+  // GLASS_SATURATE 常量与 useLegacySaturateCoupling 的家仍在主包 client.js。
+  const satTernary = JS_FACE.match(
     /setProperty\("--we-saturate",\s*useLegacySaturateCoupling\(\)\s*\?\s*String\(1\.15 \+ selection\.blur \* 0\.028\)\s*:\s*String\(GLASS_SATURATE\)\)/);
   const satConst = Number((SRC.match(/const GLASS_SATURATE = ([\d.]+);/) || [])[1]);
   const satFallback = Number((CSS.match(/saturate\(var\(--we-saturate,\s*([\d.]+)\)\)/) || [])[1]);
@@ -848,6 +872,179 @@ function main() {
     lightOnly.length === 0 && darkOnly.length === 0 && aliasFloor >= 12,
     'lightOnly=' + JSON.stringify(lightOnly) + ' · darkOnly=' + JSON.stringify(darkOnly)
       + ' · light=' + aliasTokens(false).size + ' dark=' + aliasTokens(true).size + ' (floor 12)');
+
+  // ── G9: 主题成对令牌的深色块不得复用浅色标量（#239）─────────────────────────
+  // 宿主里 link / label-deep-diving / state-business-primary 是浅/深成对的；插件若把
+  // 深色孪生块写成与浅色块**逐字相同**的单一标量，用户 accent 选暗色时深色壁纸上
+  // 这三处（链接 / 深度求索状态行 / 输入光标）对比度掉到 ~1.1:1。G8 只管"集合同形"，
+  // 管不到"值是否做了主题分叉" —— 本条补的就是那个缺口。
+  const aliasDecls = (wantDark) => {
+    const map = new Map();
+    let from = 0;
+    for (;;) {
+      const at = CSS.indexOf('data-we-glass-page', from);
+      if (at < 0) break;
+      from = at + 1;
+      const open = CSS.indexOf('{', at);
+      if (open < 0) break;
+      const headerFrom = Math.max(CSS.lastIndexOf('}', open - 1), CSS.lastIndexOf('{', open - 1)) + 1;
+      const header = CSS.slice(headerFrom, open);
+      if (!header.includes('data-we-glass-page')) continue;
+      const parts = header.split(',').map((p) => p.trim()).filter(Boolean);
+      const bodyLevel = parts.length > 0 && parts.every((p) => /^body(\[[^\]]*\])+(?: :where\(\[data-chat-flow\]\))?$/.test(p));
+      if (!bodyLevel) continue;
+      const hasDark = parts.some((p) => p.includes('data-ds-dark-theme'));
+      if (wantDark ? !hasDark : hasDark) continue;
+      let depth = 0, end = -1;
+      for (let i = open; i < CSS.length; i++) {
+        if (CSS[i] === '{') depth++;
+        else if (CSS[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
+      }
+      if (end < 0) break;
+      for (const m of CSS.slice(open + 1, end).matchAll(/(--dsw-alias-[a-z0-9-]+)\s*:\s*([^;]+);/g)) map.set(m[1], m[2].trim());
+      from = end;
+    }
+    return map;
+  };
+  const lightDecls = aliasDecls(false);
+  const darkDecls = aliasDecls(true);
+  const pairedTokens = ['--dsw-alias-link', '--dsw-alias-label-deep-diving', '--dsw-alias-state-business-primary'];
+  /** 同一份判据：浅/深两表里**值逐字相同**的主题成对令牌（负数 = 漂移）。 */
+  const sameScalarOf = (lightMap, darkMap) => pairedTokens.filter((t) => {
+    const l = lightMap.get(t);
+    const d = darkMap.get(t);
+    return Boolean(l) && Boolean(d) && l === d;
+  });
+  const sameScalar = sameScalarOf(lightDecls, darkDecls);
+  check('G9 theme-paired UI tokens are theme-conditioned in the dark block (issue #239: no single scalar reused)',
+    sameScalar.length === 0,
+    'same=' + JSON.stringify(sameScalar) + ' · dark=' + JSON.stringify(pairedTokens.map((t) => darkDecls.get(t) || null)));
+  // 负对照：把深色表换成"复制浅色值"的合成表 ⇒ 同一条判据必须点名三项（证明判据有牙）。
+  const fakeDark = new Map(darkDecls);
+  for (const t of pairedTokens) if (lightDecls.get(t)) fakeDark.set(t, lightDecls.get(t));
+  const fakeSame = sameScalarOf(lightDecls, fakeDark);
+  check('G9 negative control: dark block repeating the light scalar ⇒ flagged',
+    fakeSame.length === pairedTokens.filter((t) => lightDecls.get(t) && darkDecls.get(t)).length,
+    'flagged=' + JSON.stringify(fakeSame));
+
+  // ── G10: 浮层脱离文档流的基础定位不得依赖玻璃门控属性（#249）──────────────
+  // .we-update-notice / .we-repo-panel 挂在 body 末尾；皮肤在台上时 applyGlass 会摘掉
+  // data-we-glass-floaters 整族 ⇒ 若定位规则只在该门控下，两个节点会退化成 body 流里的裸块
+  // （左下裸文本 + 公告图顶穿底部）。本条要求：两类浮层各至少有一条不依赖门控属性的
+  // position:fixed 规则；玻璃配方仍可在门控下。
+  // 为什么不用 indexOf 扫块：本仓实测会被声明值/字符串里的花括号带偏（整表只切出 2 条规则），
+  // 所以按"跳过引号字符串 + 配平花括号"取规则块。
+  const ruleBlocks = (cssText) => {
+    const out = [];
+    let i = 0, segStart = 0;
+    while (i < cssText.length) {
+      const ch = cssText[i];
+      if (ch === '"' || ch === "'") {
+        const q = ch; i += 1;
+        while (i < cssText.length) { if (cssText[i] === '\\') { i += 2; continue; } if (cssText[i] === q) { i += 1; break; } i += 1; }
+        continue;
+      }
+      if (ch === '{') {
+        const header = cssText.slice(segStart, i);
+        let depth = 1; i += 1;
+        const bodyStart = i;
+        while (i < cssText.length && depth > 0) {
+          const c = cssText[i];
+          if (c === '"' || c === "'") {
+            const q = c; i += 1;
+            while (i < cssText.length) { if (cssText[i] === '\\') { i += 2; continue; } if (cssText[i] === q) { i += 1; break; } i += 1; }
+            continue;
+          }
+          if (c === '{') depth += 1;
+          else if (c === '}') depth -= 1;
+          i += 1;
+        }
+        out.push({ header, body: cssText.slice(bodyStart, i - 1) });
+        segStart = i;
+        continue;
+      }
+      i += 1;
+    }
+    return out;
+  };
+  const hasUngatedFixed = (cssText, cls) => ruleBlocks(cssText).some((r) => {
+    const header = r.header.replace(/\/\*[\s\S]*?\*\//g, '');
+    return header.includes(cls)
+      && !/data-we-glass|data-we-fallback|@supports|@media|@keyframes/.test(header)
+      && /position\s*:\s*fixed/.test(r.body);
+  });
+  check('G10 floating overlays keep un-gated position:fixed (issue #249: skin-yield drops the glass gate)',
+    hasUngatedFixed(CSS, '.we-update-notice') && hasUngatedFixed(CSS, '.we-repo-panel'),
+    'notice=' + hasUngatedFixed(CSS, '.we-update-notice') + ' repoPanel=' + hasUngatedFixed(CSS, '.we-repo-panel'));
+  check('G10 negative control: a gate-only rule does not satisfy the detector',
+    hasUngatedFixed('body[data-we-glass-floaters] .we-update-notice { position: fixed; }', '.we-update-notice') === false
+      && hasUngatedFixed('body[data-we-glass-floaters] .we-repo-panel { position: fixed; }', '.we-repo-panel') === false);
+
+  // ── G11: 边框滑杆覆盖的 UI 边缘不许再写死白色发丝边（#255④）──────────────
+  // 这五类边（行内代码胶囊 / 侧栏新建会话胶囊 / 更新提示面板 + 配图 / 仓库抽屉左缘）此前写死
+  // rgba(255,255,255,…) ⇒ 拉「边框」滑杆时它们纹丝不动。现在统一读 --dsw-alias-border-l2。
+  {
+    const needles = [':not(pre) > code', '_newSession', '.we-update-notice', '.we-repo-panel--open'];
+    const literalHairline = (rules) => rules.filter((r) => needles.some((n) => r.header.includes(n))
+      && /border[^;:]*:[^;]*rgba\(255,\s*255,\s*255/.test(r.body));
+    const offenders = literalHairline(ruleBlocks(CSS)).map((r) => r.header.replace(/\s+/g, ' ').trim());
+    check('G11 border-slider-covered edges use the border token, not a hard-coded white hairline (#255④)',
+      offenders.length === 0, offenders.join(' | ') || '4 组选择器全部走 token');
+    const synthetic = literalHairline(ruleBlocks('.we-update-notice { border: 1px solid rgba(255, 255, 255, 0.22); }'));
+    check('G11 negative control: a synthetic hard-coded white hairline is flagged', synthetic.length === 1);
+  }
+
+  // ── S2d 退役：#236 的「整列抬到 z-index:1」不再适用 ─────────────────────────
+  // #293 已把左栏模糊移到根级装饰叶（宿主列不新增定位/层叠，第三方模态不再被困），
+  // 原来的层叠上下文问题从设计上消解；#236 的修法若搬回来反而会重建该上下文 ⇒ 判据反过来钉「不得出现」。
+  {
+    const oldLift = (text) => /html\[data-windows-titlebar\][^{]*data-we-left-sidebar[^{]*data-we-titlebar-glass[^{]*:has\(> \[data-slot="sidebar"\]\)\s*\{[^}]*z-index:\s*1;/.test(text);
+    check('S2d 退役：#236 的整列抬层不得再出现（#293 已把左栏模糊移到根级装饰叶）',
+      !oldLift(CSS),
+      'still-lifted=' + oldLift(CSS));
+    check('S2d negative control: 旧抬层写法仍会被同一判据判红（判据没有失牙）',
+      oldLift('html[data-windows-titlebar] body[data-we-left-sidebar][data-we-glass-page][data-we-titlebar-glass] :has(> [data-slot="sidebar"]) { z-index: 1; }') === true);
+  }
+
+  // ── RT1/RT2: #237 右栏玻璃不画外沿描边，宿主两处竖线显式清除 ──────────────────
+  {
+    const rightGlassRules = rules.filter((r) => r.header.includes('data-sidebar-right-panel')
+      && r.header.includes('data-we-sidebar-glass'));
+    const insetSandwich = rightGlassRules.filter((r) => /inset 0 1px 0 rgba\(255,\s*255,\s*255,\s*calc\(var\(--we-sidebar-sheen\)\s*\*\s*0\.32\)\)/.test(r.body));
+    check('RT1 右栏玻璃规则不再复刻宿主 inset 三明治（与左栏同策：不画外沿描边，#237）',
+      rightGlassRules.length > 0 && insetSandwich.length === 0,
+      'right-glass rules=' + rightGlassRules.length + ' inset-sandwich=' + insetSandwich.length);
+    check('RT1 negative control: 把 inset 三明治种回同面规则 ⇒ 同一判据判红',
+      insetSandwich.length === 0
+        && /inset 0 1px 0 rgba\(255,\s*255,\s*255,\s*calc\(var\(--we-sidebar-sheen\)\s*\*\s*0\.32\)\)/.test('box-shadow: inset 0 1px 0 rgba(255, 255, 255, calc(var(--we-sidebar-sheen) * 0.32));'));
+    // #293 之后面板清挂在 runtime 标记上：选择器多一个 :where([data-we-surface-runtime="right-sidebar"])。
+    const CLEAR_PANEL_RE = /body\[data-we-sidebar-glass\] \[data-sidebar-right-panel\]\[data-sidebar-right-open\](?::where\(\[data-we-surface-runtime="right-sidebar"\]\))?\s*\{[^}]*box-shadow:\s*none\s*!important/;
+    const clearPanelOf = (text) => CLEAR_PANEL_RE.test(text);
+    const clearPanel = clearPanelOf(CSS);
+    const clearDivider = /body\[data-we-sidebar-glass\] \[data-dockkit-divider\]:not\(\[data-dockkit-pane\] \*\)::before\s*\{[^}]*border:\s*none\s*!important[^}]*background:\s*none\s*!important/.test(CSS);
+    const clearDock = /body\[data-we-sidebar-glass\] \[data-dockkit-host="dock"\]\[data-dockkit-column="0"\][^{]*\{[^}]*border-left:\s*none\s*!important/.test(CSS);
+    check('RT2 宿主两处竖线 + 面板描边在玻璃面下被显式清除（门控 = 玻璃开关，#237）',
+      clearPanel && clearDivider && clearDock,
+      JSON.stringify({ clearPanel, clearDivider, clearDock }));
+    check('RT2 negative control: 删掉面板 box-shadow 清除 ⇒ 同一判据判红',
+      clearPanel && !clearPanelOf(CSS.replace(CLEAR_PANEL_RE, '')));
+  }
+
+  // ── G12: 窄视口（折叠抽屉）下侧栏的近不透明兜底（issue #272）────────────────
+  // 宿主 <1100px 把侧栏折叠成 transform 抽屉 ⇒ 装饰板的 backdrop-filter 采样不到/被废掉，
+  // 抽屉全透明、正文压壁纸。兜底 = 92% 近不透明底 + 显式关掉不会生效的模糊（与 #95 同政策）。
+  {
+    const mediaBlock = ruleBlocks(CSS).find((r) => /@media\s*\(max-width:\s*1100px\)/.test(r.header));
+    const narrowFallback = (block) => Boolean(block)
+      && /data-we-surface-runtime="left-sidebar"/.test(block.body)
+      && /92%/.test(block.body)
+      && /backdrop-filter:\s*none/.test(block.body);
+    check('G12 narrow-viewport sidebar uses a near-opaque plate fallback (issue #272)',
+      narrowFallback(mediaBlock));
+    const mutated = CSS.replace(/@media\s*\(max-width:\s*1100px\)/, '@media (max-width: 9999px)');
+    check('G12 negative control: moving the breakpoint away makes the detector falsy',
+      narrowFallback(ruleBlocks(mutated).find((r) => /@media\s*\(max-width:\s*1100px\)/.test(r.header))) === false);
+  }
 
   const failed = results.filter((r) => !r.ok);
   console.log('\n' + (failed.length === 0

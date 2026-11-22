@@ -1,6 +1,8 @@
 /**
  * media-prep.js — **选中的壁纸 → 屏幕上的媒体**：预准备（预挂载 + 探测 + 超时记账）、
  * 媒体元素构建（buildMedia）、选中项落地（applySelection）。
+ * S5 起，预准备 / 探测 / live 超时记账三段折进同族目录 `src/media-prep/`
+ * （prepare.js · probe.js · budget.js）；本文件是族根与组装点。
  *
  * 为什么单独一个文件：这一族是"切换壁纸"这条主链路的三段，跨 src/client.js
  * 的三个不相邻区段，中间夹着播放列表编辑、隐藏列表、用户属性、遮挡检测 —— 读一处改一处，
@@ -12,7 +14,7 @@
  * （清单只在这里维护，不在此处写死数量）：
  *   状态 store        selection · rotationPrep · rotationCandidates · rotationNextCandidate ·
  *                     pendingStagedLayerNode · selectionBlockedNote · pageHiddenSince ·
- *                     prepareLiveTimeouts（本文件声明）
+ *                     prepareLiveTimeouts（src/media-prep/budget.js 声明）
  *   轮换              beginRotationPrepare（本文件）· cancelRotationPrepare · commitRotationSwitch ·
  *                     deferRotationWhileHidden · ROTATION_PREP_TIMEOUT_MS · syncRotationTimer ·
  *                     releaseRotationAudioGate · keepPlayingWallpaper · groupWallpapers
@@ -24,11 +26,12 @@
  * 提供的入口：
  *   applySelection(id, opts)               选中项落地（**唯一**入口：解析 → 门禁 → 持久化 → 层同步 → emit）
  *   buildMedia(sel)                        按 selection 造媒体元素（img/video/iframe/canvas）
- *   beginRotationPrepare(excluded)         轮换预准备（预挂载下一张）
- *   prepareLiveTimeouts                    连续超时记账（供面板/守卫读）
- *   ＋ 同族助手（供守卫单独取用）：prepTimeout · prepareWallpaper · prepareVideoProbe ·
- *     prepareWebProbe · prepareLiveExhausted · notePrepareLiveTimeout · clearPrepareLiveTimeout ·
- *     prepareSceneLiveStage · prepareSceneStaticStage
+ *   beginRotationPrepare(excluded)         轮换预准备（src/media-prep/prepare.js）
+ *   prepareLiveTimeouts                    连续超时记账（src/media-prep/budget.js；供面板/守卫读）
+ *   ＋ 同族助手（供守卫单独取用）：prepTimeout · prepareWallpaper（src/media-prep/prepare.js）；
+ *     prepareVideoProbe · prepareWebProbe（src/media-prep/probe.js）；
+ *     prepareLiveExhausted · notePrepareLiveTimeout · clearPrepareLiveTimeout（src/media-prep/budget.js）；
+ *     prepareSceneLiveStage · prepareSceneStaticStage（本文件）
  *
  * 不变量：
  *   · **准备与提交分离**：prepare* 只做"探测/预挂载"（把结果写进传入的 prep 对象），
@@ -47,237 +50,6 @@
  *     读 client.js 的 const（会被内联到 bundle 顶部，撞 TDZ）。
  */
 
-function beginRotationPrepare(excluded) {
-  cancelRotationPrepare();
-  // 隐藏中：连 staging 都不建（cancelRotationPrepare 已释放上一轮的驻留）。
-  if (typeof document !== "undefined" && document.hidden) { deferRotationWhileHidden("rotation-defer"); return; }
-  const next = rotationNextCandidate(excluded);
-  liveLog("rotation-fire", "当前 " + (selection.id || "-") + " → 候选 " + (next ? next.id : weT("无"))
-    + " 候选池 " + rotationCandidates().length + " " + liveStateBrief());
-  // 静默停摆修复语义保留：候选在 armed 期间被隐藏到不足时 re-arm（候选仍 <2
-  // 时 syncRotationTimer 自身不会 arm；恢复 ≥2 由 hide/restore 的补 arm 接管）。
-  if (!next) { syncRotationTimer(); return; }
-  const prep = {
-    id: next.id, fromId: selection.id, excluded,
-    cancelled: false, settled: false, timers: [], staged: null, probeMedia: null,
-  };
-  rotationPrep = prep;
-  const onReady = () => {
-    if (prep.cancelled || prep.settled || rotationPrep !== prep) return;
-    prep.settled = true;
-    commitRotationSwitch(prep);
-  };
-  const onFail = () => {
-    if (prep.cancelled || prep.settled || rotationPrep !== prep) return;
-    prep.settled = true;
-    // 跳过坏壁纸：清理本次准备（staged 在失败点已自清理）后链式尝试下一个。
-    rotationPrep = null;
-    prep.cancelled = true;
-    for (const t of prep.timers) { try { clearTimeout(t); } catch { /* ignore */ } }
-    prep.timers = [];
-    releaseProbeMedia(prep);
-    excluded.add(next.id);
-    beginRotationPrepare(excluded);
-  };
-  prepareWallpaper(next, prep, onReady, onFail);
-}
-
-// 单阶段超时兜底：宁肯兜底提交/降级也绝不让轮换静默卡死。返回 timer handle。
-function prepTimeout(prep, fn, ms) {
-  if (typeof window === "undefined" || typeof window.setTimeout !== "function") return null;
-  const t = window.setTimeout(() => {
-    if (prep.cancelled || prep.settled || rotationPrep !== prep) return;
-    fn();
-  }, ms || ROTATION_PREP_TIMEOUT_MS);
-  prep.timers.push(t);
-  return t;
-}
-
-function prepareWallpaper(w, prep, onReady, onFail) {
-  if (!w) { onFail(); return; }
-  if (w.type === "image") {
-    prep.kind = "image";
-    // headless 验证环境无 Image → 同步直通（验收脚本同步断言切换结果）。
-    if (typeof Image !== "function") { onReady(); return; }
-    const img = new Image();
-    prep.probeMedia = img;
-    img.onload = () => { adoptProbe(prep, { ready: true }); onReady(); };
-    img.onerror = () => { releaseProbeMedia(prep); onFail(); };
-    prepTimeout(prep, () => { adoptProbe(prep); onReady(); }); // 慢图兜底提交（元素在新层继续加载）
-    img.alt = "";
-    img.draggable = false;
-    img.className = "we-media we-media--fit";
-    img.src = w.media;
-    return;
-  }
-  if (w.type === "video") {
-    prep.kind = "video";
-    // 视频类壁纸不跑「就绪后切换」的准备链：选中即播。
-    // 准备链会另起一个 video 元素在后台 load() + play() 做预热领养 —— 对视频
-    // 壁纸这意味着双解码（4K 下可见画面卡顿），而且预热元素带着 poster 进层，
-    // 观感就是「GIF→静态图→正片」的整套加载流程。轮换到视频时直接提交，加载
-    // 窗口由交叉渐变盖住。
-    onReady();
-    return;
-  }
-  if (w.type === "scene") {
-    // 优先级不变量（与 buildMedia 一致）：live > sceneVideo > 静态帧。
-    // live 探测失败回退 sceneVideo（host 对每个 scene 都 mint
-    // sceneVideo URL，是否有内嵌视频只有请求后才知道），404/解码失败再降
-    // 出图来源；那一帧拿不到 → preview → onFail 跳过。
-    const liveSel = {
-      type: "scene", id: w.id,
-      sceneLiveSrc: w.sceneLiveSrc || null,
-      objectFit: selection.objectFit,
-      sceneLiveFps: selection.sceneLiveFps,
-      sceneLive: selection.sceneLive,
-      sceneLiveFailures: selection.sceneLiveFailures,
-    };
-    if (liveRenderEnabled(liveSel) && !prepareLiveExhausted(w.id)) {
-      prepareSceneLiveStage(w, prep, onReady, () => {
-        if (w.sceneVideo) {
-          prep.kind = "sceneVideo";
-          prepareVideoProbe(w.sceneVideo, w.frameUrl || w.preview, prep, onReady,
-            () => prepareSceneStaticStage(w, prep, onReady, onFail));
-          return;
-        }
-        prepareSceneStaticStage(w, prep, onReady, onFail);
-      });
-      return;
-    }
-    if (w.sceneVideo) {
-      prep.kind = "sceneVideo";
-      prepareVideoProbe(w.sceneVideo, w.frameUrl || w.preview, prep, onReady,
-        () => prepareSceneStaticStage(w, prep, onReady, onFail));
-      return;
-    }
-    prepareSceneStaticStage(w, prep, onReady, onFail);
-    return;
-  }
-  // web (iframe)：live 渲染页探测优先（webLiveSrc），失败回退旧链裸 iframe
-  // load 探测（慢页超时兜底提交）。
-  const webLiveSel = {
-    type: "web", id: w.id,
-    webLiveSrc: w.webLiveSrc || null,
-    objectFit: selection.objectFit,
-    sceneLiveFps: selection.sceneLiveFps,
-    sceneLive: selection.sceneLive,
-    sceneLiveFailures: selection.sceneLiveFailures,
-  };
-  if (liveRenderEnabled(webLiveSel) && !prepareLiveExhausted(w.id)) {
-    prepareSceneLiveStage(w, prep, onReady, () => prepareWebProbe(w, prep, onReady));
-    return;
-  }
-  prep.kind = "web";
-  prepareWebProbe(w, prep, onReady);
-}
-
-// detached <video> 预载 + 预播：canplay = 可播放就绪，元素本身（含已解码画面）
-// 在 commit 时移入新层 —— 上屏即是活画面，无重新加载黑窗。error = 硬失败
-// （跳过/回退），超时 = 兜底提交（poster 覆盖空窗）。
-function prepareVideoProbe(url, posterUrl, prep, onReady, onFail) {
-  if (!url || typeof document === "undefined" || typeof document.createElement !== "function") { onReady(); return; }
-  const v = document.createElement("video");
-  // headless mock 元素无事件设施 → 同步直通。
-  if (!v || typeof v.addEventListener !== "function") { onReady(); return; }
-  prep.probeMedia = v;
-  const onCanplay = () => { adoptProbe(prep, { ready: true }); onReady(); };
-  const onErr = () => { releaseProbeMedia(prep); onFail(); };
-  v.__weCanplay = onCanplay;
-  v.__weError = onErr;
-  v.addEventListener("canplay", onCanplay, { once: true });
-  v.addEventListener("error", onErr, { once: true });
-  prepTimeout(prep, () => { adoptProbe(prep); onReady(); }); // 慢网络兜底提交
-  try {
-    v.muted = true;
-    v.loop = true;
-    v.autoplay = true;
-    v.preload = "auto";
-    v.setAttribute("playsinline", "");
-    if (posterUrl) v.poster = posterUrl;
-    v.className = "we-media we-media--fit";
-    v.src = url;
-    v.load();
-    // detached 也先播起来：移入新层时正在播放的画面无缝续播。
-    const p = typeof v.play === "function" ? v.play() : null;
-    if (p && typeof p.catch === "function") p.catch(() => { /* 可见后 syncLayers 补 play */ });
-  } catch { adoptProbe(prep); onReady(); }
-}
-
-// detached <iframe> 预载：load 事件（跨域也在元素上触发）后即随元素移入新层。
-// 与 live 同款 staging 容器承载 —— iframe 在同文档内 reparent 会重载文档，
-// commit 时容器整体转为新层（节点级领养），iframe 全程不移动。
-function prepareWebProbe(w, prep, onReady) {
-  if (!w.media || typeof document === "undefined" || typeof document.createElement !== "function") { onReady(); return; }
-  const f = document.createElement("iframe");
-  if (!f || typeof f.addEventListener !== "function") { onReady(); return; }
-  prep.probeMedia = f;
-  const onLoad = () => { adoptProbe(prep, { ready: true }); onReady(); };
-  f.__weLoad = onLoad;
-  f.addEventListener("load", onLoad, { once: true });
-  prepTimeout(prep, () => { adoptProbe(prep); onReady(); }); // 慢页兜底提交（元素继续加载）
-  try {
-    f.setAttribute("frameborder", "0");
-    f.setAttribute("scrolling", "no");
-    // 安全隔离：WE web 壁纸是 workshop 第三方 HTML/JS，与宿主同源 —— 不
-    // sandbox 的话壁纸脚本可以宿主 origin 身份调宿主 API。allow-scripts 保留
-    // 动态壁纸能力，opaque origin 阻断身份冒用。
-    f.setAttribute("sandbox", "allow-scripts");
-    f.className = "we-media we-iframe";
-    const div = document.createElement("div");
-    div.className = "we-layer we-layer--staging";
-    prep.staged = { div };
-    div.appendChild(f);
-    document.body.appendChild(div);
-    f.src = w.media;
-  } catch { adoptProbe(prep); onReady(); }
-}
-
-// live 渲染页预载：staging 层（opacity:0 但 in-DOM 且几何满视口 → 渲染页按
-// 全分辨率正常初始化）里加载 WebWallGL 渲染页，首帧判定与 startLiveWatch
-// 同口径（__wpStats running && fps>0）→ 就绪后 staging 容器在 commit 时整体
-// 转为新层（节点级领养，iframe 不移动 —— 同文档 reparent 会重载文档）。
-// 超时/失败回退 sceneVideo/静态帧阶段；刻意不簿记 sceneLiveFailures ——
-// 探测放弃不等于渲染失败，切换后的正式心跳仍有自己的首帧看护兜底。
-// 准备期 live 首帧连续超时的候选：本会话不再对它尝试 live 准备，直接走
-// sceneVideo/静态帧。理由：超时候选本来也进不了 live，而每次尝试都要重新完整
-// 拉一次 scene.pkg（host 对 /scene-files 响应 no-store，没有 HTTP 缓存）+ 满
-// 视口渲染最多 LIVE_FIRST_FRAME_MS，并且准备失败刻意不簿记 sceneLiveFailures
-// （探测放弃 ≠ 渲染失败）→ 不设闸就是每轮轮换重来一次。手动选择壁纸走的是建层
-// 路径、不经过准备链，不受此闸影响；准备期真的出首帧即清零，下轮恢复正常尝试。
-const PREPARE_LIVE_TIMEOUT_LIMIT = 2;
-// 准备期中途被隐藏（人切走了）最多等多久：短时间离开就等着 —— 回来能看到本轮
-// 立刻完成切换；超过上限则释放 staging 渲染页（pkg 堆 ~10MB + 数十 MB 显存），
-// 转为「可见时补做」，且不记超时计数（隐藏 ≠ 这张壁纸 live 走不通）。60s 与轮换
-// 间隔同量级：离开超过一轮就没必要替用户先切好，回来再切更贴近直觉，也省掉
-// 「隐藏数小时 = 每 4 分钟加载一次 pkg」的反复冷启动。
-const PREPARE_LIVE_HIDDEN_HOLD_MAX_MS = 60000;
-// 隐藏期探测间隔（显式拉长）：隐藏页定时器本来就被 Chromium 钳到 ≥1s、5 分钟后
-// 1/min，写 2s 是为了让「这里不需要高频探测」这层意图留在代码里。
-const PREPARE_LIVE_HIDDEN_POLL_MS = 2000;
-const prepareLiveTimeouts = new Map(); // wallpaper id -> 连续超时次数
-function prepareLiveExhausted(wid) {
-  return (prepareLiveTimeouts.get(String(wid || "")) || 0) >= PREPARE_LIVE_TIMEOUT_LIMIT;
-}
-function notePrepareLiveTimeout(wid) {
-  const key = String(wid || "");
-  if (!key) return;
-  const n = (prepareLiveTimeouts.get(key) || 0) + 1;
-  prepareLiveTimeouts.set(key, n);
-  if (n === PREPARE_LIVE_TIMEOUT_LIMIT) {
-    // 降级（本会话对该壁纸不再尝试 live）⇒ `warn`；经 liveLog 走同一条诊断通道
-    //（浏览器控制台 + 宿主 /diag 环形缓冲），不再自打一行裸 console。
-    try {
-      liveLog("prep-live-timeout",
-        "wid=" + key + " 连续 " + n + " 次超时 → 本会话对该壁纸改用 sceneVideo/静态帧", "warn");
-    } catch { /* ignore */ }
-  }
-}
-function clearPrepareLiveTimeout(wid) {
-  const key = String(wid || "");
-  if (key) prepareLiveTimeouts.delete(key);
-}
-
 function prepareSceneLiveStage(w, prep, onReady, onFail) {
   prep.kind = "live";
   if (typeof document === "undefined" || typeof document.createElement !== "function"
@@ -292,7 +64,7 @@ function prepareSceneLiveStage(w, prep, onReady, onFail) {
     objectFit: selection.objectFit,
     sceneLiveFps: selection.sceneLiveFps,
     sceneLive: selection.sceneLive,
-    sceneLiveFailures: selection.sceneLiveFailures,
+    sceneLiveFailures: selection.sceneLiveFailures, sceneAutoQuality: selection.sceneAutoQuality,
   };
   if (!liveRenderEnabled(probeSel)) { onFail(); return; }
   const div = document.createElement("div");
@@ -359,6 +131,27 @@ function prepareSceneLiveStage(w, prep, onReady, onFail) {
   prepTimeout(prep, poll, 300); // 首拍稍早：小 pkg 可能一帧内就绪
 }
 
+// 全屏占位要作者原图：`?full=1` 让 `/preview/<token>` 直出源图（卡片仍拿缩略图）。
+// 查询串必须用 URL 拼，不能字符串相加 —— preview 一旦自带查询串（或以后换成绝对
+// URL），`${preview}?full=1` 就会拼出第二个 `?`（`/preview/x?w=320?full=1`）。
+// 根路径仍按**相对形态**返回：领养静态帧探针按 src 属性的字符串相等比对
+//（src/client/rotation.js 的 consumePreparedMedia），把相对路径绝对化会让同一个
+// 地址出现两种写法，预载好的元素会被判为不符而重建（白下载一次原图）。
+function scenePreviewUrl(preview) {
+  if (!preview) return null;
+  const sep = preview.includes("?") ? "&" : "?";
+  const rooted = preview.startsWith("/") && !preview.startsWith("//");
+  const absolute = /^[a-z][a-z0-9+.-]*:/i.test(preview);
+  if (!rooted && !absolute) return `${preview}${sep}full=1`; // 裸相对路径：没有可归一化的基准
+  try {
+    const url = rooted ? new URL(preview, "http://preview.invalid/") : new URL(preview);
+    url.searchParams.set("full", "1");
+    return rooted ? `${url.pathname}${url.search}${url.hash}` : url.href;
+  } catch {
+    return `${preview}${sep}full=1`; // 解析不了的形态保持旧行为（坏地址只影响这张图）
+  }
+}
+
 // 出图来源阶段：GET frameUrl 由 host 从磁盘取（`<key>_gpu.png` 或用户导入的自定义画面），
 // img onload = 解码完成，元素随 commit 移入新层。空槽是 404（no-frame）→ preview 探测；
 // 422 只属于 v=4 自定义画面缺失。preview 也失败 → onFail 跳过。
@@ -374,7 +167,7 @@ function prepareSceneStaticStage(w, prep, onReady, onFail) {
     p.alt = "";
     p.draggable = false;
     p.className = "we-media we-media--fit";
-    p.src = w.preview;
+    p.src = scenePreviewUrl(w.preview);
   };
   if (!w.frameUrl) { tryPreview(); return; }
   // 探针必须加载**提交后真正会显示的那个 URL**：提交时 selection.url 会带上该
@@ -443,6 +236,8 @@ function applySelection(id, opts) {
     selection.type = null;
     selection.previewUrl = null;
     selection.mediaExt = null;
+    selection.slidesUrl = null;
+    selection.slideIntervalMs = null;
     selection.liveFrame = null;
     selection.sceneVideo = null;
     selection.sceneLiveSrc = null;
@@ -474,6 +269,8 @@ function applySelection(id, opts) {
     selection.type = null;
     selection.previewUrl = null;
     selection.mediaExt = null;
+    selection.slidesUrl = null;
+    selection.slideIntervalMs = null;
     selection.liveFrame = null;
     selection.sceneVideo = null;
     selection.sceneLiveSrc = null;
@@ -493,7 +290,9 @@ function applySelection(id, opts) {
     return;
   }
   const savedVariant = Number(selection.frameVariants && selection.frameVariants[String(w.id)]) || 0;
-  selection.url = w.type === "scene" ? frameUrlWithVariant(w.frameUrl, savedVariant) : w.media;
+  // 场景全屏占位和静态帧失败回退都需要原图。清单的卡片 URL 不变。
+  selection.previewUrl = w.type === "scene" ? scenePreviewUrl(w.preview) : w.preview || null;
+  selection.url = w.type === "scene" ? frameUrlWithVariant(w.frameUrl, savedVariant) || selection.previewUrl : w.media;
   // 宿主 inventory 权威标记：已有自定义画面时同步进本地记忆（换机/清配置后恢复）。
   if (w.hasCustomFrame) {
     const cf = Object.assign({}, selection.customFrames || {});
@@ -504,6 +303,11 @@ function applySelection(id, opts) {
   // 真实容器后缀（宿主 inventory 的 mediaExt）：媒体 URL 是 token 形态、没有扩展名，
   // 「浏览器原生可解」那条判据（见 src/video-layer.js 的 isNativelyPlayableSource）必须靠它。
   selection.mediaExt = w.mediaExt || null;
+  // 图片 / 幻灯片壁纸的图集入口（宿主 inventory 的 slidesUrl = `/slides/<token>`；只有
+  // 图集 ≥2 张时才给）。它只是「这张图之上还有几张可以淡入淡出」的附加层，底层首图仍走
+  // url/mediaExt 那条原链 —— 接不到就退化成单图，与图片壁纸在 1.4.0 的行为一致。
+  selection.slidesUrl = w.type === "image" && w.slidesUrl ? w.slidesUrl : null;
+  selection.slideIntervalMs = w.type === "image" && typeof w.slideIntervalMs === "number" ? w.slideIntervalMs : null;
   selection.blockedNote = "";
   // 静态帧 URL (frameUrl, 立即上屏)：供页面刷新 / 档位切换时重挂。
   selection.sceneFrameUrl = w.type === "scene" ? (w.frameUrl || null) : null;
@@ -551,8 +355,6 @@ function applySelection(id, opts) {
       }
     }).catch(() => { /* 无音频/探测失败：按钮保持隐藏 */ });
   }
-  // Keep the preview around so a failed static frame can fall back to it.
-  selection.previewUrl = w.preview || null;
   // 网页壁纸的实时抓帧缓存（宿主 inventory 的 liveFrame = /live-frame/<token>）。web 支把它当
   // 垫底图的**第 1 级候选**，并在 live 首帧稳定后向它回填抽帧；不落这条字段，那一整支
   //（候选、抽帧定时器、"真实渲染帧"那条取色腿）在客户端就没有入口。与 previewUrl 同址。
@@ -583,6 +385,10 @@ function applySelection(id, opts) {
   themeFollowOnWallpaper(selection, { fromSkinRestore: !!(opts && opts.fromSkinRestore) });
 }
 function buildMedia(sel) {
+  // 换壁纸会重造这一层的媒体节点，但过场图挂在**层**上、不在媒体节点里：
+  // 不先摘掉上一档的过场层，新媒体插回原位后旧图集仍压在上面（最多等一个周期才被
+  // tick 的失联判定收走）。摘了等于回到「只有底层首图」，这一拍的交叉过渡也照旧。
+  if (activeImageSlideshow) activeImageSlideshow.stop();
   // 壁纸播放形态优先级:
   //   1. live — WebWallGL 实时 iframe（scene.pkg 走场景管线；web 壁纸走它的
   //      web 挂载 + 宿主注入的 WE shim，严格沙箱隔离）。心跳判定失败后自动
@@ -650,12 +456,16 @@ function buildMedia(sel) {
     media.alt = "";
     media.draggable = false;
     media.className = "we-media" + fitClass;
+    // 图片 / 幻灯片壁纸：底层首张封面已经在上面挂好，图集（2 张以上）交给过场层。
+    // 这一步只挂「附加层」，失败/空图集一律静默保持单图，绝不阻断建层。
+    if (sel.type === "image" && sel.slidesUrl) scheduleImageSlideshow(media, sel);
     // Scene frames are no longer generated (the host serves an existing frame: the live-backfilled
     // GPU frame, or the user-imported custom frame). 代码事实：该帧**加载失败**（img onerror）且该壁纸
     // 有工程预览图时，退到 previewUrl 垫底 —— 那是作者随包发布的图，不是本插件合成的"猜图"。
-    if (sel.type === "scene" && sel.previewUrl) {
+    if (sel.type === "scene" && sel.previewUrl && sel.url !== sel.previewUrl) {
       media.onerror = () => {
-        if (media.src !== sel.previewUrl) media.src = sel.previewUrl;
+        media.onerror = null;
+        media.src = sel.previewUrl;
       };
     }
   } else {
@@ -675,6 +485,127 @@ function buildMedia(sel) {
   return media;
 }
 
+// ── 图片 / 幻灯片壁纸的图内切换 ──────────────────────────────────────────────
+// 契约：**只管附加层，不管底层**。底层 `<img>`（封面首图）的 src / 内联 opacity 一律不碰 ——
+// 换壁画面的仍是 syncLayers 那一套；这里只是在它上面叠两张绝对定位的过场图做交叉淡化，
+// 所以「回原生」（清壁纸 / 关功能 / 切到别的壁纸）只需要停表 + 摘节点，没有需要回滚的样式。
+//
+// 数据来自宿主 `/wallpaper-engine/slides/<token>`（token = 封面首图的媒体 token），回包里
+// 是同一目录下自然序排好的全部图片 URL。图集 ≤1 张时**不装**：那种「幻灯片」与单图无差别，
+// 多挂两张透明 img 只是白占内存。
+const SLIDE_FADE_MS = 600;
+const IMAGE_SLIDES_CACHE = new Map(); // `${id}@${intervalMs}` → { images, intervalMs }
+// 当前挂着过场层的那一次安装（周期改了要能原地重装，不必重建整层：图片档的层键
+// 只含 type+url，不会因为 `pictureSlideSeconds` 变化而重建）。
+let activeImageSlideshow = null;
+
+/** 图内过场的实际周期（毫秒）。用户显式设了秒数就听用户的，否则用 WE 项目里的 imageswitchtimes。 */
+function pictureSlideIntervalMs(sel) {
+  const preferredSec = clampNum(sel && sel.pictureSlideSeconds, 0, 3600, 0);
+  if (preferredSec > 0) return preferredSec * 1000;
+  // WE 没声明档位（老项目 / 手改过的 project.json）⇒ 30 秒兜底；声明了就钳进 5 秒..1 小时。
+  const weMs = sel && typeof sel.slideIntervalMs === "number" ? sel.slideIntervalMs : 30000;
+  return clampNum(weMs, 5000, 3600000, 30000);
+}
+
+/** 取图集并按需安装过场层（异步；同一 `id@周期` 只取一次）。 */
+function scheduleImageSlideshow(media, sel) {
+  if (!media || !sel || typeof sel.slidesUrl !== "string" || sel.slidesUrl === "") return;
+  if (typeof apiJson !== "function") return;
+  const intervalMs = pictureSlideIntervalMs(sel);
+  const cacheKey = String(sel.id || "") + "@" + intervalMs;
+  const cached = IMAGE_SLIDES_CACHE.get(cacheKey);
+  if (cached) {
+    if (media.isConnected) installImageSlideshow(media, cached);
+    return;
+  }
+  Promise.resolve(apiJson(sel.slidesUrl)).then((res) => {
+    const payload = res && res.ok ? res.data : null;
+    if (!payload || payload.ok !== true || !Array.isArray(payload.images)) return;
+    const images = payload.images
+      .map((it) => (it && typeof it.url === "string" ? it.url : null))
+      .filter(Boolean);
+    if (images.length < 2) return;
+    const entry = { images, intervalMs };
+    IMAGE_SLIDES_CACHE.set(cacheKey, entry);
+    if (media.isConnected) installImageSlideshow(media, entry);
+  }).catch(() => { /* 图集不可用 ⇒ 保持单图（封面） */ });
+}
+
+/** 在 `media` 之上叠两张过场图，按周期轮转。返回的 stop 由 tick 内的失联判断自己调。 */
+function installImageSlideshow(media, entry) {
+  if (typeof document === "undefined" || typeof window === "undefined") return;
+  const parent = media && media.parentNode;
+  if (!parent) return;
+  const order = entry.images;
+  const layers = [];
+  for (let i = 0; i < 2; i += 1) {
+    const img = document.createElement("img");
+    img.className = "we-media we-media--fit we-slide";
+    img.alt = "";
+    img.draggable = false;
+    img.style.opacity = "0";
+    parent.appendChild(img);
+    layers.push(img);
+  }
+  let top = 0;
+  let index = 0;
+  const timer = window.setInterval(tick, entry.intervalMs);
+  const installed = { intervalMs: entry.intervalMs };
+  function stop() {
+    window.clearInterval(timer);
+    for (const img of layers) if (img.parentNode) img.parentNode.removeChild(img);
+    if (activeImageSlideshow === installed) activeImageSlideshow = null;
+  }
+  installed.stop = stop;
+  installed.media = media;
+  installed.entry = entry;
+  installed.order = order;
+  activeImageSlideshow = installed;
+  function tick() {
+    // 脱离文档 ⇒ 立刻停表摘图（换壁纸 / 清壁纸 / 切层都走这条路）。
+    if (!media.isConnected || !parent.isConnected) { stop(); return; }
+    // 页面隐藏时不推进：后台标签页里连续解码大图只会白烧 CPU，回来再继续。
+    if (document.hidden) return;
+    index = (index + 1) % order.length;
+    const incoming = layers[1 - top];
+    const outgoing = layers[top];
+    incoming.src = order[index];
+    let settled = false;
+    const commit = () => {
+      if (settled) return;
+      settled = true;
+      incoming.style.transition = "opacity " + SLIDE_FADE_MS + "ms ease";
+      outgoing.style.transition = "opacity " + SLIDE_FADE_MS + "ms ease";
+      incoming.style.opacity = "1";
+      outgoing.style.opacity = "0";
+      top = 1 - top;
+    };
+    // 已解码就直接交接；否则等这一张真到位（load 或 error 都算「这一拍该结束了」），
+    // 避免慢图把一整拍拖成空白。
+    if (incoming.complete && incoming.naturalWidth > 0) commit();
+    else {
+      incoming.addEventListener("load", commit, { once: true });
+      incoming.addEventListener("error", commit, { once: true });
+    }
+  }
+  // 预载第二张：第一拍切过去之前就把它拉下来，首拍才不会空。
+  layers[1].src = order[1 % order.length];
+}
+
+/**
+ * 图内周期改了（设置项 `pictureSlideSeconds`）：把当前这张图上的过场层原地重装。
+ * 图片档的层键只有 type+url，改设置不会触发 syncLayers 重建，所以这里显式收尾再装一次
+ *（`scheduleImageSlideshow` 的缓存按 `id@周期` 分桶，新周期必然是冷取）。
+ */
+function refreshImageSlideshow(sel) {
+  if (!sel || sel.type !== "image" || typeof sel.slidesUrl !== "string" || sel.slidesUrl === "") return;
+  const current = activeImageSlideshow;
+  if (!current) return;
+  current.stop();
+  if (current.media && current.media.isConnected) scheduleImageSlideshow(current.media, sel);
+}
+
 // ── Occlusion pause (遮挡暂停, WE-style) ────────────────────────────────────
 // Desktop Wallpaper Engine pauses rendering whenever the wallpaper is covered
 // — the main reason its GPU load is ~0 most of the time. Browsers cannot
@@ -686,6 +617,5 @@ function buildMedia(sel) {
 // manually paused. Web/iframe wallpapers cannot be paused from outside — they
 // are only throttled by the browser while the page is hidden.
 export {
-  applySelection, buildMedia, beginRotationPrepare, prepareLiveTimeouts,
-  clearPrepareLiveTimeout,
+  applySelection, buildMedia, refreshImageSlideshow,
 };

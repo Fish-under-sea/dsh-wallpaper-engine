@@ -85,7 +85,7 @@ function sidebarRightClose() {
 // ── 壁纸侧栏的统一开关（吉祥物点击 / 快捷键共用；两个宿主形态都覆盖）─────────
 // 抽屉态的开关由 RopeDock 组件注册进来：drawer 的 open 状态是组件内部 state，
 // 模块层只能经这一组回调改它（注册/撤销见 client.js 的 RopeDock effect）。
-// eslint-disable-next-line prefer-const -- 跨片段写入：client.js:4404,4405,4410
+// eslint-disable-next-line prefer-const -- 跨片段写入：client.js 的 `RopeDock` effect
 let ropeDrawerControl = null; // { toggle, open, close } | null（RopeDock 隐藏/卸载时为 null）
 /** 开：官方态展开并聚焦本 tab；抽屉态开抽屉。两边都不可用返回 false。 */
 function wallSidebarOpen() {
@@ -296,7 +296,7 @@ function findAccountMenuTrigger() {
  *
  * 为什么不能写死"中英两个字面词"（实测过的失效形状）：
  *   · 宿主的语言由 `locale` 服务决定，**语言包可追加**（`ctx.locale.addLanguage`，
- *     见 `src/i18n.js` 头注释）⇒ 加到第三种语言时点入口就没反应，且**静默**；
+ *     见 `src/i18n/i18n.js` 头注释）⇒ 加到第三种语言时点入口就没反应，且**静默**；
  *   · 宿主把这一项改成别的措辞（"偏好设置" / "Preferences"）同样失配。
  *
  * 为什么不直接用 `weT("设置")`：本仓词表里 `"设置"` 是**动词**义（值 `"Set"`，

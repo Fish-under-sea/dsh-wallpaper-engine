@@ -260,8 +260,19 @@ console.log('\n② 组件目录下的文件逐条进 `package.json` 的 `files`'
     if (!isOutOfHouse(componentEntryRel(n))) continue;
     const dir = 'packages/' + n + '/';
     let ownFiles = [];
-    try { ownFiles = JSON.parse(readFileSync(join(ROOT, dir, 'package.json'), 'utf8')).files || []; } catch { /* 缺清单由别的判据管 */ }
-    pkgGaps.push(...fileCoverageGaps(ownFiles.map((f) => dir + f), walkFiles(join(ROOT, dir))));
+    let own = {};
+    try {
+      own = JSON.parse(readFileSync(join(ROOT, dir, 'package.json'), 'utf8'));
+      ownFiles = own.files || [];
+    } catch { /* 缺清单由别的判据管 */ }
+    // P-D S3a：组件行也可以有自己的**浏览器半边**（packages/media-bridge 是第一个：client.build.json
+    // 配方 + src/*.js 构建输入 ⇒ lib/client.<short>.js 产物）。构建输入按设计不进 npm tarball 的
+    // `files`（字体包先例），产物由 `lib/` 覆盖 ⇒ 对"有声明的浏览器半边"的包豁免配方与 src/。
+    const hasBrowserHalf = Boolean(own.exports && own.exports['./client'])
+      || Boolean(own.dsh && own.dsh.client);
+    const shipFiles = walkFiles(join(ROOT, dir)).filter((rel) => !(hasBrowserHalf
+      && (rel === dir + 'client.build.json' || rel.startsWith(dir + 'src/'))));
+    pkgGaps.push(...fileCoverageGaps(ownFiles.map((f) => dir + f), shipFiles));
   }
   check('出户组件的包内文件都被各自清单的 `files` 覆盖（条目按包目录解析）', pkgGaps.length === 0,
     pkgGaps.length ? '漏发：' + pkgGaps.join(', ') : '出户 ' + COMPONENT_NAMES.filter((n) => isOutOfHouse(componentEntryRel(n))).length + ' 个包全覆盖');

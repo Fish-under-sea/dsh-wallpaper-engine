@@ -315,6 +315,23 @@ const requireMock = (spec) => {
 };
 const exportsObj = factory(requireMock);
 
+// P-D S3a：「自定义壁纸」节已搬进 packages/media-bridge 的浏览器半边 ⇒ 与真实 loader 同形，
+// 在 apply() **之前**求值该产物（它的 factory 用主 bundle 的显式键集把 library 节登记进
+// 面板节注册表）。不装这份产物，renderWallpaperTab 只画前三个内置节 ⇒ 上传区判据全红。
+const wallpaperArtifact = readFileSync(
+  new URL('../packages/media-bridge/lib/client.media-bridge.js', import.meta.url), 'utf8');
+const subHandoffs = [];
+sandbox.window.__ModuleLoader__ = { load: (h) => { subHandoffs.push(h); } };
+new vm.Script(wallpaperArtifact, { filename: 'client.media-bridge.js' }).runInContext(sandbox);
+sandbox.window.__ModuleLoader__ = { load: (h) => { cap.handoff = h; } };
+if (subHandoffs.length !== 1) {
+  throw new Error('wallpaper 浏览器半边必须恰好注册一份 bundle（实际 ' + subHandoffs.length + ' 份）');
+}
+const wallpaperExports = subHandoffs[0].factory((spec) => (
+  spec === 'dsh-plugin-wallpaper-engine' ? exportsObj : requireMock(spec)
+));
+if (typeof wallpaperExports.apply !== 'function') throw new Error('wallpaper 浏览器半边必须导出 apply');
+
 const pickerRenders = [];
 const slots = {
   inject: (key, cb) => cb(),

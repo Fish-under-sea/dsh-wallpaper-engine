@@ -15,13 +15,13 @@
   主包停用时不自动撤子包行。原 D6 / D8 / D17 的正文不动。
   （结论不变）。**按用户口径就地改写正文、不新开 ADR**；原决定的两条理由与代价**全部保留在新正文里**
   （不粉饰：发布面 ×N、踩 `dsh.client.*`、构建/守卫/生成物重写）。实施计划见
-  [`BUNDLE-SPLIT.md`](../wip/BUNDLE-SPLIT.md)（其 §14 D-1 / D-8 / D-10 与本节同步）。
+  [`BUNDLE-SPLIT.md`](../archive/wip/BUNDLE-SPLIT.md)（其 §14 D-1 / D-8 / D-10 与本节同步）。
 - **Related**: [ADR-0002](./0002-settings-schema-single-source.md)（设置的单一真源）、
   [ADR-0003](./0003-build-time-module-inlining.md)（浏览器半边靠构建期内联）、
   [ADR-0004](./0004-two-tier-guard-verification.md)（守卫分两档）、
   [ADR-0006](./0006-comment-discipline-as-written-convention.md)（注释与文档纪律）、
   [ADR-0007](./0007-machine-checks-target-code-not-prose.md)（机器判据只针对代码与磁盘）
-- **实施计划**: [`docs/wip/BUNDLE-SPLIT.md`](../wip/BUNDLE-SPLIT.md) —— **重构手册**（目标架构 / 机制约束 / 包边界 /
+- **实施计划**: [`docs/archive/wip/BUNDLE-SPLIT.md`](../archive/wip/BUNDLE-SPLIT.md) —— **重构手册**（目标架构 / 机制约束 / 包边界 /
   通讯纪律 / 阶段计划 / 判据改造 / 发布流程）；度量 M1–M10 的定义与复算命令在它的**附录 E**，每阶段验收命令在**附录 C**。
   开关语义的机械判据是 `test/verify-component-visibility.mjs`（可见面声明 ↔ 实现**双向对账**：
   声明了没 gate、gate 了没声明都红）。
@@ -44,7 +44,7 @@
 
 ### 可测事实（符号名 / 文件路径作锚点，不写行号与数值）
 
-**宿主机制（`app.asar` 内 `@deepseek-ai/*` 的产物与随包文档；复算方法见 [`DSH-UI-INTERFACES.md`](../DSH-UI-INTERFACES.md)）**
+**宿主机制（`app.asar` 内 `@deepseek-ai/*` 的产物与随包文档；复算方法见 [`CODE-STRUCTURE.md`](../CODE-STRUCTURE.md) §13）**
 
 1. **一个包 = 一个 bundle = 多行**：`package.json` 声明 `dsh.bundle.patch`，patch 是**顶层 YAML 数组**；
    `- insert:`（**不带 `id`**）把若干行追加到根 `include` 上，每行是一个 loader entry
@@ -95,7 +95,7 @@
   「一个功能族 → 哪些文件」的唯一性）、**锚定模块边界**（落点唯一 **且** 边界**可声明、可核对**）、
   **解耦合**（模块之间只通过公开契约通讯：显式注入面 + 内核分级面，隐式共享清零）。
   只有目录变了而没有可声明的边界，**不算锚定**。
-- **D2 判据口径 = 度量 M1–M10**（定义与复算命令见 [`BUNDLE-SPLIT.md`](../wip/BUNDLE-SPLIT.md) **附录 E**）：
+- **D2 判据口径 = 度量 M1–M10**（定义与复算命令见 [`BUNDLE-SPLIT.md`](../archive/wip/BUNDLE-SPLIT.md) **附录 E**）：
   复杂度 = M1 / M2 / M3 / M6 / M7；锚定边界 = M8 / M10；解耦合 = M9；守卫负担 = M4 / M5。
   **不改善任何一项的工作一律不做** —— 哪怕它能变成一个可独立开关的行；**"可开关本身不加分"**。
   **唯一例外见 D3**。
@@ -226,7 +226,7 @@
 - 包体积随组件数增长（每个组件各带一份图标，且图标不能共享）。
 - 上游同时演进时的冲突面（缓解：先纯搬移、面窄、每步独立提交可单独 revert）。
 
-### 验收（每阶段通用，命令见 [`BUNDLE-SPLIT.md`](../wip/BUNDLE-SPLIT.md) **附录 C**）
+### 验收（每阶段通用，命令见 [`BUNDLE-SPLIT.md`](../archive/wip/BUNDLE-SPLIT.md) **附录 C**）
 
 1. `npm run verify:all` 全绿；`lib/client.js` 除本阶段有意的改动外**逐字节不变**。
 2. **M8**：路由族 / 组件入口的声明面与实现面**逐键相等**（目标 100%）；**M9**：跨模块隐式共享面**归零**；
