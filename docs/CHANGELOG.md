@@ -14,9 +14,18 @@
 > 完整逐提交历史见 GitHub Commits / Releases；升级前置条件见 [`UPGRADING.md`](./UPGRADING.md)。
 > `test/verify-scene-live.mjs` 这一类判据条数**只记该条写作当时的实测总数**（如 466 / 465），不是现在的总数 —— 后续条目会往上加（现为 502）；照原文保留，好让它与当次提交对得上。
 
-### 未发布（悬停卡唯一子 div，2026-11-21）
+### 未发布（镜面高光强度 · 悬停卡唯一子 div · 深色孪生 · macOS 壁纸库 · 表格可读底 · 视频软渲染降档，2026-11-27）
 
+- **新增：玻璃表面的镜面高光（釉光）可单独调弱或关掉（#404）**。「玻璃 UI」新增「镜面高光」滑杆（`glassSheenStrength`，0–100，默认 100 = 现状）：0 时主块三档 `--we-panel-sheen-*`（左侧栏 / 标题栏 / 各面板）与右侧栏由透明度派生的 `--we-sidebar-sheen` 一起归零，只保留底与霜；100 与接线前逐值相同。滑杆值由 `glass-layer.js` 写成 `--we-sheen-scale`（0–1），`glass-css.js` 的主块三档与 `glass.js` 的侧栏写入点乘同一个系数；旧配置与七套出厂预设缺键时按 100 处理。`verify-glass-surfaces` 新增 ㉘ 组（两条通道 + 负对照）。
+
+- **修：深色主题 + 软件渲染时输入卡与仓库抽屉被刷成 92% 纯白（#398）**。软件光栅回退（`body[data-we-glass-fallback]`）里这两条近不透明配方只写了浅色一支，深色主题下取到 `--we-surface-tint-light`（#ffffff）⇒ 输入卡 `[data-composer-card]::before` 与 `.we-repo-panel` 变成 92% 白板，和周围的深色面板不是一种材质。现按本块既有写法各补一条深色孪生（多一层 `[data-ds-dark-theme]`，只换 `--we-surface-tint-dark`，配方逐字相同）；`verify-softrender` 新增 E6（每条读 `--we-surface-tint-light` 的回退规则必须有同选择器的深色孪生）与 E6b 负对照（删掉输入卡那条孪生必须被判出）。纯 CSS，刷新页面生效。
 - **修：悬停卡玻璃不再误涂多子元素对话框的每个直接子 div**。`[role="dialog"] > div` 只应命中宿主 HoverCard 的唯一卡片 div；写成裸 `> div` 时，宿主「本轮用量」面板（`title` / `titleRule` 两个 div）和第三方弹层（标题 / 摘要 / 影响清单等多个 div）会各涂一层底、渐变与霜，出现多条不同色色带。现改为 `> div:only-of-type`，正常档与无霜回退档同步；`verify-glass-surfaces` 新增 ㉗ 组（两条规则 + 负对照）。纯 CSS，刷新页面生效。
+
+- **新增：macOS 上也能选 WallpaperMachine 的壁纸（#394）**。WallpaperMachine 把 Steam 工作坊壁纸下到 `~/Library/Application Support/WallpaperMachine/Library/<id>/`，结构与 Steam 的 `content/431960/<id>/` 同构，所以直接接成额外的扫描根：签名与枚举仍走同一套推导，清单字段形状不变；目录不存在时自动跳过，Windows / Linux 不受影响。`DSH_WE_WALLPAPER_MACHINE_LIBRARY` 可覆盖库路径（多个用逗号或分号分隔，只认绝对路径）。宿主 `/inventory` 新增 `wallpaperMachineRoots`（按磁盘实测的库根数）：**只有本机真的有这个库**时客户端才每 30 秒静默刷新一次清单（不亮 loading、清单没变不重渲染），Steam 用户保持手动刷新；连续失败 3 次退避约 3 分钟。`verify-wallpaper-scan` 新增 W1–W6（含两条负对照）。
+
+- **新增：会话表格的玻璃可读底可以单独关掉（#384）**。「壁纸引擎 → 外观 → 玻璃 UI → 液态玻璃」挡新增「表格可读底」（`tableReadability`，默认开）：关掉后 `[data-chat-flow]` 与 `[data-vcp-rawhtml]` 的表格底面、表头灰带与单元格行线整组让回宿主，壁纸直接透过表格，思考块本身仍保持液态玻璃。门是 body 上的 `data-we-table-readability`（与 `data-we-thinking-glass` 同批挂/摘，`disposeGlassLayer` 一并撤除并登记进 `GLASS_RESIDUE_ATTRS`）；缺这个键的旧配置与出厂七套预设默认仍开启，保留 #348 为复杂壁纸加的那层可读性底面。设置页与侧栏共用同一开关，切挡位或刷新后记住选择；`verify-readability` 新增 F2h 门控判据与负对照，`verify-client` 补开关写回与三挡往返。纯 CSS + 客户端设置，刷新页面生效。
+
+- **修：软件渲染下视频壁纸的 canvas 绘制再压到 15fps，不再让整页跟着卡（#411）**。`edgeCompat` 腿（Edge 默认开）把 `<video>` 藏到屏外、改用 canvas 逐帧 `drawImage` 上屏，这一笔是纹理回读 + CPU 上传；#383 的 30fps 上限在软渲染（SwiftShader / llvmpipe / 无 WebGL）下仍吃满 CPU。现复用 `src/live-layer/probe.js` 的 `liveSoftRenderProbeNow()`（同一套判定、同一个 `?we-softrender=0` 逃生舱），命中时按自己的最小间隔压到 15fps，硬件路径逐值不变；有效帧率随源帧率取整（30 / 60 源 → 15fps，24p 源 → 12fps）。首次降档只打一条 `video-softrender-throttle` 诊断（带渲染器名），事后能确认是不是这一档生效。`verify-video-canvas-fps` 补 A7–A10（含两条负对照）。
 
 ### v1.4.3（2026-11-19）
 

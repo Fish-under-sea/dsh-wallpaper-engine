@@ -181,7 +181,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       },
       "host": {
         "id": "",
@@ -354,7 +356,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       }
     },
     {
@@ -545,7 +549,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       },
       "host": "__null__"
     },
@@ -737,7 +743,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       },
       "host": "__null__"
     },
@@ -929,7 +937,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       },
       "host": "__null__"
     },
@@ -1113,7 +1123,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       },
       "host": {
         "id": "",
@@ -1286,7 +1298,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       }
     },
     {
@@ -1526,7 +1540,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       },
       "host": {
         "id": "",
@@ -1699,7 +1715,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       }
     },
     {
@@ -1984,7 +2002,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       },
       "host": {
         "id": "",
@@ -2157,7 +2177,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       }
     },
     {
@@ -2341,7 +2363,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       },
       "host": {
         "id": "",
@@ -2514,7 +2538,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       }
     },
     {
@@ -2712,7 +2738,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       },
       "host": {
         "id": "",
@@ -2885,7 +2913,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       }
     },
     {
@@ -3083,7 +3113,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       },
       "host": {
         "id": "",
@@ -3256,7 +3288,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       }
     },
     {
@@ -3441,7 +3475,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       },
       "host": {
         "id": "",
@@ -3614,7 +3650,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       }
     },
     {
@@ -3804,7 +3842,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       },
       "host": {
         "id": "",
@@ -3977,7 +4017,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       }
     },
     {
@@ -4164,7 +4206,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       },
       "host": {
         "id": "",
@@ -4337,7 +4381,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       }
     },
     {
@@ -4531,7 +4577,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       },
       "host": {
         "id": "",
@@ -4704,7 +4752,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       }
     },
     {
@@ -4963,7 +5013,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       },
       "host": {
         "id": "",
@@ -5161,7 +5213,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       }
     },
     {
@@ -5344,7 +5398,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       },
       "host": {
         "id": "",
@@ -5517,7 +5573,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       }
     },
     {
@@ -5700,7 +5758,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       },
       "host": {
         "id": "wallpaper-42",
@@ -5873,7 +5933,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       }
     },
     {
@@ -6057,7 +6119,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       },
       "host": {
         "id": "",
@@ -6230,7 +6294,9 @@
         "hoverCardTransparency": 39,
         "hoverCardBlur": 16,
         "marketStickyClip": true,
-        "marketStickyFade": 26
+        "marketStickyFade": 26,
+        "tableReadability": true,
+        "glassSheenStrength": 100
       }
     }
   ]

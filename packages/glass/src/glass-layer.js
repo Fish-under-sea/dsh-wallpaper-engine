@@ -204,6 +204,12 @@ function applyGlassLayer() {
   const fidNum = Number(selection.glassFidelity);
   const glassFidelity = Number.isFinite(fidNum) ? Math.min(1, Math.max(0, fidNum / 100)) : 1;
   s.setProperty("--we-glass-fidelity", String(glassFidelity));
+  // - 镜面高光强度（#404，0–100，默认 100 = 现状）：只缩放釉光的两组变量 ——
+  //   主块三档（--we-panel-sheen-*）与侧栏派生那一路（--we-sidebar-sheen）。
+  //   100 ⇒ 1 = 与接线前逐值相同；0 = 两组归零，只留底与霜。
+  const sheenNum = Number(selection.glassSheenStrength);
+  const sheenScale = Number.isFinite(sheenNum) ? Math.min(1, Math.max(0, sheenNum / 100)) : 1;
+  s.setProperty("--we-sheen-scale", String(sheenScale));
   // 宿主 Modal 遮罩浓度（#254）：0–100 ⇒ 0–1；CSS 侧按主题把 --dsw-alias-bg-mask-1
   // 的 alpha 乘上它（100 = 宿主原值浅 0.24 / 深 0.50，0 = 完全不遮）。
   const maskNum = Number(selection.settingsMaskStrength);
@@ -245,8 +251,11 @@ function applyGlassLayer() {
   // 令牌退回宿主原生值，画布与输入框不碰。
   if (selection.thinkingNative && !skinYield) document.body.setAttribute("data-we-thinking-native", "on");
   else document.body.removeAttribute("data-we-thinking-native");
-  if (selection.thinkingGlass && !selection.thinkingNative && !skinYield) document.body.setAttribute("data-we-thinking-glass", "on");
+  const thinkingGlass = selection.thinkingGlass && !selection.thinkingNative && !skinYield;
+  if (thinkingGlass) document.body.setAttribute("data-we-thinking-glass", "on");
   else document.body.removeAttribute("data-we-thinking-glass");
+  if (thinkingGlass && selection.tableReadability !== false) document.body.setAttribute("data-we-table-readability", "on");
+  else document.body.removeAttribute("data-we-table-readability");
   // 标题栏容器锚点（#235）：顶栏玻璃那一族 CSS 只认 [data-we-titlebar-anchor]，不再写死宿主
   // 构建哈希 —— 探针判据与理由见本文件 findTitlebarFrame 的注释。关掉标题栏玻璃 / 皮肤让路
   // = 这一面整组不生效，标记也一并摘掉（`&& !skinYield` 正是让路早退路径的摘锚点）。
@@ -278,7 +287,7 @@ function applyGlassLayer() {
     s.setProperty("--we-sidebar-saturate", "var(--we-saturate)");
     s.setProperty("--we-sidebar-tint", "calc(var(--we-glass-alpha) * 100%)");
     s.setProperty("--we-sidebar-color", "var(--we-follow-tint)");
-    s.setProperty("--we-sidebar-sheen", "1");
+    s.setProperty("--we-sidebar-sheen", "var(--we-sheen-scale, 1)");
   }
   // 跟随态另挂一个属性：样式表用它决定"侧栏的釉"取共享那一份还是侧栏专用那一份。
   if (selection.sidebarGlass && selection.sidebarFollowGlobal && !skinYield) document.body.setAttribute("data-we-sidebar-follow", "on");
@@ -303,6 +312,7 @@ function disposeGlassLayer() {
   s.removeProperty("--we-glass-brightness");
   s.removeProperty("--we-glass-alpha");
   s.removeProperty("--we-glass-color");
+  s.removeProperty("--we-sheen-scale");
   s.removeProperty("--we-mask-strength");
   s.removeProperty("--we-surface-tint-light");
   s.removeProperty("--we-surface-tint-dark");
@@ -335,6 +345,7 @@ function disposeGlassLayer() {
   // 三挡的另一半（对话区原生挡）同批：漏撤 ⇒ 卸载后对话区令牌仍被钉回原生值。
   document.body.removeAttribute("data-we-thinking-glass");
   document.body.removeAttribute("data-we-thinking-native");
+  document.body.removeAttribute("data-we-table-readability");
   // ⚠️ W5 新增的三个门控属性**也必须在这里撤掉**（与上面两个同批）：
   //    漏掉它们 ⇒ 插件被禁用 / HMR 卸载后，宿主 DOM 上仍留着 `data-we-glass-chat` /
   //    `data-we-glass-floaters`，而挂在这些属性上的规则组**照旧生效** ——

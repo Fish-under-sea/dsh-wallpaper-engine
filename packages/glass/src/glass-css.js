@@ -94,7 +94,12 @@ const CSS_GLASS = `
        侧栏的釉（镜面渐变三档）也收在这里：原生左栏与 dsh-better-sidebar 两侧栏共用同一道，
        否则"跟随全局"之后两侧栏仍会差一层白釉。 */
     --we-follow-tint: var(--we-surface-tint-light, #ffffff);
-    --we-panel-sheen-a: 0.10; --we-panel-sheen-b: 0.03; --we-panel-sheen-c: 0.05;
+    /* #404 镜面高光强度：三档都乘同一个系数（100% ⇒ 1 = 接线前逐值相同；
+       0 ⇒ 全零，只留底与霜）。侧栏那条派生通道在 glass.js 的写入点乘同一个变量，
+       两组合起来才是"一个旋钮管全部釉光"。 */
+    --we-panel-sheen-a: calc(0.10 * var(--we-sheen-scale, 1));
+    --we-panel-sheen-b: calc(0.03 * var(--we-sheen-scale, 1));
+    --we-panel-sheen-c: calc(0.05 * var(--we-sheen-scale, 1));
   }
   body[data-ds-dark-theme] {
     --we-readability-floor-base: ${READABILITY_FLOOR_DARK};
@@ -103,7 +108,10 @@ const CSS_GLASS = `
     --we-chat-readability-floor: calc(var(--we-readability-floor-base) * var(--we-chat-glass-fidelity, 1));
     --we-chat-readability-base: var(--we-chat-surface-tint-dark, #0d1524);
     --we-follow-tint: var(--we-surface-tint-dark, #0d1524);
-    --we-panel-sheen-a: 0.07; --we-panel-sheen-b: 0.02; --we-panel-sheen-c: 0.03;
+    /* #404：暗档同样是"档值 × 同一个系数"，与浅档逐条同形。 */
+    --we-panel-sheen-a: calc(0.07 * var(--we-sheen-scale, 1));
+    --we-panel-sheen-b: calc(0.02 * var(--we-sheen-scale, 1));
+    --we-panel-sheen-c: calc(0.03 * var(--we-sheen-scale, 1));
   }
 
   /* ── 页面玻璃总锚点（data-we-glass-page）——**与有没有壁纸无关** ───────────────
@@ -841,27 +849,27 @@ const CSS_GLASS = `
      锚点只用语义元素（table / th / td）+ 宿主写死的 [data-chat-flow] /
      [data-vcp-rawhtml]：宿主的表格类名带构建哈希，docs/CODE-STRUCTURE.md §13
      判其稳定性为低，不许把用户可见行为挂在它上面。
-     这条规则不加霜 ⇒ 不需要 glass-fallback 的孪生规则（回退模式要同一张网格）。 */
-  body[data-we-glass-page][data-we-thinking-glass] [data-chat-flow] table,
-  body[data-we-glass-page][data-we-thinking-glass] [data-vcp-rawhtml] table {
+     关闭表格可读底时，这组规则整体让回宿主。没有模糊载体，软件渲染共用这组规则。 */
+  body[data-we-glass-page][data-we-thinking-glass][data-we-table-readability] [data-chat-flow] table,
+  body[data-we-glass-page][data-we-thinking-glass][data-we-table-readability] [data-vcp-rawhtml] table {
     background: color-mix(in srgb,
       var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
       color-mix(in srgb, var(--we-surface-tint-light, #ffffff) calc(var(--we-glass-alpha, 0.15) * 0.8 * 100%), transparent) calc((1 - var(--we-readability-floor)) * 100%)) !important;
   }
-  body[data-ds-dark-theme][data-we-glass-page][data-we-thinking-glass] [data-chat-flow] table,
-  body[data-ds-dark-theme][data-we-glass-page][data-we-thinking-glass] [data-vcp-rawhtml] table {
+  body[data-ds-dark-theme][data-we-glass-page][data-we-thinking-glass][data-we-table-readability] [data-chat-flow] table,
+  body[data-ds-dark-theme][data-we-glass-page][data-we-thinking-glass][data-we-table-readability] [data-vcp-rawhtml] table {
     background: color-mix(in srgb,
       var(--we-readability-base) calc(var(--we-readability-floor) * 100%),
       color-mix(in srgb, var(--we-surface-tint-dark, #0d1524) calc(var(--we-glass-alpha, 0.15) * 0.8 * 100%), transparent) calc((1 - var(--we-readability-floor)) * 100%)) !important;
   }
-  body[data-we-glass-page][data-we-thinking-glass] [data-chat-flow] table th,
-  body[data-we-glass-page][data-we-thinking-glass] [data-vcp-rawhtml] table th {
+  body[data-we-glass-page][data-we-thinking-glass][data-we-table-readability] [data-chat-flow] table th,
+  body[data-we-glass-page][data-we-thinking-glass][data-we-table-readability] [data-vcp-rawhtml] table th {
     background-color: rgba(180, 180, 180, calc(var(--we-border-alpha, 0.35) * 0.45)) !important;
     border-bottom: 1px solid rgba(180, 180, 180, min(0.8, calc(var(--we-border-alpha, 0.35) * 1.7))) !important;
     color: var(--dsw-alias-label-primary) !important;
   }
-  body[data-we-glass-page][data-we-thinking-glass] [data-chat-flow] table td,
-  body[data-we-glass-page][data-we-thinking-glass] [data-vcp-rawhtml] table td {
+  body[data-we-glass-page][data-we-thinking-glass][data-we-table-readability] [data-chat-flow] table td,
+  body[data-we-glass-page][data-we-thinking-glass][data-we-table-readability] [data-vcp-rawhtml] table td {
     border-bottom: 1px solid rgba(180, 180, 180, calc(var(--we-border-alpha, 0.35) * 0.9)) !important;
   }
   /* The two chat navigation buttons reuse capsule mist and frost.
@@ -1886,6 +1894,13 @@ const CSS_GLASS = `
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
   }
+  /* issue #398：上一条只给了浅色釉色 —— 深色主题 + 软件渲染（data-we-glass-fallback）时，
+     输入卡 ::before 被刷成 92% 纯白，与周围的深色面板不是一种材质。深色孪生多一层
+     [data-ds-dark-theme]（特异性更高，不依赖书写顺序），与本块左栏 / 标题栏 / 设置窗
+     那三对同法，配方逐字相同、只换 --we-surface-tint-dark。 */
+  body[data-ds-dark-theme][data-we-glass-fallback][data-we-glass-page] [data-composer-card]::before {
+    background-color: color-mix(in srgb, var(--we-surface-tint-dark, #0d1524) 92%, transparent);
+  }
   /* A near-opaque canvas is only the no-frost fallback, never normal chat. */
   body[data-we-glass-fallback][data-we-glass-page],
   body[data-ds-dark-theme][data-we-glass-fallback][data-we-glass-page] {
@@ -1915,6 +1930,10 @@ const CSS_GLASS = `
     background-color: color-mix(in srgb, var(--we-surface-tint-light, #ffffff) 92%, transparent);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
+  }
+  /* issue #398 同一条：仓库抽屉的 92% 配方也要深色孪生，否则深色主题下抽屉同样变白板。 */
+  body[data-ds-dark-theme][data-we-glass-fallback] .we-repo-panel {
+    background-color: color-mix(in srgb, var(--we-surface-tint-dark, #0d1524) 92%, transparent);
   }
   /* 一次性通知：底色本身已经接近不透明（82% 深色底衬），不需要换配方，
      只把永远不生效的 backdrop-filter 关掉。 */

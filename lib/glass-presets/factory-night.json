@@ -63,6 +63,7 @@
     },
     "glassDarkSeparate": false,
     "glassFidelity": 75,
+    "glassSheenStrength": 100,
     "extraGlassSelectors": "",
     "capsuleBlur": 14,
     "capsuleColor": "#0d1524",
@@ -81,6 +82,7 @@
     "titlebarGlass": false,
     "thinkingGlass": false,
     "thinkingNative": false,
+    "tableReadability": true,
     "glassMode": {
       "sidebar": "inherit",
       "sidebarContent": "inherit",

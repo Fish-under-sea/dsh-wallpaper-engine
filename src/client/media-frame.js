@@ -13,6 +13,60 @@ let weVfHandle = 0;     // requestVideoFrameCallback handle
 let weRafId = 0;        // requestAnimationFrame fallback handle
 let weResizeObs = null; // ResizeObserver (canvas size / DPR changes)
 let weDrawCtx = null;   // { canvas, video, fit }
+
+// 绘制帧率上限（#383）：「Edge 兼容」下 <video> 被藏到屏外、改由 canvas 逐帧
+// drawImage 上屏（见 buildVideoMedia 的 Edge 镜像分支），每帧都是一次纹理回读 +
+// CPU 上传。2K60 的源在 60–120Hz 的 rVFC/rAF 回调里每帧都画，会把主线程与合成器
+// 一起拖慢——实测「解码帧一个不少、媒体时钟只走 89.5%」。
+// 固定 30：2K60 源砍半、抖动比 24 更小；先不加用户可见开关（edgeCompat=false
+// 已是逃生口：关掉走原生 <video> 合成、满帧）。
+const WE_DRAW_FPS_CAP = 30;
+/** 两笔绘制的最小间隔（毫秒）。0.5 容差吃掉 1000/60×2 = 33.333… 这类浮点边界：
+ *  不多给整帧，但保证 60Hz 输入按「每两帧画一次」稳定落在 30fps，而不是掉到 23。 */
+const WE_DRAW_MIN_INTERVAL_MS = 1000 / WE_DRAW_FPS_CAP - 0.5;
+/** 上一笔 drawImage 的时间戳；0 = 还没有首绘（首绘不许被节流吃掉）。 */
+let weLastDrawAt = 0;
+
+// ── 软渲染下再降一档（#411：Video 缺降级能力）────────────────────────────────
+// 为什么在这里：#383 的 30fps 上限治的是「canvas 路径本身贵」；软件渲染
+// （SwiftShader / llvmpipe / Microsoft Basic Render…）下这笔回读 + 上传没有 GPU
+// 帮忙，2K60 源即使 30fps 也仍然吃满 CPU，所以再压到 15fps。
+//
+// 判定**复用** `src/live-layer/probe.js` 的 `liveSoftRenderProbeNow()`，不新写探测：
+//   · build-client.mjs 的 INLINE_MODULES 里 probe.js 先于本文件内联，函数声明同作用域可见；
+//   · 手动逃生舱沿用同一个 URL 开关（`?we-softrender=0`）。
+//
+// 只压绘制频率，**不暂停原生 `<video>`**：原生腿没有这笔回读开销，去暂停它
+// 等于给正常路径加复杂度（#411 维护者确认的范围）。
+const SOFT_RENDER_DRAW_FPS = 15;
+/** 软渲染档的最小间隔：与 30fps 档同样的 0.5ms 浮点容差。 */
+const SOFT_RENDER_MIN_INTERVAL_MS = 1000 / SOFT_RENDER_DRAW_FPS - 0.5;
+
+/** 软渲染时是否把绘制压到 SOFT_RENDER_DRAW_FPS。取不到判定 ⇒ 视为硬件（不改变既有行为）。 */
+function isSoftRenderThrottled() {
+  try {
+    return typeof liveSoftRenderProbeNow === "function" && liveSoftRenderProbeNow() === true;
+  } catch {
+    return false;
+  }
+}
+/** 降档只留一条现场证据：用户报「视频变卡 / 变抽」时，日志要能回答是不是这一档生效的。
+ *  同一个页面会话只打一条 —— 每帧都打会把诊断环形缓冲刷满（与 #270 的 soft-render-pause
+ *  同一条通路：liveLog → host /diag）。 */
+let softRenderThrottleLogged = false;
+function noteSoftRenderThrottle() {
+  if (softRenderThrottleLogged) return;
+  softRenderThrottleLogged = true;
+  try {
+    if (typeof liveLog !== "function") return;
+    // 这里刻意用 ASCII 兜底名：src/** 的中文字面量必须进 weT(...)（verify-i18n ①），
+    // 而这条只是诊断里给渲染器占位的标签，不值得为它加一条界面文案。
+    const renderer = typeof liveSoftRenderName === "string" && liveSoftRenderName
+      ? liveSoftRenderName : "no-WebGL";
+    liveLog("video-softrender-throttle",
+      "canvas 绘制压到 " + SOFT_RENDER_DRAW_FPS + "fps（" + renderer + "）", "info");
+  } catch { /* 诊断失败不影响绘制 */ }
+}
 function weStopDraw() {
   const v = weDrawCtx && weDrawCtx.video;
   if (weVfHandle && v && v.cancelVideoFrameCallback) {
@@ -22,6 +76,8 @@ function weStopDraw() {
   if (weRafId) { cancelAnimationFrame(weRafId); weRafId = 0; }
   if (weResizeObs) { weResizeObs.disconnect(); weResizeObs = null; }
   weDrawCtx = null;
+  // 换壁纸/切层后重新起画：下一笔必须重新算首绘，否则新画布会被旧时间戳压住一帧。
+  weLastDrawAt = 0;
 }
 // Detach is NOT enough: a playing <video> is a GC root and keeps decoding in
 // the background after removal — every rotation switch used to accumulate one
@@ -62,9 +118,19 @@ function weDrawFrame() {
   noteLayerContent(canvas);
 }
 function weDrawTick() {
-  weDrawFrame();
   const ctx = weDrawCtx;
   if (!ctx || !ctx.canvas.isConnected) return;
+  const now = performance.now();
+  // 首绘直接画；之后只画「距上一笔够一帧」的那些，其余帧只重挂回调。
+  // 节流只决定「这一帧画不画」，rVFC / rAF 的重挂节奏不变（视频照常解码）。
+  // #411：软渲染再降一档（15fps）；硬件路径仍是 #383 的 30fps 上限。
+  const softRender = isSoftRenderThrottled();
+  if (softRender) noteSoftRenderThrottle();
+  const minInterval = softRender ? SOFT_RENDER_MIN_INTERVAL_MS : WE_DRAW_MIN_INTERVAL_MS;
+  if (weLastDrawAt === 0 || now - weLastDrawAt >= minInterval) {
+    weLastDrawAt = now;
+    weDrawFrame();
+  }
   const v = ctx.video;
   if (v.requestVideoFrameCallback) { weVfHandle = v.requestVideoFrameCallback(weDrawTick); return; }
   // rAF fallback: a PAUSED wallpaper must not redraw the same frame 60–120

@@ -69,12 +69,13 @@ const GLASS_RESIDUE_ATTRS = [
   "data-we-glass-page", "data-we-glass-chat", "data-we-glass-window", "data-we-glass-floaters",
   "data-we-left-sidebar", "data-we-left-sidebar-radius", "data-we-right-sidebar-radius",
   "data-we-left-sidebar-square", "data-we-right-sidebar-square",
-  "data-we-titlebar-glass", "data-we-thinking-glass", "data-we-thinking-native",
+  "data-we-titlebar-glass", "data-we-thinking-glass", "data-we-thinking-native", "data-we-table-readability",
   "data-we-sidebar-follow", "data-we-sidebar-glass", "data-we-sidebar-fullclear",
   "data-we-floater-solid", "data-we-glass-fallback",
 ];
 const GLASS_RESIDUE_VARS = [
   "--we-blur", "--we-saturate", "--we-glass-brightness", "--we-glass-alpha", "--we-glass-color",
+  "--we-sheen-scale",
   "--we-surface-tint-light", "--we-surface-tint-dark",
   "--we-surface-tint-rgb-light", "--we-surface-tint-rgb-dark",
   "--we-left-sidebar-radius", "--we-right-sidebar-radius",
@@ -486,7 +487,7 @@ const selection = {
   editingWeAssetsDir: false,
   weAssetsDirDraft: "",
   weAssetsError: "",
-  inventory: { installDir: null, uploadDir: null, cacheDir: null, weAssetsDir: null, weAssetsAvailable: false, weAssetsSource: null, sceneMediaBase: "", wallpapers: [], total: 0, portableCount: 0, playlists: [], error: null },
+  inventory: { installDir: null, uploadDir: null, cacheDir: null, weAssetsDir: null, weAssetsAvailable: false, weAssetsSource: null, sceneMediaBase: "", wallpapers: [], total: 0, portableCount: 0, playlists: [], wallpaperMachineRoots: 0, error: null },
   loaded: false,
 };
 
@@ -925,10 +926,16 @@ function prefetchInventoryOnce() {
   try { inventoryBootPrefetch = apiJson(INVENTORY_URL); } catch { inventoryBootPrefetch = null; }
   return inventoryBootPrefetch;
 }
-async function loadInventory() {
+async function loadInventory(opts) {
+  // silent = 后台轮询：不亮 loading、清单没变就一个 emit 都不发（见 invWatch 的调用点）。
+  // 手动刷新 / 上传完成 / 设置页重拉仍走默认路径，loading 与重渲染照旧。
+  const silent = Boolean(opts && opts.silent);
+  const prevInv = selection.inventory;   // 错误去重要比对"换掉之前"的那一份
   const seq = ++inventorySeq;
-  setTransient("loading", true);
-  emit();
+  if (!silent) {
+    setTransient("loading", true);
+    emit();
+  }
   let next;
   const prefetched = inventoryBootPrefetch;
   inventoryBootPrefetch = null;
@@ -949,6 +956,8 @@ async function loadInventory() {
       weAssetsSource: data.weAssetsSource || null,
       // 场景载荷的源（独立壁纸媒体源的 origin；空串 = 回落应用源，见 live-layer 的 liveRenderUrl）。
       sceneMediaBase: typeof data.sceneMediaBase === "string" ? data.sceneMediaBase : "",
+      // 本机真实存在的 WallpaperMachine 库根数（宿主实测）。0 = 不轮询 —— 见 invWatch 的门控。
+      wallpaperMachineRoots: Number(data.wallpaperMachineRoots) || 0,
       wallpapers: data.wallpapers || [],
       total: data.total || 0,
       portableCount: data.portableCount || 0,
@@ -989,6 +998,7 @@ async function loadInventory() {
         portableCount: 0,
         playlists: [],
         folders: [],
+        wallpaperMachineRoots: 0,
         error: message,
       };
   }
@@ -1000,7 +1010,8 @@ async function loadInventory() {
     // 失败时**不重算选择**（同上：#379 的落盘点就在 revalidateSelection 里）。校验"选中的
     // id 还在不在库里"只在真拿到新库存时有意义 —— 拿不到库存时库里有什么我们并不知道。
     // 背景保持现状，面板顶部照常显示 next.error。
-    emit();
+    // 静默轮询下同一个错误只报一次：每 30s 重刷一次错误横幅只是噪音（换一条错误要报）。
+    if (!silent || prevInv.error !== next.error) emit();
     return;
   }
   // 文件夹筛选的僵尸值：宿主的夹子表里已经找不到这个 id（用户在 WE 里删了/改名了）
@@ -1019,6 +1030,10 @@ async function loadInventory() {
     setTransient("_invIds", nextIds);
     setTransient("editorPage", 0);
   }
+  // 轮询（silent）且清单没变 ⇒ 到此为止：不重算选择、不 emit。
+  // revalidateSelection → applySelection 会 cancelRotationPrepare() + disposePreparedMedia()，
+  // 每 30s 一次会把正在准备的轮播过场掐掉；面板也会跟着重渲染（#396 评审）。
+  if (silent && prevIds === nextIds) return;
 
   // Rotation groups: validate the active one and seed a first group from a
   // playable Wallpaper Engine playlist when the user has none yet (so the
@@ -2166,6 +2181,12 @@ const OCCLUSION_RECHECK_MS = 3000;
 /** URL 源（Bing 每日一图）的清单复核周期：宿主每天换图，客户端半小时看一眼即可。 */
 const URL_SOURCE_POLL_MS = 30 * 60 * 1000;
 
+/** 壁纸库自动刷新周期（**仅本机真的存在 WallpaperMachine 库时才启用**，判据是 /inventory 的
+ *  wallpaperMachineRoots）：WallpaperMachine 自己把新壁纸下到库目录（Library/<id>/），宿主每次
+ *  /inventory 都重新推导库根并看时间戳，所以客户端低频重拉一次就能把它们带出来。Steam 侧大库
+ *  （几百上千张）不该周期整库重建 —— 那里保持原「手动刷新」语义不变。 */
+const INVENTORY_POLL_MS = 30 * 1000;
+
 // 「live 渲染页为什么没在出帧」的一句话原因：用户暂停与遮挡都算 —— 两者都会让
 // applyLiveControls 把渲染页 pause() 掉，而暂停中的渲染页 __wpStats.frame()
 // 恒为 {fps:0, running:false}（渲染器实现：paused → running:false）。
@@ -2419,7 +2440,7 @@ function writeSavedPickerOpen(key, on) {
 // 与宿主同一量级的 TTL：避免每次重渲染、每次切页签都打一次网络（GitHub 未认证限流
 // 60 次/小时 **整机共享**）。失败不写 at ⇒ 下次切到关于页立刻重试（失败不该被冷却）。
 const STAR_COUNT_TTL = 10 * 60 * 1000;
-let starCount = { value: null, at: 0, busy: false, tried: false };
+let starCount = { value: null, at: 0, busy: false, tried: false, stale: false, fetchedAt: 0 };
 function loadStarCount(force) {
   if (starCount.busy) return;
   if (!force && starCount.tried && Date.now() - starCount.at < STAR_COUNT_TTL) return;
@@ -2431,7 +2452,13 @@ function loadStarCount(force) {
       // 冷却用**本地**时间戳（不是宿主的 fetchedAt）：宿主的缓存可能本身就是上一次的
       // 旧值（离线兜底那条腿），拿它当年龄会让客户端每次切页签都去问一次 —— 冷却的意义
       // 是"别重复问"，数据到底多旧由宿主那一层的 TTL 负责。
-      starCount = { value: n, at: n == null ? 0 : Date.now(), busy: false, tried: true };
+      // 但"多旧"必须**显示**出来：宿主的 stale 分支回的就是上一次取到的值（断网 / 证书
+      // 拦截时会一直回它），客户端不标日期的话，几十天前的数会和实时数长得一模一样。
+      starCount = {
+        value: n, at: n == null ? 0 : Date.now(), busy: false, tried: true,
+        stale: Boolean(d && d.ok && d.stale),
+        fetchedAt: d && Number.isFinite(d.fetchedAt) ? d.fetchedAt : 0,
+      };
       emit();
     })
     .catch(() => {
@@ -2441,13 +2468,40 @@ function loadStarCount(force) {
 }
 // 那行字的唯一出处（渲染器直接读它 —— 与 SliderRow 一类模块级助手同口径）。
 // 三种态各有明确文案：还没问过 ⇒ 空串（不占位）、正在问 ⇒ 说明在取、取不到 ⇒ 如实说。
+// 第四种是"有值但陈旧"（宿主 stale 分支）：**必须带取数日期**，否则断网时它会冒充实时数。
+/** 宿主 fetchedAt → 本地 `YYYY-MM-DD`；非法就给空串（宁可退回普通文案，也不显示 NaN）。 */
+function starCountFetchedDate() {
+  const t = Number(starCount.fetchedAt);
+  if (!Number.isFinite(t) || t <= 0) return "";
+  const d = new Date(t);
+  if (!Number.isFinite(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+}
+/** 陈旧值**且能说出取数日期**时才返回日期：说不清多旧的旧值不许冒充实时数。 */
+function starCountStaleDate() {
+  return starCount.stale && starCount.value != null ? starCountFetchedDate() : "";
+}
 function starCountLabel() {
   if (starCount.busy && starCount.value == null) return weT("⭐ 正在获取 star 数…");
   if (starCount.value != null) {
-    return weT("⭐ 当前 {count} star", { count: Number(starCount.value).toLocaleString("en-US") });
+    const count = Number(starCount.value).toLocaleString("en-US");
+    const date = starCountStaleDate();
+    if (date) return weT("⭐ 当前 {count} star（{date} 取到）", { count, date });
+    // 陈旧但拿不到时间戳 ⇒ 按"取不到"处理（否则它和实时数长得一模一样，正是这次事故的形态）。
+    if (starCount.stale) return weT("⭐ 暂时取不到 star 数");
+    return weT("⭐ 当前 {count} star", { count });
   }
   if (starCount.tried) return weT("⭐ 暂时取不到 star 数");
   return "";
+}
+// 数字那行的 tooltip（渲染器同样只读模块级助手）：陈旧时把"没连上"说清楚，
+// 别让「实时数据」四个字挂在一个几十天前的值上。
+function starCountTitle() {
+  if (starCountStaleDate()) {
+    return weT("这次没能连上 GitHub，显示的是上一次取到的一次值（不是实时数）");
+  }
+  return weT("来自 GitHub API 的实时数据（带缓存；拉不到时显示上一次取到的值）");
 }
 
 // 滑杆右侧那格「数值区」的可输入形态（SliderRow 的 opts.numberEdit 用它）。
@@ -2891,6 +2945,10 @@ function onThinkingMode(mode) {
   setSetting("thinkingNative", mode === "native");
   emit();
 }
+function onTableReadability(e) {
+  setSetting("tableReadability", e.target.checked);
+  emit();
+}
 // 胶囊雾化（行内代码 / 新会话 / 导航按钮）：与 thinkingGlass 同族 —— 消费它的规则
 // 全部挂在 data-we-thinking-glass 门下，所以滑杆也只在该开关打开时渲染（glass-panel）。
 const onCapsuleBlur = (px, live) =>
@@ -2902,7 +2960,7 @@ const onCapsuleColor = (hex, live) => {
 };
 
 // ── 以下处理器模块级 —— 快捷播放面板（src/quick-panel.js）与设置页**共用同一批处理器**。
-//    ⚠️ 分档（ADR-0008 D4）：侧栏档只画**简化配置**（全局四件套 + 各面总开关），
+//    ⚠️ 分档（ADR-0008 D4）：侧栏档只画**简化配置**（全局材质旋钮 + 各面总开关），
 //    高级行的处理器在那份 ctx 里是"取用即抛错"的占位器 —— 所以这里给的是**全量**模块级处理器，
 //    "哪一档真的用到哪些"由 quick-panel 的 provided 对象与 QP_CTX_SETTINGS_ONLY 名单决定。
 //    依赖（setSetting / commitLiveSetting / clampNum / schemaRange / selection /
@@ -3927,6 +3985,10 @@ const onGlassMaskStrength = (pct, live) =>
 // 数学入口在 effects.js 的 weClampSurfaceColor 第三参 + --we-glass-fidelity。
 const onGlassFidelity = (pct, live) =>
   commitLiveSetting("glassFidelity", clampNum(pct, ...schemaRange("glassFidelity"), DEFAULTS.glassFidelity), live);
+// 镜面高光强度（#404，默认 100 = 现状）：0 = 主块三档与侧栏派生档的釉光全部归零，
+// 只保留底与霜；100 = 与接线前逐值相同。落地在 glass-layer.js 的 --we-sheen-scale。
+const onGlassSheenStrength = (pct, live) =>
+  commitLiveSetting("glassSheenStrength", clampNum(pct, ...schemaRange("glassSheenStrength"), DEFAULTS.glassSheenStrength), live);
 // 额外补雾化的选择器（#200）：值是一串 CSS 选择器（逗号 / 换行分隔，最多 8 条）。
 // 消毒只走 settings-schema 的 sanitizeExtraGlassSelectors —— 读侧（sanitizeFromSchema）
 // 与本模块生成侧（glass-extra.js）**共用同一份**判据，所以用户敲到一半的非法串既不会进
@@ -5091,7 +5153,7 @@ function WallpaperPicker() {
       uiColorOpen: pickerUiColorOpen, onToggleUiColorSection: togglePickerUiColorSection,
       onToggleUiColorCustom, onUiColorElement,
       onGlassSurfacePolicy, surfaceStatus: weGlassSurfaceStatus(),
-      officialColorOf, onAccent, onCapsuleBlur, onCapsuleColor, onBlur, onBorder, onCaretColor, onChatGlassFidelity, onComponentFamily, onComponentFont, onExtraGlassSelectors, onFontAdvanced, onFontResetAll, onGlassAlpha, onGlassMaskStrength, onGlassColor, onGlassDarkSeparate, onGlassFidelity, onGlobalFamily, onLeftSidebarGlass, onTitlebarGlass, onRefreshSystemFonts, onSidebarAlpha, onSidebarBlur, onSidebarColor, onSidebarContentAlpha, onSidebarContentColor, onSidebarCornerRadius, onSidebarCornerSquare, onSidebarFollowGlobal, onSidebarGlass, onSidebarFullClear, onFloaterSolidBase, onMarketStickyClip, onMarketStickyFade, onThemeColor, onThemeColorClear, onThemeDarkSeparate, onThemeFamily, onThemeSize, onThemeTypeOnly, onThemeWeight, onThinkingMode, onToggleFontCustom, onToggleThemeFollow, sel,
+      officialColorOf, onAccent, onCapsuleBlur, onCapsuleColor, onBlur, onBorder, onCaretColor, onChatGlassFidelity, onComponentFamily, onComponentFont, onExtraGlassSelectors, onFontAdvanced, onFontResetAll, onGlassAlpha, onGlassMaskStrength, onGlassColor, onGlassDarkSeparate, onGlassFidelity, onGlassSheenStrength, onGlobalFamily, onLeftSidebarGlass, onTitlebarGlass, onRefreshSystemFonts, onSidebarAlpha, onSidebarBlur, onSidebarColor, onSidebarContentAlpha, onSidebarContentColor, onSidebarCornerRadius, onSidebarCornerSquare, onSidebarFollowGlobal, onSidebarGlass, onSidebarFullClear, onFloaterSolidBase, onMarketStickyClip, onMarketStickyFade, onThemeColor, onThemeColorClear, onThemeDarkSeparate, onThemeFamily, onThemeSize, onThemeTypeOnly, onThemeWeight, onThinkingMode, onTableReadability, onToggleFontCustom, onToggleThemeFollow, sel,
       // 玻璃 UI 子项开关 + 独立配置 + 独立参数（见 onToggleChildIndependent 那段注释）
       onToggleChildIndependent, onGlassChildParam, childIndependentOn,
       // 二次修订：设置页也**支持隐藏**这几节（默认全展开）——
@@ -5919,6 +5981,31 @@ function apply(ctx) {
           loadInventory().catch(() => { /* 失败保持现状，下一次再试 */ });
         }, URL_SOURCE_POLL_MS);
       }
+      // 壁纸库自动刷新：WallpaperMachine 会自己把新壁纸下到库目录（Library/<id>/），
+      // 但它**只在宿主真的找到这个库**时才需要轮询。判据是 /inventory 回的
+      // wallpaperMachineRoots（宿主按磁盘实测报的数）—— 不用「installDir 为空」当
+      // 「没有 Steam」的代理：探测不到 Steam 的 Windows 用户会因此被拖进每 30s 一次
+      // 的大库重拉（#396 评审）。轮询走 silent：不亮 loading、清单没变不 emit、不重算选择。
+      let invWatch = 0, invPollFails = 0, invPollSkip = 0;
+      if (typeof setInterval === "function") {
+        invWatch = setInterval(() => {
+          if (disposed) return;
+          if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+          if (!selection.inventory.wallpaperMachineRoots) return;
+          if (selection.rotationTimer) return;   // 过场准备中：下一拍再说
+          if (invPollSkip > 0) { invPollSkip -= 1; return; }
+          loadInventory({ silent: true }).then(() => {
+            // loadInventory 自己吞异常 ⇒ 失败只能从库存的 error 字段读。
+            if (selection.inventory && selection.inventory.error) {
+              invPollFails += 1;
+              if (invPollFails >= 3) { invPollFails = 0; invPollSkip = 6; }   // 连败 3 次 ⇒ 退避约 3 分钟
+            } else {
+              invPollFails = 0;
+            }
+          });
+        }, INVENTORY_POLL_MS);
+      }
+
       // 持久化监听器: pagehide → 立即 flush 未落盘的设置; visibilitychange →
       // 页面回到前台时重试失败过的 PUT。注册在这里 (而不是模块作用域) 才能随
       // fiber 注销 — 否则每次插件重载/HMR 都会在同一页面再叠一对, 永不释放。
@@ -5974,6 +6061,7 @@ function apply(ctx) {
         layerUnsubs.clear();
         if (ocWatch) { try { clearInterval(ocWatch); } catch { /* ignore */ } ocWatch = 0; }
         if (urlWatch) { try { clearInterval(urlWatch); } catch { /* ignore */ } urlWatch = 0; }
+        if (invWatch) { try { clearInterval(invWatch); } catch { /* ignore */ } invWatch = 0; }
         if (typeof window !== "undefined" && typeof window.removeEventListener === "function") {
           for (const t of ocListeners) window.removeEventListener(t, onOcclusionChange);
           if (pageShowBound) window.removeEventListener("pageshow", onBackVisible);
